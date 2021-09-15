@@ -1,0 +1,15 @@
+domain: open-cluster-management.io
+layout:
+- go.kubebuilder.io/v3
+projectName: cluster-proxy
+repo: open-cluster-management.io/cluster-proxy
+resources:
+- api:
+    crdVersion: v1
+  controller: true
+  domain: open-cluster-management.io
+  group: proxy
+  kind: ManagedProxyConfiguration
+  path: open-cluster-management.io/cluster-proxy/api/v1alpha1
+  version: v1alpha1
+version: "3"

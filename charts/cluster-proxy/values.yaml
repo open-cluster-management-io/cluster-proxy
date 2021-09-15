@@ -1,0 +1,12 @@
+# Image of the cluster-gateway instances
+image: yue9944882/cluster-proxy-addon-manager:v0.0.11
+
+# Number of replicas
+replicas: 3
+
+spokeAddonNamespace: "open-cluster-management-cluster-proxy"
+
+# targetCluster: test-cluster (render it manually via `helm template -f..`)
+
+proxyServerImage: yue9944882/proxy-server-amd64:v0.0.22
+proxyAgentImage: yue9944882/proxy-agent-amd64:v0.0.22

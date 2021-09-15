@@ -13,3 +13,14 @@
 
 # Dependency directories (remove the comment below to include it)
 # vendor/
+
+/apiserver.local.config
+/bin
+/default.etcd
+/kubeconfig
+/config/crds/
+.idea/**
+.DS_Store
+
+index.yaml
+cluster-proxy-*.tgz
