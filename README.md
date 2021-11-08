@@ -4,7 +4,8 @@
 
 ## What is Cluster Proxy?
 
-Example description: With `cluster-proxy`, you can....
+cluster proxy is a reverse proxy based on apiserver network proxy to provide direct access of apiserver of managed 
+cluster from the hub.
 
 Go to the [Contributing guide](CONTRIBUTING.md) to learn how to get involved.
 
