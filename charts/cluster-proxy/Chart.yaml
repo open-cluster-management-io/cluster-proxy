@@ -1,0 +1,6 @@
+apiVersion: v2
+name: cluster-proxy
+description: A Helm chart for Cluster-Proxy
+type: application
+version: 0.0.11
+appVersion: 1.0.0
