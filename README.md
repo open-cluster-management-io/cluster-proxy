@@ -102,6 +102,21 @@ dialer of the kubernetes original client config object, e.g.:
     cfg.Dial = tunnel.DialContext 
 ```
 
+### Performance
+
+Here's the result of network bandwidth benchmarking via [goben](https://github.com/udhos/goben)
+with or without Cluster-Proxy (i.e. Apiserver-Network-Proxy) so roughly the proxying
+through the tunnel will involve 1/2 performance loss so it's recommended to avoid 
+transferring data-intensive traffic over the proxy.
+
+
+|  Bandwidth  |   Direct   | over Cluster-Proxy |
+|-------------|------------|--------------------|
+|  Read/Mbps  |  902 Mbps  |     461 Mbps       |
+|  Write/Mbps |  889 Mbps  |     428 Mbps       |
+
+
+
 ## References
 
 - Design: [https://github.com/open-cluster-management-io/enhancements/tree/main/enhancements/sig-architecture/14-addon-cluster-proxy](https://github.com/open-cluster-management-io/enhancements/tree/main/enhancements/sig-architecture/14-addon-cluster-proxy)
