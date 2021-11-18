@@ -94,7 +94,8 @@ func (p *proxyAgent) Manifests(managedCluster *clusterv1.ManagedCluster, addon *
 
 func (p *proxyAgent) GetAgentAddonOptions() agent.AgentAddonOptions {
 	return agent.AgentAddonOptions{
-		AddonName: common.AddonName,
+		AddonName:       common.AddonName,
+		InstallStrategy: agent.InstallAllStrategy(common.AddonInstallNamespace),
 		Registration: &agent.RegistrationOption{
 			CSRConfigurations: func(cluster *clusterv1.ManagedCluster) []addonv1alpha1.RegistrationConfig {
 				return []addonv1alpha1.RegistrationConfig{
