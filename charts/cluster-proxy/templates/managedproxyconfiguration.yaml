@@ -10,6 +10,7 @@ spec:
       type: SelfSigned
   proxyServer:
     image: {{ .Values.proxyServerImage }}
+    namespace: {{ .Release.Namespace }}
     entrypoint:
       type: LoadBalancerService
       loadBalancerService: {}

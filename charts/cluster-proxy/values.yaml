@@ -1,8 +1,8 @@
 # Image of the cluster-gateway instances
-image: yue9944882/cluster-proxy-addon-manager:v0.0.11
+image: yue9944882/cluster-proxy-addon-manager:v0.0.12
 
 # Number of replicas
-replicas: 3
+replicas: 1
 
 spokeAddonNamespace: "open-cluster-management-cluster-proxy"
 
