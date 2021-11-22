@@ -19,4 +19,4 @@ spec:
           image: {{ .Values.image }}
           args:
             - --leader-elect=true
-            - --signer-secret-namespace=open-cluster-management-cluster-proxy
+            - --signer-secret-namespace={{ .Release.Namespace }}
