@@ -135,3 +135,9 @@ addon-manager-image:
 		-t $(IMAGE_REGISTRY_NAME)/$(MANAGER_IMAGE_NAME):$(IMAGE_TAG) .
 
 images: addon-manager-image addon-agent-image
+
+test-integration:
+	@echo "TODO: Run integration test"
+
+test-e2e:
+	@echo "TODO: Run e2e test"

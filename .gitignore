@@ -24,3 +24,5 @@
 
 index.yaml
 cluster-proxy-*.tgz
+
+/testbin
