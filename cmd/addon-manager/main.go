@@ -86,6 +86,8 @@ func main() {
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
 
+	// init log compoment
+	klog.InitFlags(flag.CommandLine)
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
 	if err := config.ValidateAgentImage(); err != nil {
