@@ -39,7 +39,7 @@ The overall architecture is shown below:
 1. Adding helm repo:
 
 ```shell
-$ helm repo add ocm https://open-cluster-management-helm-charts.oss-cn-beijing.aliyuncs.com/releases/
+$ helm repo add ocm https://open-cluster-management.oss-us-west-1.aliyuncs.com
 $ helm repo update
 $ helm search repo ocm/cluster-proxy
 NAME                       	CHART VERSION	APP VERSION	DESCRIPTION                   
@@ -96,8 +96,10 @@ dialer of the kubernetes original client config object, e.g.:
     )
     cfg, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
     if err != nil {
-        panic(err)
+    	return err
     }
+    // The managed cluster's name.
+    cfg.Host = clusterName
     // Override the default tcp dialer
     cfg.Dial = tunnel.DialContext 
 ```
