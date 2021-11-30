@@ -27,6 +27,10 @@ var (
 	bigOne     = big.NewInt(1)
 )
 
+type CertRotation interface {
+	EnsureTargetCertKeyPair(signingCertKeyPair *openshiftcrypto.CA, caBundleCerts []*x509.Certificate, fns ...openshiftcrypto.CertificateExtensionFunc) error
+}
+
 type SelfSigner interface {
 	Sign(cfg cert.Config, expiry time.Duration) (CertPair, error)
 	CAData() []byte

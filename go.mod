@@ -7,6 +7,7 @@ require (
 	github.com/onsi/gomega v1.14.0
 	github.com/openshift/library-go v0.0.0-20210916194400-ae21aab32431
 	github.com/pkg/errors v0.9.1
+	github.com/stretchr/testify v1.7.0
 	google.golang.org/grpc v1.38.0
 	k8s.io/api v0.22.1
 	k8s.io/apimachinery v0.22.1
