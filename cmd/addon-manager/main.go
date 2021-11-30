@@ -25,7 +25,6 @@ import (
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
-	"github.com/openshift/library-go/pkg/operator/events"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/informers"
@@ -130,16 +129,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controllers.ClusterManagementAddonReconciler{
-		Client:           mgr.GetClient(),
-		SelfSigner:       selfSigner,
-		CAPair:           selfSigner.CA(),
-		SecretGetter:     nativeClient.CoreV1(),
-		SecretLister:     nativeInformer.Core().V1().Secrets().Lister(),
-		ServiceGetter:    nativeClient.CoreV1(),
-		DeploymentGetter: nativeClient.AppsV1(),
-		EventRecorder:    events.NewInMemoryRecorder("ClusterManagementAddonReconciler"),
-	}).SetupWithManager(mgr); err != nil {
+	if err := controllers.RegisterClusterManagementAddonReconciler(
+		mgr,
+		selfSigner,
+		nativeClient,
+		nativeInformer.Core().V1().Secrets(),
+	); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ManagedProxyConfiguration")
 		os.Exit(1)
 	}

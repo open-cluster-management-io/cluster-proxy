@@ -5,7 +5,6 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
-	"net"
 	"strconv"
 	"time"
 
@@ -28,11 +27,14 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	informercorev1 "k8s.io/client-go/informers/core/v1"
+	"k8s.io/client-go/kubernetes"
 	appsv1client "k8s.io/client-go/kubernetes/typed/apps/v1"
 	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
 	corev1listers "k8s.io/client-go/listers/core/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 )
@@ -40,6 +42,32 @@ import (
 var _ reconcile.Reconciler = &ClusterManagementAddonReconciler{}
 
 var log = ctrl.Log.WithName("ClusterManagementAddonReconciler")
+
+func RegisterClusterManagementAddonReconciler(
+	mgr manager.Manager,
+	selfSigner selfsigned.SelfSigner,
+	nativeClient kubernetes.Interface,
+	secretInformer informercorev1.SecretInformer) error {
+	r := &ClusterManagementAddonReconciler{
+		Client:     mgr.GetClient(),
+		SelfSigner: selfSigner,
+		CAPair:     selfSigner.CA(),
+		newCertRotatorFunc: func(namespace, name string, sans ...string) selfsigned.CertRotation {
+			return &certrotation.TargetRotation{
+				Namespace:     namespace,
+				Name:          name,
+				Validity:      time.Hour * 24 * 180,
+				HostNames:     sans,
+				Lister:        secretInformer.Lister(),
+				Client:        nativeClient.CoreV1(),
+				EventRecorder: events.NewInMemoryRecorder("ClusterManagementAddonReconciler"),
+			}
+		},
+		ServiceGetter:    nativeClient.CoreV1(),
+		DeploymentGetter: nativeClient.AppsV1(),
+	}
+	return r.SetupWithManager(mgr)
+}
 
 type ClusterManagementAddonReconciler struct {
 	client.Client
@@ -51,6 +79,7 @@ type ClusterManagementAddonReconciler struct {
 	ServiceGetter    corev1client.ServicesGetter
 	EventRecorder    events.Recorder
 
+	newCertRotatorFunc func(namespace, name string, sans ...string) selfsigned.CertRotation
 	proxyConfigClient  proxyclient.Interface
 	proxyConfigLister  proxylister.ManagedProxyConfigurationLister
 	addonLister        addonlister.ManagedClusterAddOnNamespaceLister
@@ -289,16 +318,10 @@ func (c *ClusterManagementAddonReconciler) ensureRotation(config *proxyv1alpha1.
 	}
 	sans := append(
 		hostNames,
+		entrypoint,
 		config.Spec.ProxyServer.InClusterServiceName+"."+config.Spec.ProxyServer.Namespace,
 		config.Spec.ProxyServer.InClusterServiceName+"."+config.Spec.ProxyServer.Namespace+".svc")
 
-	tweakServerCertFunc := func(cert *x509.Certificate) error {
-		ip := net.ParseIP(entrypoint)
-		if ip != nil {
-			cert.IPAddresses = append(cert.IPAddresses, ip)
-		}
-		return nil
-	}
 	tweakClientCertUsageFunc := func(cert *x509.Certificate) error {
 		cert.ExtKeyUsage = []x509.ExtKeyUsage{
 			x509.ExtKeyUsageClientAuth,
@@ -307,46 +330,33 @@ func (c *ClusterManagementAddonReconciler) ensureRotation(config *proxyv1alpha1.
 	}
 
 	// proxy server cert rotation
-	proxyServerRotator := c.newCertRotator(
+	proxyServerRotator := c.newCertRotatorFunc(
 		config.Spec.ProxyServer.Namespace,
 		config.Spec.Authentication.Dump.Secrets.SigningProxyServerSecretName,
-		sans)
+		sans...)
 	if err := proxyServerRotator.EnsureTargetCertKeyPair(c.CAPair, c.CAPair.Config.Certs); err != nil {
 		return err
 	}
 
 	// agent sever cert rotation
-	agentServerRotator := c.newCertRotator(
+	agentServerRotator := c.newCertRotatorFunc(
 		config.Spec.ProxyServer.Namespace,
 		config.Spec.Authentication.Dump.Secrets.SigningAgentServerSecretName,
-		sans)
-	if err := agentServerRotator.EnsureTargetCertKeyPair(c.CAPair, c.CAPair.Config.Certs, tweakServerCertFunc); err != nil {
+		sans...)
+	if err := agentServerRotator.EnsureTargetCertKeyPair(c.CAPair, c.CAPair.Config.Certs); err != nil {
 		return err
 	}
 
 	// proxy client cert rotation
-	proxyClientRotator := c.newCertRotator(
+	proxyClientRotator := c.newCertRotatorFunc(
 		config.Spec.ProxyServer.Namespace,
 		config.Spec.Authentication.Dump.Secrets.SigningProxyClientSecretName,
-		[]string{common.ComponentNameProxyClient},
-	)
+		sans...)
 	if err := proxyClientRotator.EnsureTargetCertKeyPair(c.CAPair, c.CAPair.Config.Certs, tweakClientCertUsageFunc); err != nil {
 		return err
 	}
 
 	return nil
-}
-
-func (c *ClusterManagementAddonReconciler) newCertRotator(namespace, name string, sans []string) *certrotation.TargetRotation {
-	return &certrotation.TargetRotation{
-		Namespace:     namespace,
-		Name:          name,
-		Validity:      time.Hour * 24 * 180,
-		HostNames:     sans,
-		Lister:        c.SecretLister,
-		Client:        c.SecretGetter,
-		EventRecorder: c.EventRecorder,
-	}
 }
 
 func (c *ClusterManagementAddonReconciler) ensureBasicResources(config *proxyv1alpha1.ManagedProxyConfiguration) error {
