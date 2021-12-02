@@ -67,6 +67,7 @@ func main() {
 	var signerSecretNamespace, signerSecretName string
 
 	klog.SetOutput(os.Stdout)
+	klog.InitFlags(flag.CommandLine)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":58080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":58081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
@@ -86,7 +87,6 @@ func main() {
 	flag.Parse()
 
 	// init log compoment
-	klog.InitFlags(flag.CommandLine)
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
 	if err := config.ValidateAgentImage(); err != nil {
