@@ -84,20 +84,9 @@ func (p *proxyAgent) Manifests(managedCluster *clusterv1.ManagedCluster, addon *
 		proxyServerLoadBalancer = entrySvc
 	}
 
-	// get proxy client secret
-	proxyClientSecret, err := p.nativeClient.CoreV1().
-		Secrets(proxyConfig.Spec.ProxyServer.Namespace).
-		Get(context.TODO(),
-			proxyConfig.Spec.Authentication.Dump.Secrets.SigningProxyClientSecretName,
-			metav1.GetOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("failed getting proxy client secret")
-	}
-
 	return []runtime.Object{
 		newNamespace(addon.Spec.InstallNamespace),
 		newCASecret(addon.Spec.InstallNamespace, AgentCASecretName, p.selfSigner.CAData()),
-		newTLSSecret(addon.Spec.InstallNamespace, AgentSecretName, proxyClientSecret),
 		newClusterService(addon.Spec.InstallNamespace, managedCluster.Name),
 		newAgentDeployment(managedCluster.Name, addon.Spec.InstallNamespace, proxyConfig, proxyServerLoadBalancer),
 	}, nil
@@ -404,20 +393,6 @@ func newCASecret(namespace, name string, caData []byte) *corev1.Secret {
 		Data: map[string][]byte{
 			selfsigned.TLSCACert: caData,
 		},
-	}
-}
-
-func newTLSSecret(namespace, name string, proxyClientSecret *corev1.Secret) *corev1.Secret {
-	return &corev1.Secret{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "v1",
-			Kind:       "Secret",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: namespace,
-			Name:      name,
-		},
-		Data: proxyClientSecret.Data,
 	}
 }
 
