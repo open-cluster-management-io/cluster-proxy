@@ -32,6 +32,8 @@ The overall architecture is shown below:
 ### Prerequisite
 
 - OCM registration (>= 0.5.0)
+- Your hub cluster supports provisioning *LoadBalancer* typed service (otherwise
+  see the workaround in the [FQA](./FQA.md#custom-proxy-server-hostname)).
 
 ### Steps
 
