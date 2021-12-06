@@ -1,9 +1,0 @@
-{{ if .Values.targetCluster }}
-apiVersion: addon.open-cluster-management.io/v1alpha1
-kind: ManagedClusterAddOn
-metadata:
-  name: cluster-proxy
-  namespace: {{ .Values.targetCluster }}
-spec:
-  installNamespace: {{ .Values.spokeAddonNamespace }}
-{{ end }}
