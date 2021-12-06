@@ -63,6 +63,8 @@ func RegisterClusterManagementAddonReconciler(
 				EventRecorder: events.NewInMemoryRecorder("ClusterManagementAddonReconciler"),
 			}
 		},
+		SecretLister:     secretInformer.Lister(),
+		SecretGetter:     nativeClient.CoreV1(),
 		ServiceGetter:    nativeClient.CoreV1(),
 		DeploymentGetter: nativeClient.AppsV1(),
 	}
