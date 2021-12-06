@@ -12,8 +12,14 @@ spec:
     image: {{ .Values.proxyServerImage }}
     namespace: {{ .Release.Namespace }}
     entrypoint:
+      {{- if .Values.proxyServer.entrypointAddress }}
+      type: Hostname
+      hostname:
+        value: {{ .Values.proxyServer.entrypointAddress }}
+      {{- else }}
       type: LoadBalancerService
       loadBalancerService: {}
+      {{- end }}
   proxyAgent:
     image: {{ .Values.proxyAgentImage }}
     proxyServerHost:

@@ -8,3 +8,6 @@ spokeAddonNamespace: "open-cluster-management-cluster-proxy"
 
 proxyServerImage: yue9944882/proxy-server-amd64:v0.0.22
 proxyAgentImage: yue9944882/proxy-agent-amd64:v0.0.22
+
+proxyServer:
+  entrypointAddress: ""
