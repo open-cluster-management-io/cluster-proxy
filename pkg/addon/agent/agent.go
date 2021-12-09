@@ -309,6 +309,9 @@ func newAgentDeployment(clusterName, targetNamespace string, proxyConfig *proxyv
 						{
 							Name:  common.ComponentNameProxyAgent,
 							Image: proxyConfig.Spec.ProxyAgent.Image,
+							Command: []string{
+								"/proxy-agent",
+							},
 							Args: []string{
 								"--proxy-server-host=" + serviceEntryPoint,
 								"--agent-identifiers=" +
@@ -335,6 +338,9 @@ func newAgentDeployment(clusterName, targetNamespace string, proxyConfig *proxyv
 						{
 							Name:  "addon-agent",
 							Image: config.AgentImageName,
+							Command: []string{
+								"/agent",
+							},
 							Args: []string{
 								"--hub-kubeconfig=/etc/kubeconfig/kubeconfig",
 								"--cluster-name=" + clusterName,
