@@ -18,7 +18,7 @@ defaults:
 
 jobs:
   verify:
-    name: images
+    name: latest-images
     runs-on: ubuntu-latest
     steps:
       - name: checkout code
