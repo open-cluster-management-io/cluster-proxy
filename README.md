@@ -53,7 +53,7 @@ ocm/cluster-proxy          	<..>       	    1.0.0      	A Helm chart for Cluster
 
 ```shell
 $ helm install \
-    -n open-cluster-management-cluster-proxy --create-namespace \
+    -n open-cluster-management-addon --create-namespace \
     cluster-proxy ocm/cluster-proxy 
 $ kubectl -n open-cluster-management-cluster-proxy get pod
 NAME                                           READY   STATUS        RESTARTS   AGE
@@ -62,20 +62,11 @@ cluster-proxy-addon-manager-778f6d679f-9pndv   1/1     Running       0          
 ...
 ```
 
-3. Install proxy agents for a specific managed cluster:
+3. The addon will be automatically installed to your registered clusters, 
+   verify the addon installation:
 
 ```shell
-$ kubectl create -f - <<EOF
-apiVersion: addon.open-cluster-management.io/v1alpha1
-kind: ManagedClusterAddOn
-metadata:
-  name: cluster-proxy
-  namespace: <your cluster name>
-spec:
-  installNamespace: "open-cluster-management-cluster-proxy"
-EOF
-
-$ kubectl get managedclusteraddon -A
+$ kubectl get managedclusteraddon -A | grep cluster-proxy
 NAMESPACE         NAME                     AVAILABLE   DEGRADED   PROGRESSING
 <your cluster>    cluster-proxy            True                   
 ```
