@@ -17,6 +17,8 @@ spec:
       containers:
         - name: manager
           image: {{ .Values.image }}
+          command:
+            - /manager
           args:
             - --leader-elect=true
             - --signer-secret-namespace={{ .Release.Namespace }}

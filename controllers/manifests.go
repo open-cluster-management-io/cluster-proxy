@@ -105,6 +105,9 @@ func newProxyServerDeployment(config *proxyv1alpha1.ManagedProxyConfiguration) *
 						{
 							Name:  common.ComponentNameProxyServer,
 							Image: config.Spec.ProxyServer.Image,
+							Command: []string{
+								"/proxy-server",
+							},
 							Args: []string{
 								"--server-count=" + strconv.Itoa(int(config.Spec.ProxyServer.Replicas)),
 								"--proxy-strategies=destHost",
