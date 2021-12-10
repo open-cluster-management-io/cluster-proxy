@@ -1,13 +1,13 @@
 # Image of the cluster-gateway instances
-image: quay.io/open-cluster-management/cluster-proxy:latest
+image: quay.io/open-cluster-management/cluster-proxy:v0.1.0
 
 # Number of replicas
 replicas: 1
 
 spokeAddonNamespace: "open-cluster-management-cluster-proxy"
 
-proxyServerImage: quay.io/open-cluster-management/cluster-proxy:latest
-proxyAgentImage: quay.io/open-cluster-management/cluster-proxy:latest
+proxyServerImage: quay.io/open-cluster-management/cluster-proxy:v0.1.0
+proxyAgentImage: quay.io/open-cluster-management/cluster-proxy:v0.1.0
 
 proxyServer:
   entrypointAddress: ""
