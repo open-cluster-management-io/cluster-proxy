@@ -2,7 +2,19 @@
 
 <a name="custom-proxy-server-hostname"></a>
 
-## 1. What if my hub cluster doesn't support "LoadBalancer" type service?
+## 1. What is drawback of "PortForward" mode proxy ingress?
+
+The "PortForward" will be starting a local proxy server in the addon agent
+which is proxying the tunnel handshake and data via a port-forward long
+connection. E.g. for a 3-replicas proxy server and 3-replicas proxy agent
+environment, each agent will be maintaining 3 port-forward connection so
+in all there's will be 3x3=9 long connections from each managed clusters.
+The kube-apiserver has a limit in HTTP2 max concurrent streams prescribed
+by `--http2-max-streams-per-connection` flag which is defaulted to 1000.
+So under "PortForward" mode we need to take care of the number of inflight
+long-running streams when we're managing more and more clusters.
+
+## 2. What if my hub cluster doesn't support "LoadBalancer" type service?
 
 By default, the cluster-proxy addon-manager will be automatically provisioning
 a "LoadBalancer" typed service which is for listening tunnel handshakes from the
