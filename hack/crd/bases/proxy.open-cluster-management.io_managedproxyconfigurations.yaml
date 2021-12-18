@@ -178,6 +178,7 @@ spec:
                         enum:
                         - Hostname
                         - LoadBalancerService
+                        - PortForward
                         type: string
                     required:
                     - type

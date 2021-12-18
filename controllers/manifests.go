@@ -5,6 +5,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/pointer"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
@@ -167,4 +168,46 @@ func newProxyServerDeployment(config *proxyv1alpha1.ManagedProxyConfiguration) *
 			},
 		},
 	}
+}
+
+func newProxyServerRole(config *proxyv1alpha1.ManagedProxyConfiguration) *rbacv1.Role {
+	return &rbacv1.Role{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: config.Spec.ProxyServer.Namespace,
+			Name:      "cluster-proxy-addon-agent:portforward",
+			OwnerReferences: []metav1.OwnerReference{
+				newOwnerReference(config),
+			},
+		},
+		Rules: []rbacv1.PolicyRule{
+			{
+				APIGroups: []string{""},
+				Verbs:     []string{"*"},
+				Resources: []string{"pods", "pods/portforward"},
+			},
+		},
+	}
+}
+
+func newProxyServerRoleBinding(config *proxyv1alpha1.ManagedProxyConfiguration) *rbacv1.RoleBinding {
+	return &rbacv1.RoleBinding{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: config.Spec.ProxyServer.Namespace,
+			Name:      "cluster-proxy-addon-agent:portforward",
+			OwnerReferences: []metav1.OwnerReference{
+				newOwnerReference(config),
+			},
+		},
+		RoleRef: rbacv1.RoleRef{
+			Kind: "Role",
+			Name: "cluster-proxy-addon-agent:portforward",
+		},
+		Subjects: []rbacv1.Subject{
+			{
+				Kind: rbacv1.GroupKind,
+				Name: common.SubjectGroupClusterProxy,
+			},
+		},
+	}
+
 }
