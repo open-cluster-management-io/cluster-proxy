@@ -59,7 +59,7 @@ type roundRobin struct {
 }
 
 func (r *roundRobin) Listen() (func(), error) {
-	klog.Info("Started local proxy server at port %d", r.targetPort)
+	klog.V(4).Info("Started local proxy server at port %d", r.targetPort)
 	listener, err := net.Listen(
 		"tcp",
 		net.JoinHostPort("localhost", strconv.Itoa(int(r.targetPort))))
@@ -86,7 +86,7 @@ func (r *roundRobin) Listen() (func(), error) {
 }
 
 func (r *roundRobin) handle(conn net.Conn) error {
-	klog.Info("Receiving connection")
+	klog.V(6).Info("Receiving connection")
 	transport, upgrader, err := spdy.RoundTripperFor(r.restConfig)
 	if err != nil {
 		return err
@@ -111,7 +111,7 @@ func (r *roundRobin) handle(conn net.Conn) error {
 
 	podIdx := rand.Intn(len(podList.Items))
 	pod := podList.Items[podIdx]
-	klog.Infof("Selected pod %s for request ID %d", pod.Name, currentId)
+	klog.V(6).Infof("Selected pod %s for request ID %d", pod.Name, currentId)
 	req := nativeClient.RESTClient().
 		Post().
 		Prefix("api", "v1").
@@ -188,9 +188,9 @@ func (r *roundRobin) handle(conn net.Conn) error {
 	// wait for either a local->remote error or for copying from remote->local to finish
 	select {
 	case <-remoteDone:
-		klog.Info("Connection closed from remote")
+		klog.V(6).Info("Connection closed from remote")
 	case <-localError:
-		klog.Info("Connection closed due to local error")
+		klog.V(6).Info("Connection closed due to local error")
 	}
 
 	return nil
