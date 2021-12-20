@@ -165,6 +165,13 @@ spec:
                         description: '`loadBalancerService` points to a load-balancer
                           typed service in the hub cluster.'
                         properties:
+                          annotations:
+                            additionalProperties:
+                              type: string
+                            description: annoations is the annoations of the load-balancer
+                              service. if the service use internal-ip, should have
+                              some annotations.
+                            type: object
                           name:
                             default: proxy-agent-entrypoint
                             description: '`name` is the name of the load-balancer

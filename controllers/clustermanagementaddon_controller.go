@@ -271,8 +271,9 @@ func (c *ClusterManagementAddonReconciler) ensureEntrypoint(config *proxyv1alpha
 	if config.Spec.ProxyServer.Entrypoint.Type == proxyv1alpha1.EntryPointTypeLoadBalancerService {
 		proxyService := &corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{
-				Namespace: config.Spec.ProxyServer.Namespace,
-				Name:      config.Spec.ProxyServer.Entrypoint.LoadBalancerService.Name,
+				Namespace:   config.Spec.ProxyServer.Namespace,
+				Name:        config.Spec.ProxyServer.Entrypoint.LoadBalancerService.Name,
+				Annotations: config.Spec.ProxyServer.Entrypoint.LoadBalancerService.Annotations,
 			},
 			Spec: corev1.ServiceSpec{
 				Selector: map[string]string{

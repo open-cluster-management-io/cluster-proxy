@@ -244,6 +244,11 @@ type EntryPointLoadBalancerService struct {
 	// +optional
 	// +kubebuilder:default=proxy-agent-entrypoint
 	Name string `json:"name"`
+
+	// annoations is the annoations of the load-balancer service.
+	// if the service use internal-ip, should have some annotations.
+	// +optional
+	Annotations map[string]string `json:"annotations"`
 }
 
 // EntryPointHostname references a fixed hostname.
