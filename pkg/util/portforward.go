@@ -21,6 +21,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/transport/spdy"
+	"k8s.io/klog/v2"
 )
 
 type LocalProxyServer interface {
@@ -41,6 +42,7 @@ func NewRoundRobinLocalProxy(
 		podSelector:          podSelector,
 		targetPort:           targetPort,
 		reqId:                0,
+		lock:                 &sync.Mutex{},
 	}
 }
 
@@ -57,6 +59,7 @@ type roundRobin struct {
 }
 
 func (r *roundRobin) Listen() (func(), error) {
+	klog.Info("Started local proxy server at port %d", r.targetPort)
 	listener, err := net.Listen(
 		"tcp",
 		net.JoinHostPort("localhost", strconv.Itoa(int(r.targetPort))))
@@ -83,6 +86,7 @@ func (r *roundRobin) Listen() (func(), error) {
 }
 
 func (r *roundRobin) handle(conn net.Conn) error {
+	klog.Info("Receiving connection")
 	transport, upgrader, err := spdy.RoundTripperFor(r.restConfig)
 	if err != nil {
 		return err
@@ -100,8 +104,14 @@ func (r *roundRobin) handle(conn net.Conn) error {
 		return err
 	}
 
+	r.lock.Lock()
+	currentId := r.reqId
+	r.reqId++
+	r.lock.Unlock()
+
 	podIdx := rand.Intn(len(podList.Items))
 	pod := podList.Items[podIdx]
+	klog.Infof("Selected pod %s for request ID %d", pod.Name, currentId)
 	req := nativeClient.RESTClient().
 		Post().
 		Prefix("api", "v1").
@@ -120,11 +130,7 @@ func (r *roundRobin) handle(conn net.Conn) error {
 	headers := http.Header{}
 	headers.Set(v1.StreamType, v1.StreamTypeError)
 	headers.Set(v1.PortHeader, fmt.Sprintf("%d", r.targetPort))
-	headers.Set(v1.PortForwardRequestIDHeader, strconv.Itoa(r.reqId))
-
-	r.lock.Lock()
-	r.reqId++
-	r.lock.Unlock()
+	headers.Set(v1.PortForwardRequestIDHeader, strconv.Itoa(currentId))
 
 	errorStream, err := streamConn.CreateStream(headers)
 	if err != nil {
@@ -182,7 +188,9 @@ func (r *roundRobin) handle(conn net.Conn) error {
 	// wait for either a local->remote error or for copying from remote->local to finish
 	select {
 	case <-remoteDone:
+		klog.Info("Connection closed from remote")
 	case <-localError:
+		klog.Info("Connection closed due to local error")
 	}
 
 	return nil
