@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
@@ -51,7 +52,8 @@ type roundRobin struct {
 	targetPort           int32
 
 	restConfig *rest.Config
-	reqId      int // TODO: thread-safety
+	lock       *sync.Mutex
+	reqId      int
 }
 
 func (r *roundRobin) Listen() (func(), error) {
@@ -119,7 +121,11 @@ func (r *roundRobin) handle(conn net.Conn) error {
 	headers.Set(v1.StreamType, v1.StreamTypeError)
 	headers.Set(v1.PortHeader, fmt.Sprintf("%d", r.targetPort))
 	headers.Set(v1.PortForwardRequestIDHeader, strconv.Itoa(r.reqId))
+
+	r.lock.Lock()
 	r.reqId++
+	r.lock.Unlock()
+
 	errorStream, err := streamConn.CreateStream(headers)
 	if err != nil {
 		runtime.HandleError(fmt.Errorf("error creating error stream for port %d -> %d: %v", r.targetPort, r.targetPort, err))
