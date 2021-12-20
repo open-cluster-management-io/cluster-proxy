@@ -84,12 +84,13 @@ func (p *proxyAgent) Manifests(managedCluster *clusterv1.ManagedCluster, addon *
 		proxyServerLoadBalancer = entrySvc
 	}
 
-	return []runtime.Object{
+	objs := []runtime.Object{
 		newNamespace(addon.Spec.InstallNamespace),
 		newCASecret(addon.Spec.InstallNamespace, AgentCASecretName, p.selfSigner.CAData()),
 		newClusterService(addon.Spec.InstallNamespace, managedCluster.Name),
 		newAgentDeployment(managedCluster.Name, addon.Spec.InstallNamespace, proxyConfig, proxyServerLoadBalancer),
-	}, nil
+	}
+	return objs, nil
 }
 
 func (p *proxyAgent) GetAgentAddonOptions() agent.AgentAddonOptions {
@@ -176,6 +177,20 @@ func (p *proxyAgent) GetAgentAddonOptions() agent.AgentAddonOptions {
 }
 
 func (p *proxyAgent) setupPermission(cluster *clusterv1.ManagedCluster, addon *addonv1alpha1.ManagedClusterAddOn) error {
+	// prepping
+	clusterAddon := &addonv1alpha1.ClusterManagementAddOn{}
+	if err := p.runtimeClient.Get(context.TODO(), types.NamespacedName{
+		Name: addon.Name,
+	}, clusterAddon); err != nil {
+		return err
+	}
+	proxyConfig := &proxyv1alpha1.ManagedProxyConfiguration{}
+	if err := p.runtimeClient.Get(context.TODO(), types.NamespacedName{
+		Name: clusterAddon.Spec.AddOnConfiguration.CRName,
+	}, proxyConfig); err != nil {
+		return err
+	}
+
 	namespace := cluster.Name
 
 	// TODO: consider switching to SSA at some point
@@ -274,12 +289,21 @@ func newAgentDeployment(clusterName, targetNamespace string, proxyConfig *proxyv
 	// 2. upon "LoadBalancerService" type, use the first entry in the ip lists
 	// 3. otherwise defaulted to the in-cluster service endpoint
 	serviceEntryPoint := proxyConfig.Spec.ProxyServer.InClusterServiceName + "." + proxyConfig.Spec.ProxyServer.Namespace
+	addonAgentArgs := []string{
+		"--hub-kubeconfig=/etc/kubeconfig/kubeconfig",
+		"--cluster-name=" + clusterName,
+	}
 	switch proxyConfig.Spec.ProxyServer.Entrypoint.Type {
 	case proxyv1alpha1.EntryPointTypeHostname:
 		serviceEntryPoint = proxyConfig.Spec.ProxyServer.Entrypoint.Hostname.Value
 	case proxyv1alpha1.EntryPointTypeLoadBalancerService:
 		serviceEntryPoint = proxyLoadBalancer.Status.LoadBalancer.Ingress[0].IP
+	case proxyv1alpha1.EntryPointTypePortForward:
+		serviceEntryPoint = "127.0.0.1"
+		addonAgentArgs = append(addonAgentArgs,
+			"--enable-port-forward-proxy=true")
 	}
+
 	return &appsv1.Deployment{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "apps/v1",
@@ -341,10 +365,7 @@ func newAgentDeployment(clusterName, targetNamespace string, proxyConfig *proxyv
 							Command: []string{
 								"/agent",
 							},
-							Args: []string{
-								"--hub-kubeconfig=/etc/kubeconfig/kubeconfig",
-								"--cluster-name=" + clusterName,
-							},
+							Args: addonAgentArgs,
 							VolumeMounts: []corev1.VolumeMount{
 								{
 									Name:      "hub-kubeconfig",

@@ -16,7 +16,7 @@ spec:
       serviceAccount: cluster-proxy
       containers:
         - name: manager
-          image: {{ .Values.image }}
+          image: {{ .Values.registry }}/{{ .Values.image }}:{{ .Values.tag }}
           command:
             - /manager
           args:

@@ -9,17 +9,19 @@ spec:
     signer:
       type: SelfSigned
   proxyServer:
-    image: {{ .Values.proxyServerImage }}
+    image: {{ .Values.registry }}/{{ .Values.proxyServerImage }}:{{ .Values.tag }}
     namespace: {{ .Release.Namespace }}
     entrypoint:
       {{- if .Values.proxyServer.entrypointAddress }}
       type: Hostname
       hostname:
         value: {{ .Values.proxyServer.entrypointAddress }}
-      {{- else }}
+      {{- else if .Values.entrypointLoadBalancer }}
       type: LoadBalancerService
       loadBalancerService: {}
+      {{- else  }}
+      type: PortForward
       {{- end }}
   proxyAgent:
-    image: {{ .Values.proxyAgentImage }}
+    image: {{ .Values.registry }}/{{ .Values.proxyAgentImage }}:{{ .Values.tag }}
     proxyServerHost:

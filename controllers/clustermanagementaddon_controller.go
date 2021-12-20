@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/x509"
 	"encoding/pem"
-	"fmt"
 	"strconv"
 	"time"
 
@@ -190,6 +189,8 @@ func (c *ClusterManagementAddonReconciler) deployProxyServer(config *proxyv1alph
 		newProxyService(config),
 		newProxySecret(config, c.SelfSigner.CAData()),
 		newProxyServerDeployment(config),
+		newProxyServerRole(config),
+		newProxyServerRoleBinding(config),
 	}
 	for _, resource := range resources {
 		if err := c.ensure(resource); err != nil {
@@ -310,7 +311,7 @@ func (c *ClusterManagementAddonReconciler) ensureEntrypoint(config *proxyv1alpha
 		}
 		return lbSvc.Status.LoadBalancer.Ingress[0].IP, nil
 	}
-	return "", fmt.Errorf("unsupported entrypoint type: %q", config.Spec.ProxyServer.Entrypoint.Type)
+	return "", nil
 }
 
 func (c *ClusterManagementAddonReconciler) ensureRotation(config *proxyv1alpha1.ManagedProxyConfiguration, entrypoint string) error {
@@ -320,6 +321,8 @@ func (c *ClusterManagementAddonReconciler) ensureRotation(config *proxyv1alpha1.
 	}
 	sans := append(
 		hostNames,
+		"127.0.0.1",
+		"localhost",
 		entrypoint,
 		config.Spec.ProxyServer.InClusterServiceName+"."+config.Spec.ProxyServer.Namespace,
 		config.Spec.ProxyServer.InClusterServiceName+"."+config.Spec.ProxyServer.Namespace+".svc")

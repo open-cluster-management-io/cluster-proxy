@@ -222,7 +222,7 @@ type ManagedProxyConfigurationProxyServerEntrypoint struct {
 }
 
 // EntryPointType is the type of the entrypoint.
-// +kubebuilder:validation:Enum=Hostname;LoadBalancerService
+// +kubebuilder:validation:Enum=Hostname;LoadBalancerService;PortForward
 type EntryPointType string
 
 var (
@@ -231,6 +231,10 @@ var (
 	EntryPointTypeLoadBalancerService EntryPointType = "LoadBalancerService"
 	// Hostname prescribes the proxy agents to connect a fixed hostname.
 	EntryPointTypeHostname EntryPointType = "Hostname"
+	// PortForward prescribes the proxy agent to connect a local proxy served on the
+	// addon-agent which proxies tunnel connection to the proxy-servers via pod
+	// port-forwarding.
+	EntryPointTypePortForward EntryPointType = "PortForward"
 )
 
 // EntryPointLoadBalancerService is the reference to a load-balancer service.
