@@ -273,7 +273,7 @@ func (c *ClusterManagementAddonReconciler) ensureEntrypoint(config *proxyv1alpha
 			ObjectMeta: metav1.ObjectMeta{
 				Namespace:   config.Spec.ProxyServer.Namespace,
 				Name:        config.Spec.ProxyServer.Entrypoint.LoadBalancerService.Name,
-				Annotations: config.Spec.ProxyServer.Entrypoint.LoadBalancerService.Annotations,
+				Annotations: getAnnotation(config.Spec.ProxyServer.Entrypoint.LoadBalancerService.Annotations),
 			},
 			Spec: corev1.ServiceSpec{
 				Selector: map[string]string{
@@ -487,4 +487,22 @@ func getPEMCertExpireTime(pemBytes []byte) *metav1.Time {
 		return nil
 	}
 	return &metav1.Time{Time: cert.NotAfter}
+}
+
+func getAnnotation(list []proxyv1alpha1.AnnotationVar) map[string]string {
+	if len(list) == 0 {
+		return nil
+	}
+	annotation := make(map[string]string, len(list))
+	for _, v := range list {
+		key := v.Key
+		if len(key) == 0 {
+			continue
+		}
+		if len(key) > 63 {
+			key = key[:63]
+		}
+		annotation[key] = v.Value
+	}
+	return annotation
 }
