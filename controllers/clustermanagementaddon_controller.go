@@ -5,6 +5,7 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"strconv"
+	"strings"
 	"time"
 
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
@@ -26,11 +27,13 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/validation"
 	informercorev1 "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
 	appsv1client "k8s.io/client-go/kubernetes/typed/apps/v1"
 	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
 	corev1listers "k8s.io/client-go/listers/core/v1"
+	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -495,14 +498,15 @@ func getAnnotation(list []proxyv1alpha1.AnnotationVar) map[string]string {
 	}
 	annotation := make(map[string]string, len(list))
 	for _, v := range list {
-		key := v.Key
-		if len(key) == 0 {
+		if errs := validation.IsQualifiedName(v.Key); len(errs) == 0 {
+			klog.Warningf("Annotation key %s validate failed: %s, skip it!", strings.Join(errs, ";"))
 			continue
 		}
-		if len(key) > 63 {
-			key = key[:63]
+		if errs := validation.IsValidLabelValue(v.Value); len(errs) > 0 {
+			klog.Warningf("Annotation value %s validate failed: %s, skip it!", strings.Join(errs, ";"))
+			continue
 		}
-		annotation[key] = v.Value
+		annotation[v.Key] = v.Value
 	}
 	return annotation
 }
