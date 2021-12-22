@@ -5,6 +5,7 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"strconv"
+	"strings"
 	"time"
 
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
@@ -26,11 +27,13 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/validation"
 	informercorev1 "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
 	appsv1client "k8s.io/client-go/kubernetes/typed/apps/v1"
 	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
 	corev1listers "k8s.io/client-go/listers/core/v1"
+	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -271,8 +274,9 @@ func (c *ClusterManagementAddonReconciler) ensureEntrypoint(config *proxyv1alpha
 	if config.Spec.ProxyServer.Entrypoint.Type == proxyv1alpha1.EntryPointTypeLoadBalancerService {
 		proxyService := &corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{
-				Namespace: config.Spec.ProxyServer.Namespace,
-				Name:      config.Spec.ProxyServer.Entrypoint.LoadBalancerService.Name,
+				Namespace:   config.Spec.ProxyServer.Namespace,
+				Name:        config.Spec.ProxyServer.Entrypoint.LoadBalancerService.Name,
+				Annotations: getAnnotation(config.Spec.ProxyServer.Entrypoint.LoadBalancerService.Annotations),
 			},
 			Spec: corev1.ServiceSpec{
 				Selector: map[string]string{
@@ -486,4 +490,23 @@ func getPEMCertExpireTime(pemBytes []byte) *metav1.Time {
 		return nil
 	}
 	return &metav1.Time{Time: cert.NotAfter}
+}
+
+func getAnnotation(list []proxyv1alpha1.AnnotationVar) map[string]string {
+	if len(list) == 0 {
+		return nil
+	}
+	annotation := make(map[string]string, len(list))
+	for _, v := range list {
+		if errs := validation.IsQualifiedName(v.Key); len(errs) == 0 {
+			klog.Warningf("Annotation key %s validate failed: %s, skip it!", strings.Join(errs, ";"))
+			continue
+		}
+		if errs := validation.IsValidLabelValue(v.Value); len(errs) > 0 {
+			klog.Warningf("Annotation value %s validate failed: %s, skip it!", strings.Join(errs, ";"))
+			continue
+		}
+		annotation[v.Key] = v.Value
+	}
+	return annotation
 }

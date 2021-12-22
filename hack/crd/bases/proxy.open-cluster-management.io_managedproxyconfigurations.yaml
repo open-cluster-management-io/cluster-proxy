@@ -165,6 +165,26 @@ spec:
                         description: '`loadBalancerService` points to a load-balancer
                           typed service in the hub cluster.'
                         properties:
+                          annotations:
+                            description: 'Annotations is the annoations of the load-balancer
+                              service. This is for allowing customizing service using
+                              vendor-specific extended annotations such as: - service.beta.kubernetes.io/alibaba-cloud-loadbalancer-address-type:
+                              "intranet" - service.beta.kubernetes.io/azure-load-balancer-internal:
+                              true'
+                            items:
+                              description: AnnotationVar list of annotation variables
+                                to set in the LB Service.
+                              properties:
+                                key:
+                                  description: Key is the key of annotation
+                                  type: string
+                                value:
+                                  description: Value is the value of annotation
+                                  type: string
+                              required:
+                              - key
+                              type: object
+                            type: array
                           name:
                             default: proxy-agent-entrypoint
                             description: '`name` is the name of the load-balancer
