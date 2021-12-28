@@ -92,5 +92,15 @@ jobs:
           sh join.sh
           clusteradm accept --clusters loopback --wait 30
           kubectl wait --for=condition=ManagedClusterConditionAvailable managedcluster/loopback
+      - name: Build e2e binary
+        run: make build-e2e
+      - name: Build image
+        run: |
+          make image
+          kind load docker-image quay.io/open-cluster-management/cluster-proxy:latest  --name kind-chart-testing
+      - name: Install latest cluster-proxy
+        run: |
+          helm -n open-cluster-management-addon --create-namespace \
+            install cluster-proxy charts/cluster-proxy/
       - name: Run e2e test
         run: make test-e2e
