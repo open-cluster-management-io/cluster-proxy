@@ -88,8 +88,8 @@ jobs:
         uses: helm/kind-action@v1.2.0
       - name: Prepare OCM testing environment
         run: |
-          $GOPATH/bin/clusteradm init | perl -ne 'print "$1 loopback\n" if m/(clusteradm.*--cluster-name)/' > join.sh
-          sh join.sh
+          $GOPATH/bin/clusteradm init --output-join-command-file join.sh --wait
+          sh join.sh loopback
           clusteradm accept --clusters loopback --wait 30
           kubectl wait --for=condition=ManagedClusterConditionAvailable managedcluster/loopback
       - name: Build e2e binary
@@ -97,10 +97,12 @@ jobs:
       - name: Build image
         run: |
           make image
-          kind load docker-image quay.io/open-cluster-management/cluster-proxy:latest  --name kind-chart-testing
+          kind load docker-image quay.io/open-cluster-management/cluster-proxy:latest  --name chart-testing
       - name: Install latest cluster-proxy
         run: |
-          helm -n open-cluster-management-addon --create-namespace \
-            install cluster-proxy charts/cluster-proxy/
+          helm install \
+             -n open-cluster-management-addon --create-namespace \
+             cluster-proxy charts/cluster-proxy/
       - name: Run e2e test
-        run: make test-e2e
+        run: |
+          ./bin/e2e --test-cluster loopback

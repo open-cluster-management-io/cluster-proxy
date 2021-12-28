@@ -3,6 +3,7 @@ package framework
 import (
 	"flag"
 	"os"
+	"path/filepath"
 
 	"k8s.io/klog/v2"
 )
@@ -17,6 +18,7 @@ type E2EContext struct {
 func ParseFlags() {
 	registerFlags()
 	flag.Parse()
+	defaultFlags()
 	validateFlags()
 }
 
@@ -29,6 +31,15 @@ func registerFlags() {
 		"test-cluster",
 		"",
 		"The target cluster to run the e2e suite.")
+}
+
+func defaultFlags() {
+	if len(context.HubKubeConfig) == 0 {
+		home := os.Getenv("HOME")
+		if len(home) > 0 {
+			context.HubKubeConfig = filepath.Join(home, ".kube", "config")
+		}
+	}
 }
 
 func validateFlags() {
