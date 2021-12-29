@@ -18,7 +18,7 @@ RUN GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
       && go build -o /workspace/proxy-test-server ./cmd/test-server/ \
       && cd /workspace \
       && curl -LO "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl" \
-      && chmod u+x kubectl
+      && chmod a+x kubectl
 
 # Copy the Go Modules manifests
 COPY go.mod go.mod
