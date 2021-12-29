@@ -5,6 +5,7 @@ import (
 	"flag"
 
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/klog/v2"
 	"open-cluster-management.io/cluster-proxy/pkg/addon/health"
 	"open-cluster-management.io/cluster-proxy/pkg/common"
 	"open-cluster-management.io/cluster-proxy/pkg/util"
@@ -19,6 +20,7 @@ var (
 
 func main() {
 
+	klog.InitFlags(flag.CommandLine)
 	flag.StringVar(&hubKubeconfig, "hub-kubeconfig", "",
 		"The kubeconfig to talk to hub cluster")
 	flag.StringVar(&clusterName, "cluster-name", "",
@@ -41,6 +43,7 @@ func main() {
 	}
 
 	if enablePortForwardProxy {
+		klog.Infof("Running local port-forward proxy")
 		rr := util.NewRoundRobinLocalProxy(
 			cfg,
 			proxyServerNamespace,
@@ -54,6 +57,7 @@ func main() {
 	}
 
 	ctx := context.Background()
+	klog.Infof("Starting lease updater")
 	leaseUpdater.Start(ctx)
 	<-ctx.Done()
 }
