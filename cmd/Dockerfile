@@ -4,6 +4,7 @@ FROM golang:1.16 as builder
 WORKDIR /workspace
 
 ARG APISERVER_NETWORK_PROXY_VERSION=0.0.27
+ARG KUBECTL_VERSION=v1.23.1
 ARG ADDON_AGENT_IMAGE_NAME
 
 # Build Apiserver-network-proxy binaries
@@ -15,7 +16,8 @@ RUN GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
       && go build -o /workspace/proxy-agent ./cmd/agent/ \
       && go build -o /workspace/proxy-test-client ./cmd/client/ \
       && go build -o /workspace/proxy-test-server ./cmd/test-server/ \
-      && cd /workspace
+      && cd /workspace \
+      && curl -LO "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
 
 # Copy the Go Modules manifests
 COPY go.mod go.mod
@@ -42,10 +44,6 @@ FROM alpine:3.13
 
 WORKDIR /
 RUN apk add libc6-compat
-COPY --from=builder /workspace/proxy-server .
-COPY --from=builder /workspace/proxy-agent .
-COPY --from=builder /workspace/proxy-test-client .
-COPY --from=builder /workspace/proxy-test-server .
-COPY --from=builder /workspace/agent .
-COPY --from=builder /workspace/manager .
+COPY --from=builder /workspace/kubectl /workspace/proxy-server /workspace/proxy-agent /workspace/proxy-test-client /workspace/proxy-test-server ./
+COPY --from=builder /workspace/agent /workspace/manager ./
 USER 65532:65532
