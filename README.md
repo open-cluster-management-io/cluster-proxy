@@ -80,20 +80,20 @@ Codewisely proxying to the managed cluster will be simply overriding the
 dialer of the kubernetes original client config object, e.g.:
 
 ```go
-    // instantiate a gprc proxy dialer
-    tunnel, err := konnectivity.CreateSingleUseGrpcTunnel(
-        context.TODO(),
-        <proxy service>,
-        grpc.WithTransportCredentials(grpccredentials.NewTLS(proxyTLSCfg)),
-    )
-    cfg, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
-    if err != nil {
-    	return err
-    }
-    // The managed cluster's name.
-    cfg.Host = clusterName
-    // Override the default tcp dialer
-    cfg.Dial = tunnel.DialContext 
+  // instantiate a gprc proxy dialer
+  tunnel, err := konnectivity.CreateSingleUseGrpcTunnel(
+      context.TODO(),
+      <proxy service>,
+      grpc.WithTransportCredentials(grpccredentials.NewTLS(proxyTLSCfg)),
+  )
+  cfg, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
+  if err != nil {
+  	return err
+  }
+  // The managed cluster's name.
+  cfg.Host = clusterName
+  // Override the default tcp dialer
+  cfg.Dial = tunnel.DialContext 
 ```
 
 ### Performance
