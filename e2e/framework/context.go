@@ -8,7 +8,7 @@ import (
 	"k8s.io/klog/v2"
 )
 
-var context = &E2EContext{}
+var e2eContext = &E2EContext{}
 
 type E2EContext struct {
 	HubKubeConfig string
@@ -23,30 +23,30 @@ func ParseFlags() {
 }
 
 func registerFlags() {
-	flag.StringVar(&context.HubKubeConfig,
+	flag.StringVar(&e2eContext.HubKubeConfig,
 		"hub-kubeconfig",
 		os.Getenv("KUBECONFIG"),
 		"Path to kubeconfig of the hub cluster.")
-	flag.StringVar(&context.TestCluster,
+	flag.StringVar(&e2eContext.TestCluster,
 		"test-cluster",
 		"",
 		"The target cluster to run the e2e suite.")
 }
 
 func defaultFlags() {
-	if len(context.HubKubeConfig) == 0 {
+	if len(e2eContext.HubKubeConfig) == 0 {
 		home := os.Getenv("HOME")
 		if len(home) > 0 {
-			context.HubKubeConfig = filepath.Join(home, ".kube", "config")
+			e2eContext.HubKubeConfig = filepath.Join(home, ".kube", "config")
 		}
 	}
 }
 
 func validateFlags() {
-	if len(context.HubKubeConfig) == 0 {
+	if len(e2eContext.HubKubeConfig) == 0 {
 		klog.Fatalf("--hub-kubeconfig is required")
 	}
-	if len(context.TestCluster) == 0 {
+	if len(e2eContext.TestCluster) == 0 {
 		klog.Fatalf("--test-cluster is required")
 	}
 }

@@ -1,10 +1,15 @@
 package framework
 
 import (
+	"context"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	. "github.com/onsi/ginkgo"
@@ -32,12 +37,10 @@ type framework struct {
 func NewE2EFramework(basename string) Framework {
 	f := &framework{
 		basename: basename,
-		ctx:      context,
+		ctx:      e2eContext,
 	}
 	BeforeEach(f.BeforeEach)
 	AfterEach(f.AfterEach)
-	BeforeSuite(f.BeforeSuite)
-	AfterSuite(f.AfterSuite)
 	return f
 }
 
@@ -67,15 +70,30 @@ func (f *framework) TestClusterName() string {
 	return f.ctx.TestCluster
 }
 
-func (f *framework) BeforeSuite() {
-}
-
-func (f *framework) AfterSuite() {
-
-}
-
 func (f *framework) BeforeEach() {
-
+	proxyConfiguration := &proxyv1alpha1.ManagedProxyConfiguration{}
+	c := f.HubRuntimeClient()
+	err := c.Get(context.TODO(), types.NamespacedName{
+		Name: "cluster-proxy",
+	}, proxyConfiguration)
+	if apierrors.IsNotFound(err) {
+		By("Missing ManagedProxyConfiguration, creating one")
+		proxyConfiguration = &proxyv1alpha1.ManagedProxyConfiguration{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "cluster-proxy",
+			},
+			Spec: proxyv1alpha1.ManagedProxyConfigurationSpec{
+				ProxyServer: proxyv1alpha1.ManagedProxyConfigurationProxyServer{
+					Image: "quay.io/open-cluster-management/cluster-proxy:latest",
+				},
+				ProxyAgent: proxyv1alpha1.ManagedProxyConfigurationProxyAgent{
+					Image: "quay.io/open-cluster-management/cluster-proxy:latest",
+				},
+			},
+		}
+		Expect(c.Create(context.TODO(), proxyConfiguration)).NotTo(HaveOccurred())
+	}
+	Expect(err).NotTo(HaveOccurred())
 }
 
 func (f *framework) AfterEach() {
