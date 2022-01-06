@@ -16,7 +16,7 @@ func TestMain(m *testing.M) {
 }
 
 func RunE2ETests(t *testing.T) {
-	ginkgo.RunSpecs(t, "ClusterGateway e2e suite -- kubernetes api manipulation")
+	ginkgo.RunSpecs(t, "ClusterProxy e2e suite -- install tests")
 }
 
 func TestE2E(t *testing.T) {

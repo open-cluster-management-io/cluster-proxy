@@ -2,17 +2,25 @@ package install
 
 import (
 	"context"
+	"net"
 	"time"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
+	"google.golang.org/grpc"
+	grpccredentials "google.golang.org/grpc/credentials"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+	addonapiv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
 	"open-cluster-management.io/cluster-proxy/e2e/framework"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
+	"open-cluster-management.io/cluster-proxy/pkg/common"
+	"open-cluster-management.io/cluster-proxy/pkg/util"
+	konnectivity "sigs.k8s.io/apiserver-network-proxy/konnectivity-client/pkg/client"
 )
 
 const installTestBasename = "install"
@@ -21,37 +29,10 @@ var _ = Describe("Basic install Test",
 	func() {
 		f := framework.NewE2EFramework(installTestBasename)
 
-		It("Install cluster management addon",
-			func() {
-				proxyConfiguration := &proxyv1alpha1.ManagedProxyConfiguration{}
-				c := f.HubRuntimeClient()
-				err := c.Get(context.TODO(), types.NamespacedName{
-					Name: "cluster-proxy",
-				}, proxyConfiguration)
-				if apierrors.IsNotFound(err) {
-					By("Missing ManagedProxyConfiguration, creating one")
-					proxyConfiguration = &proxyv1alpha1.ManagedProxyConfiguration{
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "cluster-proxy",
-						},
-						Spec: proxyv1alpha1.ManagedProxyConfigurationSpec{
-							ProxyServer: proxyv1alpha1.ManagedProxyConfigurationProxyServer{
-								Image: "quay.io/open-cluster-management/cluster-proxy:latest",
-							},
-							ProxyAgent: proxyv1alpha1.ManagedProxyConfigurationProxyAgent{
-								Image: "quay.io/open-cluster-management/cluster-proxy:latest",
-							},
-						},
-					}
-					Expect(c.Create(context.TODO(), proxyConfiguration)).NotTo(HaveOccurred())
-				}
-				Expect(err).NotTo(HaveOccurred())
-			})
-
 		It("ClusterProxy configuration conditions should be okay",
 			func() {
 				c := f.HubRuntimeClient()
-				By("ManagedProxyConfiguration's conditions should be working")
+				By("Polling configuration conditions")
 				Eventually(
 					func() (bool, error) {
 						proxyConfiguration := &proxyv1alpha1.ManagedProxyConfiguration{}
@@ -73,4 +54,71 @@ var _ = Describe("Basic install Test",
 					Should(BeTrue())
 			})
 
+		It("ManagedClusterAddon should be available", func() {
+			c := f.HubRuntimeClient()
+			By("Polling addon healthiness")
+			Eventually(
+				func() (bool, error) {
+					addon := &addonapiv1alpha1.ManagedClusterAddOn{}
+					if err := c.Get(context.TODO(), types.NamespacedName{
+						Namespace: f.TestClusterName(),
+						Name:      "cluster-proxy",
+					}, addon); err != nil {
+						if apierrors.IsNotFound(err) {
+							return false, nil
+						}
+						return false, err
+					}
+					return meta.IsStatusConditionTrue(
+						addon.Status.Conditions,
+						addonapiv1alpha1.ManagedClusterAddOnConditionAvailable), nil
+				}).
+				WithTimeout(time.Minute).
+				Should(BeTrue())
+		})
+
+		It("Probe cluster health",
+			func() {
+				cfg := f.HubRESTConfig()
+				c := f.HubRuntimeClient()
+				proxyConfiguration := &proxyv1alpha1.ManagedProxyConfiguration{}
+
+				err := c.Get(context.TODO(), types.NamespacedName{
+					Name: "cluster-proxy",
+				}, proxyConfiguration)
+				Expect(err).NotTo(HaveOccurred())
+
+				By("Running local port-forward stream to proxy service")
+				localProxy := util.NewRoundRobinLocalProxy(
+					cfg,
+					proxyConfiguration.Spec.ProxyServer.Namespace,
+					common.LabelKeyComponentName+"="+common.ComponentNameProxyServer, // TODO: configurable label selector?
+					8090,
+				)
+				closeFn, err := localProxy.Listen()
+				Expect(err).NotTo(HaveOccurred())
+				defer closeFn()
+
+				tunnelTlsCfg, err := util.GetKonnectivityTLSConfig(cfg, proxyConfiguration)
+				Expect(err).NotTo(HaveOccurred())
+
+				ctx, cancel := context.WithCancel(context.TODO())
+				defer cancel()
+				tunnel, err := konnectivity.CreateSingleUseGrpcTunnel(
+					ctx,
+					net.JoinHostPort("127.0.0.1", "8090"),
+					grpc.WithTransportCredentials(grpccredentials.NewTLS(tunnelTlsCfg)),
+				)
+				mungledRestConfig := rest.CopyConfig(cfg)
+				mungledRestConfig.TLSClientConfig = rest.TLSClientConfig{
+					Insecure: true,
+				}
+				mungledRestConfig.Host = f.TestClusterName()
+				mungledRestConfig.Dial = tunnel.DialContext
+				nativeClient, err := kubernetes.NewForConfig(mungledRestConfig)
+				Expect(err).NotTo(HaveOccurred())
+				data, err := nativeClient.RESTClient().Get().AbsPath("/healthz").DoRaw(context.TODO())
+				Expect(err).NotTo(HaveOccurred())
+				Expect(string(data)).To(Equal("ok"))
+			})
 	})
