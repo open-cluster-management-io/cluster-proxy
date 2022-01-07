@@ -1,4 +1,4 @@
-package e2e
+package configuration
 
 import (
 	"os"
@@ -6,18 +6,17 @@ import (
 
 	"github.com/onsi/ginkgo"
 	"github.com/onsi/gomega"
-
 	"open-cluster-management.io/cluster-proxy/e2e/framework"
-	// per-package e2e suite
-
-	_ "open-cluster-management.io/cluster-proxy/e2e/configuration"
-	_ "open-cluster-management.io/cluster-proxy/e2e/install"
 )
 
 func TestMain(m *testing.M) {
 	gomega.RegisterFailHandler(ginkgo.Fail)
 	framework.ParseFlags()
 	os.Exit(m.Run())
+}
+
+func RunE2ETests(t *testing.T) {
+	ginkgo.RunSpecs(t, "ClusterProxy e2e suite -- configuration tests")
 }
 
 func TestE2E(t *testing.T) {
