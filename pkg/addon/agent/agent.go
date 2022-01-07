@@ -290,6 +290,7 @@ func newAgentDeployment(clusterName, targetNamespace string, proxyConfig *proxyv
 	addonAgentArgs := []string{
 		"--hub-kubeconfig=/etc/kubeconfig/kubeconfig",
 		"--cluster-name=" + clusterName,
+		"--proxy-server-namespace=" + proxyConfig.Spec.ProxyServer.Namespace,
 	}
 	switch proxyConfig.Spec.ProxyServer.Entrypoint.Type {
 	case proxyv1alpha1.EntryPointTypeHostname:
