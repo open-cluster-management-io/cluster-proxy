@@ -25,7 +25,7 @@ import (
 )
 
 type LocalProxyServer interface {
-	Listen() (func(), error)
+	Listen(ctx context.Context) (func(), error)
 }
 
 // PortForwardProtocolV1Name is the subprotocol used for port forwarding.
@@ -58,7 +58,7 @@ type roundRobin struct {
 	reqId      int
 }
 
-func (r *roundRobin) Listen() (func(), error) {
+func (r *roundRobin) Listen(ctx context.Context) (func(), error) {
 	klog.V(4).Infof("Started local proxy server at port %d", r.targetPort)
 	listener, err := net.Listen(
 		"tcp",
@@ -68,17 +68,25 @@ func (r *roundRobin) Listen() (func(), error) {
 	}
 	go func() {
 		for {
-			conn, err := listener.Accept()
-			if err != nil {
-				if !strings.Contains(strings.ToLower(err.Error()), "use of closed network connection") {
-					runtime.HandleError(fmt.Errorf("error accepting connection on port %d: %v", r.targetPort, err))
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				conn, err := listener.Accept()
+				if err != nil {
+					if !strings.Contains(strings.ToLower(err.Error()), "use of closed network connection") {
+						runtime.HandleError(fmt.Errorf("error accepting connection on port %d: %v", r.targetPort, err))
+						continue
+					}
+				}
+				if conn != nil {
+					go func() {
+						if err := r.handle(conn); err != nil {
+							runtime.HandleError(fmt.Errorf("error handling connection: %v", err))
+						}
+					}()
 				}
 			}
-			go func() {
-				if err := r.handle(conn); err != nil {
-					runtime.HandleError(fmt.Errorf("error handling connection: %v", err))
-				}
-			}()
 		}
 	}()
 	return func() { listener.Close() }, nil

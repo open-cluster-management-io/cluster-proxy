@@ -10,7 +10,7 @@ import (
 	"open-cluster-management.io/cluster-proxy/e2e/framework"
 	// per-package e2e suite
 
-	_ "open-cluster-management.io/cluster-proxy/e2e/configuration"
+	//_ "open-cluster-management.io/cluster-proxy/e2e/configuration"
 	_ "open-cluster-management.io/cluster-proxy/e2e/install"
 )
 

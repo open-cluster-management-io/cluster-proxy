@@ -68,6 +68,6 @@ var _ = Describe("Basic configuration Test",
 				return *deploy.Spec.Replicas
 			}).
 				WithTimeout(time.Minute).
-				Should(Equal(int32(1)))
+				Should(Equal(targetReplicas))
 		})
 	})

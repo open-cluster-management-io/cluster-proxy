@@ -42,6 +42,8 @@ func main() {
 		panic(err)
 	}
 
+	ctx := context.Background()
+
 	if enablePortForwardProxy {
 		klog.Infof("Running local port-forward proxy")
 		rr := util.NewRoundRobinLocalProxy(
@@ -50,13 +52,12 @@ func main() {
 			common.LabelKeyComponentName+"="+common.ComponentNameProxyServer,
 			8091,
 		)
-		_, err := rr.Listen()
+		_, err := rr.Listen(ctx)
 		if err != nil {
 			panic(err)
 		}
 	}
 
-	ctx := context.Background()
 	klog.Infof("Starting lease updater")
 	leaseUpdater.Start(ctx)
 	<-ctx.Done()
