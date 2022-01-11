@@ -194,14 +194,22 @@ func (r *roundRobin) handle(conn net.Conn) error {
 	}()
 
 	// wait for either a local->remote error or for copying from remote->local to finish
-	select {
-	case <-remoteDone:
-		klog.V(6).Info("Connection closed from remote")
-	case <-localError:
-		klog.V(6).Info("Connection closed due to local error")
+	for {
+		select {
+		case <-remoteDone:
+			klog.V(6).Info("Connection closed from remote")
+			return nil
+		case <-localError:
+			klog.V(6).Info("Connection closed due to local error")
+			return nil
+		case err := <-errorChan:
+			if err != nil {
+				runtime.HandleError(err)
+			}
+			klog.Infof("Connection closed due to error stream closed")
+			return nil
+		}
 	}
-
-	return nil
 }
 
 var _ net.Conn = &conn{}
