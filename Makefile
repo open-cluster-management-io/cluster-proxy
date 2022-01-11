@@ -4,6 +4,7 @@ IMG ?= controller:latest
 IMAGE_REGISTRY_NAME ?= quay.io/open-cluster-management
 IMAGE_NAME = cluster-proxy
 IMAGE_TAG ?= latest
+E2E_TEST_CLUSTER_NAME ?= loopback
 # Produce CRDs that work back to Kubernetes 1.11 (no version conversion)
 CRD_OPTIONS ?= "crd:trivialVersions=true,preserveUnknownFields=false"
 
@@ -138,5 +139,5 @@ images: addon-manager-image addon-agent-image
 test-integration:
 	@echo "TODO: Run integration test"
 
-test-e2e:
-	@echo "TODO: Run e2e test"
+test-e2e: build-e2e
+	./bin/e2e --test-cluster $(E2E_TEST_CLUSTER_NAME)

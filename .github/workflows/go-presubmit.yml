@@ -105,4 +105,4 @@ jobs:
              cluster-proxy charts/cluster-proxy/
       - name: Run e2e test
         run: |
-          ./bin/e2e --test-cluster loopback
+          make test-e2e

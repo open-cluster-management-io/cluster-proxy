@@ -95,15 +95,17 @@ var _ = Describe("Basic install Test",
 					common.LabelKeyComponentName+"="+common.ComponentNameProxyServer, // TODO: configurable label selector?
 					8090,
 				)
-				closeFn, err := localProxy.Listen()
+
+				ctx, cancel := context.WithCancel(context.TODO())
+				defer cancel()
+
+				closeFn, err := localProxy.Listen(ctx)
 				Expect(err).NotTo(HaveOccurred())
 				defer closeFn()
 
 				tunnelTlsCfg, err := util.GetKonnectivityTLSConfig(cfg, proxyConfiguration)
 				Expect(err).NotTo(HaveOccurred())
 
-				ctx, cancel := context.WithCancel(context.TODO())
-				defer cancel()
 				tunnel, err := konnectivity.CreateSingleUseGrpcTunnel(
 					ctx,
 					net.JoinHostPort("127.0.0.1", "8090"),

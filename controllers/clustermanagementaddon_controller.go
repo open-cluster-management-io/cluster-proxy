@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/x509"
 	"encoding/pem"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -26,6 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/validation"
 	informercorev1 "k8s.io/client-go/informers/core/v1"
@@ -204,12 +206,21 @@ func (c *ClusterManagementAddonReconciler) deployProxyServer(config *proxyv1alph
 }
 
 func (c *ClusterManagementAddonReconciler) ensure(resource client.Object) error {
+	current := &unstructured.Unstructured{}
+	gvks, _, err := c.Scheme().ObjectKinds(resource)
+	if err != nil {
+		return err
+	}
+	if len(gvks) != 1 {
+		return fmt.Errorf("invalid gvks received: %v", gvks)
+	}
+	current.SetGroupVersionKind(gvks[0])
 	if err := c.Client.Get(
 		context.TODO(),
 		types.NamespacedName{
 			Namespace: resource.GetNamespace(),
 			Name:      resource.GetName(),
-		}, resource); err != nil {
+		}, current); err != nil {
 		if apierrors.IsNotFound(err) {
 			// if not found, then create
 			if err := c.Client.Create(context.TODO(), resource); err != nil {
@@ -220,6 +231,7 @@ func (c *ClusterManagementAddonReconciler) ensure(resource client.Object) error 
 		}
 		return err
 	}
+	resource.SetResourceVersion(current.GetResourceVersion())
 	if err := c.Client.Update(context.TODO(), resource); err != nil {
 		if apierrors.IsConflict(err) {
 			return c.ensure(resource)
