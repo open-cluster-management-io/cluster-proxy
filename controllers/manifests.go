@@ -104,8 +104,9 @@ func newProxyServerDeployment(config *proxyv1alpha1.ManagedProxyConfiguration) *
 					ServiceAccountName: common.AddonName,
 					Containers: []corev1.Container{
 						{
-							Name:  common.ComponentNameProxyServer,
-							Image: config.Spec.ProxyServer.Image,
+							Name:            common.ComponentNameProxyServer,
+							Image:           config.Spec.ProxyServer.Image,
+							ImagePullPolicy: corev1.PullIfNotPresent,
 							Command: []string{
 								"/proxy-server",
 							},
