@@ -263,8 +263,7 @@ func (p *proxyAgent) setupPermission(cluster *clusterv1.ManagedCluster, addon *a
 }
 
 const (
-	ApiserverNetworkProxyLabelAddon     = "open-cluster-management.io/addon"
-	ApiserverNetworkProxyLabelComponent = "open-cluster-management.io/component"
+	ApiserverNetworkProxyLabelAddon = "open-cluster-management.io/addon"
 
 	AgentSecretName   = "cluster-proxy-open-cluster-management.io-proxy-agent-signer-client-cert"
 	AgentCASecretName = "cluster-proxy-ca"
@@ -322,8 +321,8 @@ func newAgentDeployment(clusterName, targetNamespace string, proxyConfig *proxyv
 			Replicas: &proxyConfig.Spec.ProxyAgent.Replicas,
 			Selector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{
-					ApiserverNetworkProxyLabelAddon:     common.AddonName,
-					ApiserverNetworkProxyLabelComponent: common.ComponentNameProxyAgent,
+					ApiserverNetworkProxyLabelAddon: common.AddonName,
+					common.LabelKeyComponentName:    common.ComponentNameProxyAgent,
 				},
 			},
 			Strategy: appsv1.DeploymentStrategy{
@@ -336,8 +335,8 @@ func newAgentDeployment(clusterName, targetNamespace string, proxyConfig *proxyv
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: map[string]string{
-						ApiserverNetworkProxyLabelAddon:     common.AddonName,
-						ApiserverNetworkProxyLabelComponent: common.ComponentNameProxyAgent,
+						ApiserverNetworkProxyLabelAddon: common.AddonName,
+						common.LabelKeyComponentName:    common.ComponentNameProxyAgent,
 					},
 					Annotations: annotations,
 				},
@@ -374,8 +373,9 @@ func newAgentDeployment(clusterName, targetNamespace string, proxyConfig *proxyv
 							},
 						},
 						{
-							Name:  "addon-agent",
-							Image: proxyConfig.Spec.ProxyAgent.Image,
+							Name:            "addon-agent",
+							Image:           proxyConfig.Spec.ProxyAgent.Image,
+							ImagePullPolicy: corev1.PullIfNotPresent,
 							Command: []string{
 								"/agent",
 							},
@@ -385,6 +385,13 @@ func newAgentDeployment(clusterName, targetNamespace string, proxyConfig *proxyv
 									Name:      "hub-kubeconfig",
 									ReadOnly:  true,
 									MountPath: "/etc/kubeconfig/",
+								},
+							},
+							ReadinessProbe: &corev1.Probe{
+								Handler: corev1.Handler{
+									HTTPGet: &corev1.HTTPGetAction{
+										Port: intstr.FromInt(8888),
+									},
 								},
 							},
 						},

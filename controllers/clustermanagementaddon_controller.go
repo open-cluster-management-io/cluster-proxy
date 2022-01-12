@@ -241,11 +241,19 @@ func (c *ClusterManagementAddonReconciler) deployProxyServer(config *proxyv1alph
 }
 
 func (c *ClusterManagementAddonReconciler) ensure(incomingGeneration int64, gvk schema.GroupVersionKind, resource client.Object) (bool, bool, error) {
-	current := &unstructured.Unstructured{}
+	// appending a label to all the applied resources so that they can always be
+	// updated upon the configuration changes.
+	annotations := resource.GetAnnotations()
+	if annotations == nil {
+		annotations = make(map[string]string)
+	}
+	annotations[common.AnnotationKeyConfigurationGeneration] = strconv.Itoa(int(incomingGeneration))
+	resource.SetAnnotations(annotations)
 
 	created := false
 	updated := false
 	// create if it doesn't exist
+	current := &unstructured.Unstructured{}
 	current.SetGroupVersionKind(gvk)
 	if err := c.Client.Get(
 		context.TODO(),
@@ -282,12 +290,6 @@ func (c *ClusterManagementAddonReconciler) ensure(incomingGeneration int64, gvk 
 
 	// update if generation bumped
 	if !created && int(incomingGeneration) > currentGeneration {
-		annotations := resource.GetAnnotations()
-		if annotations == nil {
-			annotations = make(map[string]string)
-		}
-		annotations[common.AnnotationKeyConfigurationGeneration] = strconv.Itoa(int(incomingGeneration))
-		resource.SetAnnotations(annotations)
 		resource.SetResourceVersion(current.GetResourceVersion())
 		if err := c.Client.Update(context.TODO(), resource); err != nil {
 			if apierrors.IsConflict(err) {

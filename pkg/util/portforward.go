@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -33,6 +34,7 @@ const PortForwardProtocolV1Name = "portforward.k8s.io"
 
 func NewRoundRobinLocalProxy(
 	restConfig *rest.Config,
+	readiness *atomic.Value,
 	podNamespace,
 	podSelector string,
 	targetPort int32) LocalProxyServer {
@@ -43,6 +45,7 @@ func NewRoundRobinLocalProxy(
 		targetPort:           targetPort,
 		reqId:                0,
 		lock:                 &sync.Mutex{},
+		firstConnReceived:    readiness,
 	}
 }
 
@@ -53,9 +56,10 @@ type roundRobin struct {
 	podSelector          string
 	targetPort           int32
 
-	restConfig *rest.Config
-	lock       *sync.Mutex
-	reqId      int
+	restConfig        *rest.Config
+	lock              *sync.Mutex
+	reqId             int
+	firstConnReceived *atomic.Value
 }
 
 func (r *roundRobin) Listen(ctx context.Context) (func(), error) {
@@ -211,6 +215,9 @@ func (r *roundRobin) handle(conn net.Conn) error {
 			runtime.HandleError(fmt.Errorf("failed closing port-forwarding connection: %v", err))
 		}
 	}()
+
+	r.firstConnReceived.Store(true)
+
 	for {
 		select {
 		case <-remoteDone:

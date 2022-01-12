@@ -2,20 +2,29 @@ package install
 
 import (
 	"context"
+	"net"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
+	"google.golang.org/grpc"
+	grpccredentials "google.golang.org/grpc/credentials"
 	appsv1 "k8s.io/api/apps/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	addonapiv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
 	"open-cluster-management.io/cluster-proxy/e2e/framework"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 	"open-cluster-management.io/cluster-proxy/pkg/common"
+	"open-cluster-management.io/cluster-proxy/pkg/util"
+	konnectivity "sigs.k8s.io/apiserver-network-proxy/konnectivity-client/pkg/client"
 )
 
 const installTestBasename = "install"
@@ -72,6 +81,41 @@ var _ = Describe("Basic install Test",
 				WithTimeout(time.Minute).
 				Should(BeTrue())
 		})
+
+		It("Probe cluster health",
+			func() {
+				cfg := f.HubRESTConfig()
+				c := f.HubRuntimeClient()
+				proxyConfiguration := &proxyv1alpha1.ManagedProxyConfiguration{}
+				err := c.Get(context.TODO(), types.NamespacedName{
+					Name: "cluster-proxy",
+				}, proxyConfiguration)
+				Expect(err).NotTo(HaveOccurred())
+				waitAgentReady(proxyConfiguration, f.HubNativeClient())
+
+				By("Running local port-forward stream to proxy service")
+				localProxy := util.NewRoundRobinLocalProxy(
+					cfg,
+					&atomic.Value{},
+					proxyConfiguration.Spec.ProxyServer.Namespace,
+					common.LabelKeyComponentName+"="+common.ComponentNameProxyServer, // TODO: configurable label selector?
+					8090,
+				)
+
+				ctx, cancel := context.WithCancel(context.TODO())
+				defer cancel()
+
+				closeFn, err := localProxy.Listen(ctx)
+				Expect(err).NotTo(HaveOccurred())
+				defer closeFn()
+
+				mungledRestConfig := buildTunnelRestConfig(ctx, f, proxyConfiguration)
+				nativeClient, err := kubernetes.NewForConfig(mungledRestConfig)
+				Expect(err).NotTo(HaveOccurred())
+				data, err := nativeClient.RESTClient().Get().AbsPath("/healthz").DoRaw(context.TODO())
+				Expect(err).NotTo(HaveOccurred())
+				Expect(string(data)).To(Equal("ok"))
+			})
 
 		It("ClusterProxy configuration - scale proxy agent to 1", func() {
 			c := f.HubRuntimeClient()
@@ -145,7 +189,7 @@ var _ = Describe("Basic install Test",
 				Should(BeTrue())
 		})
 
-		It("ClusterProxy configuration - scale proxy server to 3", func() {
+		It("ClusterProxy configuration - scale proxy server to 1", func() {
 			c := f.HubRuntimeClient()
 			proxyConfiguration := &proxyv1alpha1.ManagedProxyConfiguration{}
 			err := c.Get(context.TODO(), types.NamespacedName{
@@ -153,7 +197,7 @@ var _ = Describe("Basic install Test",
 			}, proxyConfiguration)
 			Expect(err).NotTo(HaveOccurred())
 
-			targetReplicas := int32(3)
+			targetReplicas := int32(1)
 			proxyConfiguration.Spec.ProxyServer.Replicas = targetReplicas
 			err = c.Update(context.TODO(), proxyConfiguration)
 			Expect(err).NotTo(HaveOccurred())
@@ -179,6 +223,8 @@ var _ = Describe("Basic install Test",
 				}).
 				WithTimeout(time.Minute).
 				Should(BeTrue())
+
+			waitAgentReady(proxyConfiguration, f.HubNativeClient())
 		})
 
 		It("ClusterProxy configuration - check configuration generation", func() {
@@ -206,4 +252,88 @@ var _ = Describe("Basic install Test",
 			Expect(proxyAgentDeploy.Annotations[common.AnnotationKeyConfigurationGeneration]).
 				To(Equal(strconv.Itoa(int(expectedGeneration))))
 		})
+
+		It("Probe cluster health should work after proxy servers restart",
+			func() {
+				cfg := f.HubRESTConfig()
+				c := f.HubRuntimeClient()
+				proxyConfiguration := &proxyv1alpha1.ManagedProxyConfiguration{}
+
+				err := c.Get(context.TODO(), types.NamespacedName{
+					Name: "cluster-proxy",
+				}, proxyConfiguration)
+				Expect(err).NotTo(HaveOccurred())
+
+				By("Running local port-forward stream to proxy service")
+				localProxy := util.NewRoundRobinLocalProxy(
+					cfg,
+					&atomic.Value{},
+					proxyConfiguration.Spec.ProxyServer.Namespace,
+					common.LabelKeyComponentName+"="+common.ComponentNameProxyServer, // TODO: configurable label selector?
+					8090,
+				)
+
+				ctx, cancel := context.WithCancel(context.TODO())
+				defer cancel()
+
+				closeFn, err := localProxy.Listen(ctx)
+				Expect(err).NotTo(HaveOccurred())
+				defer closeFn()
+
+				mungledRestConfig := buildTunnelRestConfig(ctx, f, proxyConfiguration)
+				nativeClient, err := kubernetes.NewForConfig(mungledRestConfig)
+				Expect(err).NotTo(HaveOccurred())
+				data, err := nativeClient.RESTClient().Get().AbsPath("/healthz").DoRaw(context.TODO())
+				Expect(err).NotTo(HaveOccurred())
+				Expect(string(data)).To(Equal("ok"))
+			})
 	})
+
+func buildTunnelRestConfig(ctx context.Context, f framework.Framework, proxyConfiguration *proxyv1alpha1.ManagedProxyConfiguration) *rest.Config {
+	hubRestConfig := f.HubRESTConfig()
+	tunnelTlsCfg, err := util.GetKonnectivityTLSConfig(hubRestConfig, proxyConfiguration)
+	Expect(err).NotTo(HaveOccurred())
+
+	tunnel, err := konnectivity.CreateSingleUseGrpcTunnel(
+		ctx,
+		net.JoinHostPort("127.0.0.1", "8090"),
+		grpc.WithTransportCredentials(grpccredentials.NewTLS(tunnelTlsCfg)),
+	)
+	Expect(err).NotTo(HaveOccurred())
+
+	mungledRestConfig := rest.CopyConfig(hubRestConfig)
+	mungledRestConfig.TLSClientConfig = rest.TLSClientConfig{
+		Insecure: true,
+	}
+	mungledRestConfig.Host = f.TestClusterName()
+	mungledRestConfig.Dial = tunnel.DialContext
+	return mungledRestConfig
+}
+
+func waitAgentReady(proxyConfiguration *proxyv1alpha1.ManagedProxyConfiguration, client kubernetes.Interface) {
+	Eventually(
+		func() int {
+			podList, err := client.CoreV1().
+				Pods(common.AddonInstallNamespace).
+				List(context.TODO(), metav1.ListOptions{
+					LabelSelector: common.LabelKeyComponentName + "=" + common.ComponentNameProxyAgent,
+				})
+			Expect(err).NotTo(HaveOccurred())
+			matchedGeneration := 0
+			for _, pod := range podList.Items {
+				allReady := true
+				for _, st := range pod.Status.ContainerStatuses {
+					if !st.Ready {
+						allReady = false
+					}
+				}
+				if allReady &&
+					pod.Annotations[common.AnnotationKeyConfigurationGeneration] == strconv.Itoa(int(proxyConfiguration.Generation)) {
+					matchedGeneration++
+				}
+			}
+			return matchedGeneration
+		}).
+		WithTimeout(time.Second * 30).
+		Should(Equal(int(proxyConfiguration.Spec.ProxyAgent.Replicas)))
+}

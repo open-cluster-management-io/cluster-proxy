@@ -3,6 +3,9 @@ package main
 import (
 	"context"
 	"flag"
+	"net"
+	"net/http"
+	"sync/atomic"
 
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
@@ -44,10 +47,14 @@ func main() {
 
 	ctx := context.Background()
 
+	readiness := &atomic.Value{}
+	readiness.Store(true)
 	if enablePortForwardProxy {
+		readiness.Store(false)
 		klog.Infof("Running local port-forward proxy")
 		rr := util.NewRoundRobinLocalProxy(
 			cfg,
+			readiness,
 			proxyServerNamespace,
 			common.LabelKeyComponentName+"="+common.ComponentNameProxyServer,
 			8091,
@@ -57,6 +64,25 @@ func main() {
 			panic(err)
 		}
 	}
+
+	ln, err := net.Listen("tcp", net.JoinHostPort("0.0.0.0", "8888"))
+	if err != nil {
+		klog.Fatalf("failed listening: %v", err)
+	}
+	go func() {
+		klog.Infof("Starting local health check server")
+		err := http.Serve(ln, http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+			if !readiness.Load().(bool) {
+				rw.WriteHeader(http.StatusInternalServerError)
+				rw.Write([]byte("not yet ready"))
+				klog.Infof("not yet ready")
+				return
+			}
+			rw.Write([]byte("ok"))
+			return
+		}))
+		klog.Errorf("health check server aborted: %v", err)
+	}()
 
 	klog.Infof("Starting lease updater")
 	leaseUpdater.Start(ctx)
