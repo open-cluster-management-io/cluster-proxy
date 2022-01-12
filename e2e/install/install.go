@@ -10,6 +10,7 @@ import (
 
 	"google.golang.org/grpc"
 	grpccredentials "google.golang.org/grpc/credentials"
+	appsv1 "k8s.io/api/apps/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
@@ -123,4 +124,31 @@ var _ = Describe("Basic install Test",
 				Expect(err).NotTo(HaveOccurred())
 				Expect(string(data)).To(Equal("ok"))
 			})
+
+		It("ClusterProxy configuration - scale proxy server", func() {
+			c := f.HubRuntimeClient()
+			proxyConfiguration := &proxyv1alpha1.ManagedProxyConfiguration{}
+			err := c.Get(context.TODO(), types.NamespacedName{
+				Name: "cluster-proxy",
+			}, proxyConfiguration)
+			Expect(err).NotTo(HaveOccurred())
+
+			targetReplicas := int32(0)
+			proxyConfiguration.Spec.ProxyServer.Replicas = targetReplicas
+			err = c.Update(context.TODO(), proxyConfiguration)
+			Expect(err).NotTo(HaveOccurred())
+
+			Eventually(func() int32 {
+				deploy := &appsv1.Deployment{}
+				err = c.Get(context.TODO(), types.NamespacedName{
+					Namespace: proxyConfiguration.Spec.ProxyServer.Namespace,
+					Name:      "cluster-proxy",
+				}, deploy)
+				Expect(err).NotTo(HaveOccurred())
+				return *deploy.Spec.Replicas
+			}).
+				WithTimeout(time.Minute).
+				Should(Equal(targetReplicas))
+		})
+
 	})

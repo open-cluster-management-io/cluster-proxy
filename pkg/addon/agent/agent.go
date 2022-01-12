@@ -330,8 +330,9 @@ func newAgentDeployment(clusterName, targetNamespace string, proxyConfig *proxyv
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{
 						{
-							Name:  common.ComponentNameProxyAgent,
-							Image: proxyConfig.Spec.ProxyAgent.Image,
+							Name:            common.ComponentNameProxyAgent,
+							Image:           proxyConfig.Spec.ProxyAgent.Image,
+							ImagePullPolicy: corev1.PullIfNotPresent,
 							Command: []string{
 								"/proxy-agent",
 							},

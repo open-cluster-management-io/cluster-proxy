@@ -17,6 +17,7 @@ spec:
       containers:
         - name: manager
           image: {{ .Values.registry }}/{{ .Values.image }}:{{ .Values.tag }}
+          imagePullPolicy: IfNotPresent
           command:
             - /manager
           args:

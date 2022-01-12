@@ -214,7 +214,14 @@ func (c *ClusterManagementAddonReconciler) ensure(resource client.Object) error 
 	if len(gvks) != 1 {
 		return fmt.Errorf("invalid gvks received: %v", gvks)
 	}
-	current.SetGroupVersionKind(gvks[0])
+	// exceptions
+	// short-circuiting for service resources to avoid duplicated cluster-ip assignment
+	gvk := gvks[0]
+	if gvk.Group == "" && gvk.Kind == "Service" {
+		return nil
+	}
+
+	current.SetGroupVersionKind(gvk)
 	if err := c.Client.Get(
 		context.TODO(),
 		types.NamespacedName{
