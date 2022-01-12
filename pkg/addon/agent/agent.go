@@ -7,8 +7,12 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
+	"strconv"
 	"time"
 
+	"open-cluster-management.io/addon-framework/pkg/agent"
+	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
+	clusterv1 "open-cluster-management.io/api/cluster/v1"
 	"open-cluster-management.io/cluster-proxy/pkg/addon/operator/authentication/selfsigned"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 	"open-cluster-management.io/cluster-proxy/pkg/common"
@@ -22,11 +26,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/utils/pointer"
-	"open-cluster-management.io/addon-framework/pkg/agent"
-	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
-	clusterv1 "open-cluster-management.io/api/cluster/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -292,6 +294,7 @@ func newAgentDeployment(clusterName, targetNamespace string, proxyConfig *proxyv
 		"--cluster-name=" + clusterName,
 		"--proxy-server-namespace=" + proxyConfig.Spec.ProxyServer.Namespace,
 	}
+	annotations := make(map[string]string)
 	switch proxyConfig.Spec.ProxyServer.Entrypoint.Type {
 	case proxyv1alpha1.EntryPointTypeHostname:
 		serviceEntryPoint = proxyConfig.Spec.ProxyServer.Entrypoint.Hostname.Value
@@ -301,16 +304,19 @@ func newAgentDeployment(clusterName, targetNamespace string, proxyConfig *proxyv
 		serviceEntryPoint = "127.0.0.1"
 		addonAgentArgs = append(addonAgentArgs,
 			"--enable-port-forward-proxy=true")
+		annotations[common.AnnotationKeyConfigurationGeneration] = strconv.Itoa(int(proxyConfig.Generation))
 	}
 
+	one := intstr.FromInt(1)
 	return &appsv1.Deployment{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "apps/v1",
 			Kind:       "Deployment",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      proxyConfig.Name + "-" + common.ComponentNameProxyAgent,
-			Namespace: targetNamespace,
+			Name:        proxyConfig.Name + "-" + common.ComponentNameProxyAgent,
+			Namespace:   targetNamespace,
+			Annotations: annotations,
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: &proxyConfig.Spec.ProxyAgent.Replicas,
@@ -320,12 +326,20 @@ func newAgentDeployment(clusterName, targetNamespace string, proxyConfig *proxyv
 					ApiserverNetworkProxyLabelComponent: common.ComponentNameProxyAgent,
 				},
 			},
+			Strategy: appsv1.DeploymentStrategy{
+				Type: appsv1.RollingUpdateDeploymentStrategyType,
+				RollingUpdate: &appsv1.RollingUpdateDeployment{
+					MaxSurge:       &one,
+					MaxUnavailable: &one,
+				},
+			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: map[string]string{
 						ApiserverNetworkProxyLabelAddon:     common.AddonName,
 						ApiserverNetworkProxyLabelComponent: common.ComponentNameProxyAgent,
 					},
+					Annotations: annotations,
 				},
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{

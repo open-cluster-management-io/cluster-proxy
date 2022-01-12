@@ -92,6 +92,8 @@ jobs:
           sh join.sh loopback
           clusteradm accept --clusters loopback --wait 30
           kubectl wait --for=condition=ManagedClusterConditionAvailable managedcluster/loopback
+          kubectl -n open-cluster-management scale deploy cluster-manager --replicas=0
+          kubectl apply -f ./e2e/crds/
       - name: Build e2e binary
         run: make build-e2e
       - name: Build image

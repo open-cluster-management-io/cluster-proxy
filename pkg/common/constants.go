@@ -30,5 +30,6 @@ const (
 )
 
 const (
-	LabelKeyComponentName = "proxy.open-cluster-management.io/component-name"
+	LabelKeyComponentName                = "proxy.open-cluster-management.io/component-name"
+	AnnotationKeyConfigurationGeneration = "proxy.open-cluster-management.io/configuration-generation"
 )

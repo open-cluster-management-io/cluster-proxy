@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	v1 "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/httpstream"
 	"k8s.io/apimachinery/pkg/util/runtime"
@@ -112,14 +112,26 @@ func (r *roundRobin) handle(conn net.Conn) error {
 		return err
 	}
 
+	candidates := make([]*corev1.Pod, 0)
+	for _, pod := range podList.Items {
+		if pod.Status.Phase != corev1.PodRunning {
+			continue
+		}
+		pod := pod
+		candidates = append(candidates, &pod)
+	}
+	if len(candidates) == 0 {
+		return errors.New("no valid proxy server pod instances found")
+	}
+
 	r.lock.Lock()
 	currentId := r.reqId
 	r.reqId++
 	r.lock.Unlock()
 
-	podIdx := rand.Intn(len(podList.Items))
-	pod := podList.Items[podIdx]
-	klog.V(6).Infof("Selected pod %s for request ID %d", pod.Name, currentId)
+	podIdx := rand.Intn(len(candidates))
+	pod := candidates[podIdx]
+	klog.Infof("Forwarding to pod %v", pod.Name)
 	req := nativeClient.RESTClient().
 		Post().
 		Prefix("api", "v1").
@@ -136,9 +148,9 @@ func (r *roundRobin) handle(conn net.Conn) error {
 
 	// create error stream
 	headers := http.Header{}
-	headers.Set(v1.StreamType, v1.StreamTypeError)
-	headers.Set(v1.PortHeader, fmt.Sprintf("%d", r.targetPort))
-	headers.Set(v1.PortForwardRequestIDHeader, strconv.Itoa(currentId))
+	headers.Set(corev1.StreamType, corev1.StreamTypeError)
+	headers.Set(corev1.PortHeader, fmt.Sprintf("%d", r.targetPort))
+	headers.Set(corev1.PortForwardRequestIDHeader, strconv.Itoa(currentId))
 
 	errorStream, err := streamConn.CreateStream(headers)
 	if err != nil {
@@ -161,7 +173,7 @@ func (r *roundRobin) handle(conn net.Conn) error {
 	}()
 
 	// create data stream
-	headers.Set(v1.StreamType, v1.StreamTypeData)
+	headers.Set(corev1.StreamType, corev1.StreamTypeData)
 	dataStream, err := streamConn.CreateStream(headers)
 	if err != nil {
 		runtime.HandleError(fmt.Errorf("error creating forwarding stream for port %d -> %d: %v", r.targetPort, r.targetPort, err))
@@ -194,6 +206,11 @@ func (r *roundRobin) handle(conn net.Conn) error {
 	}()
 
 	// wait for either a local->remote error or for copying from remote->local to finish
+	defer func() {
+		if err := conn.Close(); err != nil {
+			runtime.HandleError(fmt.Errorf("failed closing port-forwarding connection: %v", err))
+		}
+	}()
 	for {
 		select {
 		case <-remoteDone:

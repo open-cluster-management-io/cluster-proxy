@@ -86,6 +86,9 @@ func newProxyServerDeployment(config *proxyv1alpha1.ManagedProxyConfiguration) *
 			OwnerReferences: []metav1.OwnerReference{
 				newOwnerReference(config),
 			},
+			Labels: map[string]string{
+				common.AnnotationKeyConfigurationGeneration: strconv.Itoa(int(config.Generation)),
+			},
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: &config.Spec.ProxyServer.Replicas,
@@ -93,6 +96,9 @@ func newProxyServerDeployment(config *proxyv1alpha1.ManagedProxyConfiguration) *
 				MatchLabels: map[string]string{
 					common.LabelKeyComponentName: common.ComponentNameProxyServer,
 				},
+			},
+			Strategy: appsv1.DeploymentStrategy{
+				Type: appsv1.RecreateDeploymentStrategyType,
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
