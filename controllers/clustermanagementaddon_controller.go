@@ -26,9 +26,12 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/validation"
 	informercorev1 "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
@@ -152,43 +155,45 @@ func (c *ClusterManagementAddonReconciler) Reconcile(ctx context.Context, reques
 	}
 
 	// deploying central proxy server instances into the hub cluster.
-	err = c.deployProxyServer(config)
+	isModified, err := c.deployProxyServer(config)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
+	if !isModified {
+		klog.Infof("Proxy server resources are up-to-date")
+	}
 
 	// refreshing status
-	if err := c.refreshStatus(config); err != nil {
+	if err := c.refreshStatus(isModified, config); err != nil {
 		return reconcile.Result{}, err
 	}
 	return reconcile.Result{}, nil
 }
 
-func (c *ClusterManagementAddonReconciler) refreshStatus(config *proxyv1alpha1.ManagedProxyConfiguration) error {
-	currentState, err := c.getCurrentState(config)
+func (c *ClusterManagementAddonReconciler) refreshStatus(isModified bool, config *proxyv1alpha1.ManagedProxyConfiguration) error {
+	currentState, err := c.getCurrentState(isModified, config)
 	if err != nil {
 		return err
 	}
-	status := proxyv1alpha1.ManagedProxyConfigurationStatus{}
-	status.LastObservedGeneration = config.Generation
-	status.Conditions = c.getConditions(currentState)
-	mungedStatus := config.Status.DeepCopy()
-	for i := range mungedStatus.Conditions {
-		mungedStatus.Conditions[i].LastTransitionTime = metav1.Time{}
+	expectingStatus := proxyv1alpha1.ManagedProxyConfigurationStatus{}
+	expectingStatus.LastObservedGeneration = config.Generation
+	expectingStatus.Conditions = c.getConditions(currentState)
+	currentStatus := config.Status.DeepCopy()
+	for i := range currentStatus.Conditions {
+		currentStatus.Conditions[i].LastTransitionTime = metav1.Time{}
 	}
-	if equality.Semantic.DeepEqual(&status, mungedStatus) {
+	if !isModified && equality.Semantic.DeepEqual(&expectingStatus, currentStatus) {
 		return nil
 	}
-	now := metav1.Now()
 	editingConfig := config.DeepCopy()
-	editingConfig.Status = status
-	for i := range editingConfig.Status.Conditions {
-		editingConfig.Status.Conditions[i].LastTransitionTime = now
+	for _, cond := range expectingStatus.Conditions {
+		expectingCondition := cond
+		meta.SetStatusCondition(&editingConfig.Status.Conditions, expectingCondition)
 	}
 	return c.Client.Status().Update(context.TODO(), editingConfig)
 }
 
-func (c *ClusterManagementAddonReconciler) deployProxyServer(config *proxyv1alpha1.ManagedProxyConfiguration) error {
+func (c *ClusterManagementAddonReconciler) deployProxyServer(config *proxyv1alpha1.ManagedProxyConfiguration) (bool, error) {
 	resources := []client.Object{
 		newServiceAccount(config),
 		newProxyService(config),
@@ -197,30 +202,58 @@ func (c *ClusterManagementAddonReconciler) deployProxyServer(config *proxyv1alph
 		newProxyServerRole(config),
 		newProxyServerRoleBinding(config),
 	}
+	anyCreated := false
+	createdKinds := sets.NewString()
+	anyUpdated := false
+	updatedKinds := sets.NewString()
 	for _, resource := range resources {
-		if err := c.ensure(resource); err != nil {
-			return err
+		gvks, _, err := c.Scheme().ObjectKinds(resource)
+		if err != nil {
+			return false, err
 		}
+		if len(gvks) != 1 {
+			return false, fmt.Errorf("invalid gvks received: %v", gvks)
+		}
+		gvk := gvks[0]
+
+		created, updated, err := c.ensure(config.Generation, gvk, resource)
+		if err != nil {
+			return false, err
+		}
+		if created {
+			createdKinds.Insert(gvk.Kind)
+		}
+		if updated {
+			updatedKinds.Insert(gvk.Kind)
+		}
+		anyCreated = anyCreated || created
+		anyUpdated = anyUpdated || updated
 	}
-	return nil
+	if anyCreated {
+		c.EventRecorder.ForComponent("ClusterManagementAddonReconciler").
+			Eventf("ProxyServerCreated", "Resources are created: %v", createdKinds)
+	}
+	if anyUpdated {
+		c.EventRecorder.ForComponent("ClusterManagementAddonReconciler").
+			Eventf("ProxyServerUpdated", "Resources are updated: %v", updatedKinds)
+	}
+	return anyCreated || anyUpdated, nil
 }
 
-func (c *ClusterManagementAddonReconciler) ensure(resource client.Object) error {
-	current := &unstructured.Unstructured{}
-	gvks, _, err := c.Scheme().ObjectKinds(resource)
-	if err != nil {
-		return err
+func (c *ClusterManagementAddonReconciler) ensure(incomingGeneration int64, gvk schema.GroupVersionKind, resource client.Object) (bool, bool, error) {
+	// appending a label to all the applied resources so that they can always be
+	// updated upon the configuration changes.
+	annotations := resource.GetAnnotations()
+	if annotations == nil {
+		annotations = make(map[string]string)
 	}
-	if len(gvks) != 1 {
-		return fmt.Errorf("invalid gvks received: %v", gvks)
-	}
-	// exceptions
-	// short-circuiting for service resources to avoid duplicated cluster-ip assignment
-	gvk := gvks[0]
-	if gvk.Group == "" && gvk.Kind == "Service" {
-		return nil
-	}
+	annotations[common.AnnotationKeyConfigurationGeneration] = strconv.Itoa(int(incomingGeneration))
+	resource.SetAnnotations(annotations)
 
+	created := false
+	updated := false
+	// create if it doesn't exist
+	current := &unstructured.Unstructured{}
 	current.SetGroupVersionKind(gvk)
 	if err := c.Client.Get(
 		context.TODO(),
@@ -228,24 +261,46 @@ func (c *ClusterManagementAddonReconciler) ensure(resource client.Object) error 
 			Namespace: resource.GetNamespace(),
 			Name:      resource.GetName(),
 		}, current); err != nil {
-		if apierrors.IsNotFound(err) {
-			// if not found, then create
-			if err := c.Client.Create(context.TODO(), resource); err != nil {
-				if !apierrors.IsAlreadyExists(err) {
-					return err
-				}
+		if !apierrors.IsNotFound(err) {
+			return false, false, err
+		}
+		// if not found, then create
+		if err := c.Client.Create(context.TODO(), resource); err != nil {
+			if !apierrors.IsAlreadyExists(err) {
+				return false, false, err
 			}
+		} else {
+			created = true
 		}
-		return err
 	}
-	resource.SetResourceVersion(current.GetResourceVersion())
-	if err := c.Client.Update(context.TODO(), resource); err != nil {
-		if apierrors.IsConflict(err) {
-			return c.ensure(resource)
+
+	var currentGeneration = 0
+	if current.GetAnnotations() != nil && len(current.GetAnnotations()[common.AnnotationKeyConfigurationGeneration]) > 0 {
+		var err error
+		currentGeneration, err = strconv.Atoi(current.GetAnnotations()[common.AnnotationKeyConfigurationGeneration])
+		if err != nil {
+			return false, false, errors.Wrapf(err, "failed reading current generation for %v", gvk.Kind)
 		}
-		return err
 	}
-	return nil
+	// EXCEPTIONS
+	// short-circuiting for service resources to avoid duplicated cluster-ip assignment
+	if gvk.Group == "" && gvk.Kind == "Service" {
+		return created, false, nil
+	}
+
+	// update if generation bumped
+	if !created && int(incomingGeneration) > currentGeneration {
+		resource.SetResourceVersion(current.GetResourceVersion())
+		if err := c.Client.Update(context.TODO(), resource); err != nil {
+			if apierrors.IsConflict(err) {
+				return c.ensure(incomingGeneration, gvk, resource)
+			}
+			return false, false, err
+		} else {
+			updated = true
+		}
+	}
+	return created, updated, nil
 }
 
 func (c *ClusterManagementAddonReconciler) getConditions(s *state) []metav1.Condition {
@@ -255,7 +310,7 @@ func (c *ClusterManagementAddonReconciler) getConditions(s *state) []metav1.Cond
 		Reason:  "NotYetDeployed",
 		Message: "Replicas: " + strconv.Itoa(s.replicas),
 	}
-	if s.deployed {
+	if s.isCurrentlyDeployed {
 		deployedCondition.Reason = "SuccessfullyDeployed"
 		deployedCondition.Status = metav1.ConditionTrue
 	}
@@ -453,38 +508,36 @@ func (c *ClusterManagementAddonReconciler) ensureSecret(namespace, name string) 
 }
 
 type state struct {
-	deployed                  bool
+	isCurrentlyDeployed       bool
+	isRedeployed              bool
+	isSigned                  bool
 	replicas                  int
 	proxyServerCertExpireTime *metav1.Time
 	agentServerCertExpireTime *metav1.Time
 }
 
-func (c *ClusterManagementAddonReconciler) getCurrentState(config *proxyv1alpha1.ManagedProxyConfiguration) (*state, error) {
+func (c *ClusterManagementAddonReconciler) getCurrentState(isRedeployed bool, config *proxyv1alpha1.ManagedProxyConfiguration) (*state, error) {
 	namespace := config.Spec.ProxyServer.Namespace
 	name := config.Name
-	isDeployed := true
+	isCurrentlyDeployed := true
 	scale, err := c.DeploymentGetter.Deployments(namespace).GetScale(context.TODO(), name, metav1.GetOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			isDeployed = false
+			isCurrentlyDeployed = false
 		}
 		return nil, err
 	}
-	s := &state{
-		deployed: isDeployed,
-		replicas: int(scale.Status.Replicas),
-	}
+	isSigned := true
 	proxyServerSecret, err := c.SecretGetter.Secrets(namespace).
 		Get(context.TODO(),
 			config.Spec.Authentication.Dump.Secrets.SigningProxyServerSecretName,
 			metav1.GetOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			isDeployed = false
+			isSigned = false
 		}
 		return nil, err
 	}
-	s.proxyServerCertExpireTime = getPEMCertExpireTime(proxyServerSecret.Data[corev1.TLSCertKey])
 
 	agentServerSecret, err := c.SecretGetter.Secrets(namespace).
 		Get(context.TODO(),
@@ -492,13 +545,18 @@ func (c *ClusterManagementAddonReconciler) getCurrentState(config *proxyv1alpha1
 			metav1.GetOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			isDeployed = false
+			isSigned = false
 		}
 		return nil, err
 	}
-	s.agentServerCertExpireTime = getPEMCertExpireTime(agentServerSecret.Data[corev1.TLSCertKey])
-
-	return s, nil
+	return &state{
+		isCurrentlyDeployed:       isCurrentlyDeployed,
+		isRedeployed:              isRedeployed,
+		isSigned:                  isSigned,
+		replicas:                  int(scale.Status.Replicas),
+		proxyServerCertExpireTime: getPEMCertExpireTime(proxyServerSecret.Data[corev1.TLSCertKey]),
+		agentServerCertExpireTime: getPEMCertExpireTime(agentServerSecret.Data[corev1.TLSCertKey]),
+	}, nil
 }
 
 func getPEMCertExpireTime(pemBytes []byte) *metav1.Time {
