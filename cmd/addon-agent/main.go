@@ -9,8 +9,8 @@ import (
 
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
-	"open-cluster-management.io/cluster-proxy/pkg/addon/health"
 	"open-cluster-management.io/cluster-proxy/pkg/common"
+	"open-cluster-management.io/cluster-proxy/pkg/proxyagent/health"
 	"open-cluster-management.io/cluster-proxy/pkg/util"
 )
 

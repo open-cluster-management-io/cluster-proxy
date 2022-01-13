@@ -17,8 +17,8 @@ import (
 	"open-cluster-management.io/addon-framework/pkg/certrotation"
 	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
 	addonlister "open-cluster-management.io/api/client/addon/listers/addon/v1alpha1"
-	"open-cluster-management.io/cluster-proxy/pkg/addon/operator/authentication/selfsigned"
-	"open-cluster-management.io/cluster-proxy/pkg/addon/operator/eventhandler"
+	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/operator/authentication/selfsigned"
+	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/operator/eventhandler"
 
 	"github.com/openshift/library-go/pkg/crypto"
 	"github.com/openshift/library-go/pkg/operator/events"

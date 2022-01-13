@@ -63,7 +63,7 @@ test: manifests generate fmt vet ## Run tests.
 	source ${ENVTEST_ASSETS_DIR}/setup-envtest.sh; \
 		fetch_envtest_tools $(ENVTEST_ASSETS_DIR); \
 		setup_envtest_env $(ENVTEST_ASSETS_DIR); \
-		go test ./pkg/... ./controllers/... -coverprofile cover.out
+		go test ./pkg/... -coverprofile cover.out
 
 ##@ Build
 

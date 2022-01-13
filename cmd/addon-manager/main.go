@@ -39,11 +39,11 @@ import (
 	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
 	"open-cluster-management.io/api/client/addon/clientset/versioned"
 	"open-cluster-management.io/api/client/addon/informers/externalversions"
-	"open-cluster-management.io/cluster-proxy/controllers"
-	"open-cluster-management.io/cluster-proxy/pkg/addon/agent"
-	"open-cluster-management.io/cluster-proxy/pkg/addon/operator/authentication/selfsigned"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 	"open-cluster-management.io/cluster-proxy/pkg/config"
+	"open-cluster-management.io/cluster-proxy/pkg/proxyagent/agent"
+	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/controllers"
+	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/operator/authentication/selfsigned"
 	//+kubebuilder:scaffold:imports
 )
 

@@ -30,8 +30,6 @@ RUN go mod download
 # Copy the go source
 COPY cmd/ cmd/
 COPY pkg pkg/
-COPY controllers controllers/
-
 
 # Build addons
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o agent cmd/addon-agent/main.go

@@ -13,9 +13,9 @@ import (
 	"open-cluster-management.io/addon-framework/pkg/agent"
 	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
-	"open-cluster-management.io/cluster-proxy/pkg/addon/operator/authentication/selfsigned"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 	"open-cluster-management.io/cluster-proxy/pkg/common"
+	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/operator/authentication/selfsigned"
 
 	"github.com/pkg/errors"
 	appsv1 "k8s.io/api/apps/v1"
