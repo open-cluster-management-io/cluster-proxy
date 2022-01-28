@@ -388,7 +388,7 @@ func newAgentDeployment(clusterName, targetNamespace string, proxyConfig *proxyv
 								},
 							},
 							ReadinessProbe: &corev1.Probe{
-								Handler: corev1.Handler{
+								ProbeHandler: corev1.ProbeHandler{
 									HTTPGet: &corev1.HTTPGetAction{
 										Port: intstr.FromInt(8888),
 									},
