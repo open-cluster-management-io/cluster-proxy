@@ -2,15 +2,12 @@ package agent
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/rsa"
-	"crypto/x509"
-	"encoding/pem"
 	"fmt"
 	"strconv"
 	"time"
 
 	"open-cluster-management.io/addon-framework/pkg/agent"
+	"open-cluster-management.io/addon-framework/pkg/utils"
 	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
@@ -19,6 +16,7 @@ import (
 
 	"github.com/pkg/errors"
 	appsv1 "k8s.io/api/apps/v1"
+	certificatesv1 "k8s.io/api/certificates/v1"
 	csrv1 "k8s.io/api/certificates/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -28,6 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/klog/v2"
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -94,6 +93,10 @@ func (p *proxyAgent) Manifests(managedCluster *clusterv1.ManagedCluster, addon *
 }
 
 func (p *proxyAgent) GetAgentAddonOptions() agent.AgentAddonOptions {
+	caCertData, caKeyData, err := p.selfSigner.CA().Config.GetPEMBytes()
+	if err != nil {
+		klog.Fatal(err)
+	}
 	return agent.AgentAddonOptions{
 		AddonName:       common.AddonName,
 		InstallStrategy: agent.InstallAllStrategy(common.AddonInstallNamespace),
@@ -124,55 +127,17 @@ func (p *proxyAgent) GetAgentAddonOptions() agent.AgentAddonOptions {
 				return cluster.Spec.HubAcceptsClient
 			},
 			PermissionConfig: p.setupPermission,
-			CSRSign: func(csr *csrv1.CertificateSigningRequest) []byte {
-				if csr.Spec.SignerName != ProxyAgentSignerName {
-					return nil
-				}
-				b, _ := pem.Decode(csr.Spec.Request)
-				parsed, err := x509.ParseCertificateRequest(b.Bytes)
-				if err != nil {
-					return nil
-				}
-				validity := time.Hour * 24 * 180
-				caCert := p.selfSigner.CA().Config.Certs[0]
-				tmpl := &x509.Certificate{
-					SerialNumber:       caCert.SerialNumber,
-					Subject:            parsed.Subject,
-					DNSNames:           parsed.DNSNames,
-					IPAddresses:        parsed.IPAddresses,
-					EmailAddresses:     parsed.EmailAddresses,
-					URIs:               parsed.URIs,
-					PublicKeyAlgorithm: parsed.PublicKeyAlgorithm,
-					PublicKey:          parsed.PublicKey,
-					Extensions:         parsed.Extensions,
-					ExtraExtensions:    parsed.ExtraExtensions,
-					IsCA:               false,
-					KeyUsage:           x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
-					ExtKeyUsage: []x509.ExtKeyUsage{
-						x509.ExtKeyUsageServerAuth,
-						x509.ExtKeyUsageClientAuth,
-					},
-				}
-				now := time.Now()
-				tmpl.NotBefore = now
-				tmpl.NotAfter = now.Add(validity)
-
-				rsaKey := p.selfSigner.CA().Config.Key.(*rsa.PrivateKey)
-				der, err := x509.CreateCertificate(
-					rand.Reader,
-					tmpl,
-					p.selfSigner.CA().Config.Certs[0],
-					parsed.PublicKey,
-					rsaKey)
-				if err != nil {
-					return nil
-				}
-				return pem.EncodeToMemory(&pem.Block{
-					Type:  "CERTIFICATE",
-					Bytes: der,
-				})
-			},
+			CSRSign:          CustomSignerWithExpiry(ProxyAgentSignerName, caKeyData, caCertData, time.Hour*24*180),
 		},
+	}
+}
+
+func CustomSignerWithExpiry(customSignerName string, caKey, caData []byte, duration time.Duration) agent.CSRSignerFunc {
+	return func(csr *certificatesv1.CertificateSigningRequest) []byte {
+		if csr.Spec.SignerName != customSignerName {
+			return nil
+		}
+		return utils.DefaultSignerWithExpiry(caKey, caData, time.Hour*24*180)(csr)
 	}
 }
 
