@@ -75,6 +75,7 @@ var _ = Describe("Certificate rotation Test",
 						return true, nil
 					}).
 					WithTimeout(time.Minute).
+					WithPolling(time.Second * 10).
 					Should(BeTrue())
 			})
 

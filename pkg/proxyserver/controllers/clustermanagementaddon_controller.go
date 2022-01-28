@@ -74,6 +74,7 @@ func RegisterClusterManagementAddonReconciler(
 		SecretGetter:     nativeClient.CoreV1(),
 		ServiceGetter:    nativeClient.CoreV1(),
 		DeploymentGetter: nativeClient.AppsV1(),
+		EventRecorder:    events.NewInMemoryRecorder("ClusterManagementAddonReconciler"),
 	}
 	return r.SetupWithManager(mgr)
 }
