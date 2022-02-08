@@ -2,20 +2,13 @@ package agent
 
 import (
 	"context"
+	"embed"
+	"encoding/base64"
 	"fmt"
 	"strconv"
 	"time"
 
-	"open-cluster-management.io/addon-framework/pkg/agent"
-	"open-cluster-management.io/addon-framework/pkg/utils"
-	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
-	clusterv1 "open-cluster-management.io/api/cluster/v1"
-	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
-	"open-cluster-management.io/cluster-proxy/pkg/common"
-	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/operator/authentication/selfsigned"
-
 	"github.com/pkg/errors"
-	appsv1 "k8s.io/api/apps/v1"
 	certificatesv1 "k8s.io/api/certificates/v1"
 	csrv1 "k8s.io/api/certificates/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -24,83 +17,29 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/klog/v2"
 	"k8s.io/utils/pointer"
+	"open-cluster-management.io/addon-framework/pkg/addonfactory"
+	"open-cluster-management.io/addon-framework/pkg/agent"
+	"open-cluster-management.io/addon-framework/pkg/utils"
+	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
+	clusterv1 "open-cluster-management.io/api/cluster/v1"
+	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
+	"open-cluster-management.io/cluster-proxy/pkg/common"
+	"open-cluster-management.io/cluster-proxy/pkg/config"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-var _ agent.AgentAddon = &proxyAgent{}
+//go:embed manifests
+var FS embed.FS
 
 const (
 	ProxyAgentSignerName = "open-cluster-management.io/proxy-agent-signer"
 )
 
-func NewProxyAgent(runtimeClient client.Client, nativeClient kubernetes.Interface, signer selfsigned.SelfSigner) agent.AgentAddon {
-	return &proxyAgent{
-		runtimeClient: runtimeClient,
-		nativeClient:  nativeClient,
-		selfSigner:    signer,
-	}
-}
-
-type proxyAgent struct {
-	runtimeClient client.Reader
-	nativeClient  kubernetes.Interface
-	selfSigner    selfsigned.SelfSigner
-}
-
-func (p *proxyAgent) Manifests(managedCluster *clusterv1.ManagedCluster, addon *addonv1alpha1.ManagedClusterAddOn) ([]runtime.Object, error) {
-	// prepping
-	clusterAddon := &addonv1alpha1.ClusterManagementAddOn{}
-	if err := p.runtimeClient.Get(context.TODO(), types.NamespacedName{
-		Name: addon.Name,
-	}, clusterAddon); err != nil {
-		return nil, err
-	}
-	proxyConfig := &proxyv1alpha1.ManagedProxyConfiguration{}
-	if err := p.runtimeClient.Get(context.TODO(), types.NamespacedName{
-		Name: clusterAddon.Spec.AddOnConfiguration.CRName,
-	}, proxyConfig); err != nil {
-		return nil, err
-	}
-
-	// find the referenced proxy load-balancer prescribed in the proxy config if there's any
-	var proxyServerLoadBalancer *corev1.Service
-	if proxyConfig.Spec.ProxyServer.Entrypoint.Type == proxyv1alpha1.EntryPointTypeLoadBalancerService {
-		entrySvc, err := p.nativeClient.CoreV1().
-			Services(proxyConfig.Spec.ProxyServer.Namespace).
-			Get(context.TODO(),
-				proxyConfig.Spec.ProxyServer.Entrypoint.LoadBalancerService.Name,
-				metav1.GetOptions{})
-		if err != nil {
-			return nil, errors.Wrapf(err, "failed getting proxy loadbalancer")
-		}
-		if len(entrySvc.Status.LoadBalancer.Ingress) == 0 {
-			return nil, fmt.Errorf("the load-balancer service for proxy-server ingress is not yet provisioned")
-		}
-		proxyServerLoadBalancer = entrySvc
-	}
-
-	objs := []runtime.Object{
-		newNamespace(addon.Spec.InstallNamespace),
-		newCASecret(addon.Spec.InstallNamespace, AgentCASecretName, p.selfSigner.CAData()),
-		newClusterService(addon.Spec.InstallNamespace, managedCluster.Name),
-		newAgentDeployment(managedCluster.Name, addon.Spec.InstallNamespace, proxyConfig, proxyServerLoadBalancer),
-	}
-	return objs, nil
-}
-
-func (p *proxyAgent) GetAgentAddonOptions() agent.AgentAddonOptions {
-	caCertData, caKeyData, err := p.selfSigner.CA().Config.GetPEMBytes()
-	if err != nil {
-		klog.Fatal(err)
-	}
-	return agent.AgentAddonOptions{
-		AddonName:       common.AddonName,
-		InstallStrategy: agent.InstallAllStrategy(common.AddonInstallNamespace),
-		Registration: &agent.RegistrationOption{
+func NewAgentAddon(scheme *runtime.Scheme, caCertData, caKeyData []byte, runtimeClient client.Client, nativeClient kubernetes.Interface) (agent.AgentAddon, error) {
+	return addonfactory.NewAgentAddonFactory(common.AddonName, FS, "manifests/charts/addon-agent").
+		WithAgentRegistrationOption(&agent.RegistrationOption{
 			CSRConfigurations: func(cluster *clusterv1.ManagedCluster) []addonv1alpha1.RegistrationConfig {
 				return []addonv1alpha1.RegistrationConfig{
 					{
@@ -126,9 +65,88 @@ func (p *proxyAgent) GetAgentAddonOptions() agent.AgentAddonOptions {
 			CSRApproveCheck: func(cluster *clusterv1.ManagedCluster, addon *addonv1alpha1.ManagedClusterAddOn, csr *csrv1.CertificateSigningRequest) bool {
 				return cluster.Spec.HubAcceptsClient
 			},
-			PermissionConfig: p.setupPermission,
+			PermissionConfig: NewClusterProxySetupPermissionFunc(runtimeClient, nativeClient),
 			CSRSign:          CustomSignerWithExpiry(ProxyAgentSignerName, caKeyData, caCertData, time.Hour*24*180),
-		},
+		}).
+		WithInstallStrategy(agent.InstallAllStrategy(common.AddonInstallNamespace)).
+		WithGetValuesFuncs(GetClusterProxyValueFunc(runtimeClient, nativeClient, caCertData)).
+		BuildHelmAgentAddon()
+
+}
+
+func GetClusterProxyValueFunc(runtimeClient client.Client, nativeClient kubernetes.Interface, caCertData []byte) addonfactory.GetValuesFunc {
+	return func(cluster *clusterv1.ManagedCluster,
+		addon *addonv1alpha1.ManagedClusterAddOn) (addonfactory.Values, error) {
+		// prepping
+		clusterAddon := &addonv1alpha1.ClusterManagementAddOn{}
+		if err := runtimeClient.Get(context.TODO(), types.NamespacedName{
+			Name: common.AddonName,
+		}, clusterAddon); err != nil {
+			return nil, err
+		}
+		proxyConfig := &proxyv1alpha1.ManagedProxyConfiguration{}
+		if err := runtimeClient.Get(context.TODO(), types.NamespacedName{
+			Name: clusterAddon.Spec.AddOnConfiguration.CRName,
+		}, proxyConfig); err != nil {
+			return nil, err
+		}
+		// this is how we set the right ingress endpoint for proxy servers to
+		// receive handshakes from proxy agents:
+		// 1. upon "Hostname" type, use the prescribed hostname directly
+		// 2. upon "LoadBalancerService" type, use the first entry in the ip lists
+		// 3. otherwise defaulted to the in-cluster service endpoint
+		serviceEntryPoint := proxyConfig.Spec.ProxyServer.InClusterServiceName + "." + proxyConfig.Spec.ProxyServer.Namespace
+		// find the referenced proxy load-balancer prescribed in the proxy config if there's any
+		var proxyServerLoadBalancer *corev1.Service
+		if proxyConfig.Spec.ProxyServer.Entrypoint.Type == proxyv1alpha1.EntryPointTypeLoadBalancerService {
+			entrySvc, err := nativeClient.CoreV1().
+				Services(proxyConfig.Spec.ProxyServer.Namespace).
+				Get(context.TODO(),
+					proxyConfig.Spec.ProxyServer.Entrypoint.LoadBalancerService.Name,
+					metav1.GetOptions{})
+			if err != nil {
+				return nil, errors.Wrapf(err, "failed getting proxy loadbalancer")
+			}
+			if len(entrySvc.Status.LoadBalancer.Ingress) == 0 {
+				return nil, fmt.Errorf("the load-balancer service for proxy-server ingress is not yet provisioned")
+			}
+			proxyServerLoadBalancer = entrySvc
+		}
+		addonAgentArgs := []string{
+			"--hub-kubeconfig=/etc/kubeconfig/kubeconfig",
+			"--cluster-name=" + cluster.Name,
+			"--proxy-server-namespace=" + proxyConfig.Spec.ProxyServer.Namespace,
+		}
+		annotations := make(map[string]string)
+		switch proxyConfig.Spec.ProxyServer.Entrypoint.Type {
+		case proxyv1alpha1.EntryPointTypeHostname:
+			serviceEntryPoint = proxyConfig.Spec.ProxyServer.Entrypoint.Hostname.Value
+		case proxyv1alpha1.EntryPointTypeLoadBalancerService:
+			serviceEntryPoint = proxyServerLoadBalancer.Status.LoadBalancer.Ingress[0].IP
+		case proxyv1alpha1.EntryPointTypePortForward:
+			serviceEntryPoint = "127.0.0.1"
+			addonAgentArgs = append(addonAgentArgs,
+				"--enable-port-forward-proxy=true")
+			annotations[common.AnnotationKeyConfigurationGeneration] = strconv.Itoa(int(proxyConfig.Generation))
+		}
+
+		registry, image, tag := config.GetParsedAgentImage()
+		return map[string]interface{}{
+			"agentDeploymentName":      "cluster-proxy-proxy-agent",
+			"serviceDomain":            "svc.cluster.local",
+			"includeNamespaceCreation": true,
+			"spokeAddonNamespace":      "open-cluster-management-cluster-proxy",
+
+			"clusterName":                cluster.Name,
+			"registry":                   registry,
+			"image":                      image,
+			"tag":                        tag,
+			"replicas":                   proxyConfig.Spec.ProxyAgent.Replicas,
+			"base64EncodedCAData":        base64.StdEncoding.EncodeToString(caCertData),
+			"serviceEntryPoint":          serviceEntryPoint,
+			"agentDeploymentAnnotations": annotations,
+			"additionalProxyAgentArgs":   addonAgentArgs,
+		}, nil
 	}
 }
 
@@ -141,90 +159,96 @@ func CustomSignerWithExpiry(customSignerName string, caKey, caData []byte, durat
 	}
 }
 
-func (p *proxyAgent) setupPermission(cluster *clusterv1.ManagedCluster, addon *addonv1alpha1.ManagedClusterAddOn) error {
-	// prepping
-	clusterAddon := &addonv1alpha1.ClusterManagementAddOn{}
-	if err := p.runtimeClient.Get(context.TODO(), types.NamespacedName{
-		Name: addon.Name,
-	}, clusterAddon); err != nil {
-		return err
-	}
-	proxyConfig := &proxyv1alpha1.ManagedProxyConfiguration{}
-	if err := p.runtimeClient.Get(context.TODO(), types.NamespacedName{
-		Name: clusterAddon.Spec.AddOnConfiguration.CRName,
-	}, proxyConfig); err != nil {
-		return err
-	}
+type SetupPermissionFunc func(cluster *clusterv1.ManagedCluster, addon *addonv1alpha1.ManagedClusterAddOn) error
 
-	namespace := cluster.Name
-
-	// TODO: consider switching to SSA at some point
-	role := &rbacv1.Role{
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: namespace,
-			Name:      "cluster-proxy-addon-agent",
-			OwnerReferences: []metav1.OwnerReference{
-				{
-					APIVersion:         addonv1alpha1.GroupVersion.String(),
-					Kind:               "ManagedClusterAddOn",
-					Name:               addon.Name,
-					BlockOwnerDeletion: pointer.Bool(true),
-					UID:                addon.UID,
-				},
-			},
-		},
-		Rules: []rbacv1.PolicyRule{
-			{
-				APIGroups: []string{"coordination.k8s.io"},
-				Verbs:     []string{"*"},
-				Resources: []string{"leases"},
-			},
-		},
-	}
-
-	roleBinding := &rbacv1.RoleBinding{
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: namespace,
-			Name:      "cluster-proxy-addon-agent",
-			OwnerReferences: []metav1.OwnerReference{
-				{
-					APIVersion:         addonv1alpha1.GroupVersion.String(),
-					Kind:               "ManagedClusterAddOn",
-					Name:               addon.Name,
-					BlockOwnerDeletion: pointer.Bool(true),
-					UID:                addon.UID,
-				},
-			},
-		},
-		RoleRef: rbacv1.RoleRef{
-			Kind: "Role",
-			Name: "cluster-proxy-addon-agent",
-		},
-		Subjects: []rbacv1.Subject{
-			{
-				Kind: rbacv1.GroupKind,
-				Name: common.SubjectGroupClusterProxy,
-			},
-		},
-	}
-
-	if _, err := p.nativeClient.RbacV1().Roles(namespace).Create(
-		context.TODO(),
-		role,
-		metav1.CreateOptions{}); err != nil {
-		if !apierrors.IsAlreadyExists(err) {
+func NewClusterProxySetupPermissionFunc(
+	runtimeClient client.Client,
+	nativeClient kubernetes.Interface) SetupPermissionFunc {
+	return func(cluster *clusterv1.ManagedCluster, addon *addonv1alpha1.ManagedClusterAddOn) error {
+		// prepping
+		clusterAddon := &addonv1alpha1.ClusterManagementAddOn{}
+		if err := runtimeClient.Get(context.TODO(), types.NamespacedName{
+			Name: addon.Name,
+		}, clusterAddon); err != nil {
 			return err
 		}
-	}
-	if _, err := p.nativeClient.RbacV1().RoleBindings(namespace).Create(
-		context.TODO(),
-		roleBinding,
-		metav1.CreateOptions{}); err != nil {
-		if !apierrors.IsAlreadyExists(err) {
+		proxyConfig := &proxyv1alpha1.ManagedProxyConfiguration{}
+		if err := runtimeClient.Get(context.TODO(), types.NamespacedName{
+			Name: clusterAddon.Spec.AddOnConfiguration.CRName,
+		}, proxyConfig); err != nil {
 			return err
 		}
+
+		namespace := cluster.Name
+
+		// TODO: consider switching to SSA at some point
+		role := &rbacv1.Role{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: namespace,
+				Name:      "cluster-proxy-addon-agent",
+				OwnerReferences: []metav1.OwnerReference{
+					{
+						APIVersion:         addonv1alpha1.GroupVersion.String(),
+						Kind:               "ManagedClusterAddOn",
+						Name:               addon.Name,
+						BlockOwnerDeletion: pointer.Bool(true),
+						UID:                addon.UID,
+					},
+				},
+			},
+			Rules: []rbacv1.PolicyRule{
+				{
+					APIGroups: []string{"coordination.k8s.io"},
+					Verbs:     []string{"*"},
+					Resources: []string{"leases"},
+				},
+			},
+		}
+
+		roleBinding := &rbacv1.RoleBinding{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: namespace,
+				Name:      "cluster-proxy-addon-agent",
+				OwnerReferences: []metav1.OwnerReference{
+					{
+						APIVersion:         addonv1alpha1.GroupVersion.String(),
+						Kind:               "ManagedClusterAddOn",
+						Name:               addon.Name,
+						BlockOwnerDeletion: pointer.Bool(true),
+						UID:                addon.UID,
+					},
+				},
+			},
+			RoleRef: rbacv1.RoleRef{
+				Kind: "Role",
+				Name: "cluster-proxy-addon-agent",
+			},
+			Subjects: []rbacv1.Subject{
+				{
+					Kind: rbacv1.GroupKind,
+					Name: common.SubjectGroupClusterProxy,
+				},
+			},
+		}
+
+		if _, err := nativeClient.RbacV1().Roles(namespace).Create(
+			context.TODO(),
+			role,
+			metav1.CreateOptions{}); err != nil {
+			if !apierrors.IsAlreadyExists(err) {
+				return err
+			}
+		}
+		if _, err := nativeClient.RbacV1().RoleBindings(namespace).Create(
+			context.TODO(),
+			roleBinding,
+			metav1.CreateOptions{}); err != nil {
+			if !apierrors.IsAlreadyExists(err) {
+				return err
+			}
+		}
+		return nil
 	}
-	return nil
 }
 
 const (
@@ -233,196 +257,3 @@ const (
 	AgentSecretName   = "cluster-proxy-open-cluster-management.io-proxy-agent-signer-client-cert"
 	AgentCASecretName = "cluster-proxy-ca"
 )
-
-func newNamespace(targetNamespace string) *corev1.Namespace {
-	return &corev1.Namespace{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "v1",
-			Kind:       "Namespace",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name: targetNamespace,
-		},
-	}
-}
-
-func newAgentDeployment(clusterName, targetNamespace string, proxyConfig *proxyv1alpha1.ManagedProxyConfiguration, proxyLoadBalancer *corev1.Service) *appsv1.Deployment {
-	// this is how we set the right ingress endpoint for proxy servers to
-	// receive handshakes from proxy agents:
-	// 1. upon "Hostname" type, use the prescribed hostname directly
-	// 2. upon "LoadBalancerService" type, use the first entry in the ip lists
-	// 3. otherwise defaulted to the in-cluster service endpoint
-	serviceEntryPoint := proxyConfig.Spec.ProxyServer.InClusterServiceName + "." + proxyConfig.Spec.ProxyServer.Namespace
-	addonAgentArgs := []string{
-		"--hub-kubeconfig=/etc/kubeconfig/kubeconfig",
-		"--cluster-name=" + clusterName,
-		"--proxy-server-namespace=" + proxyConfig.Spec.ProxyServer.Namespace,
-	}
-	annotations := make(map[string]string)
-	switch proxyConfig.Spec.ProxyServer.Entrypoint.Type {
-	case proxyv1alpha1.EntryPointTypeHostname:
-		serviceEntryPoint = proxyConfig.Spec.ProxyServer.Entrypoint.Hostname.Value
-	case proxyv1alpha1.EntryPointTypeLoadBalancerService:
-		serviceEntryPoint = proxyLoadBalancer.Status.LoadBalancer.Ingress[0].IP
-	case proxyv1alpha1.EntryPointTypePortForward:
-		serviceEntryPoint = "127.0.0.1"
-		addonAgentArgs = append(addonAgentArgs,
-			"--enable-port-forward-proxy=true")
-		annotations[common.AnnotationKeyConfigurationGeneration] = strconv.Itoa(int(proxyConfig.Generation))
-	}
-
-	one := intstr.FromInt(1)
-	return &appsv1.Deployment{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "apps/v1",
-			Kind:       "Deployment",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:        proxyConfig.Name + "-" + common.ComponentNameProxyAgent,
-			Namespace:   targetNamespace,
-			Annotations: annotations,
-		},
-		Spec: appsv1.DeploymentSpec{
-			Replicas: &proxyConfig.Spec.ProxyAgent.Replicas,
-			Selector: &metav1.LabelSelector{
-				MatchLabels: map[string]string{
-					ApiserverNetworkProxyLabelAddon: common.AddonName,
-					common.LabelKeyComponentName:    common.ComponentNameProxyAgent,
-				},
-			},
-			Strategy: appsv1.DeploymentStrategy{
-				Type: appsv1.RollingUpdateDeploymentStrategyType,
-				RollingUpdate: &appsv1.RollingUpdateDeployment{
-					MaxSurge:       &one,
-					MaxUnavailable: &one,
-				},
-			},
-			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels: map[string]string{
-						ApiserverNetworkProxyLabelAddon: common.AddonName,
-						common.LabelKeyComponentName:    common.ComponentNameProxyAgent,
-					},
-					Annotations: annotations,
-				},
-				Spec: corev1.PodSpec{
-					Containers: []corev1.Container{
-						{
-							Name:            common.ComponentNameProxyAgent,
-							Image:           proxyConfig.Spec.ProxyAgent.Image,
-							ImagePullPolicy: corev1.PullIfNotPresent,
-							Command: []string{
-								"/proxy-agent",
-							},
-							Args: []string{
-								"--proxy-server-host=" + serviceEntryPoint,
-								"--agent-identifiers=" +
-									"host=" + clusterName + "&" +
-									"host=" + clusterName + "." + targetNamespace + "&" +
-									"host=" + clusterName + "." + targetNamespace + ".svc.cluster.local",
-								"--ca-cert=/etc/ca/ca.crt",
-								"--agent-cert=/etc/tls/tls.crt",
-								"--agent-key=/etc/tls/tls.key",
-							},
-							VolumeMounts: []corev1.VolumeMount{
-								{
-									Name:      "ca",
-									ReadOnly:  true,
-									MountPath: "/etc/ca/",
-								},
-								{
-									Name:      "hub",
-									ReadOnly:  true,
-									MountPath: "/etc/tls/",
-								},
-							},
-						},
-						{
-							Name:            "addon-agent",
-							Image:           proxyConfig.Spec.ProxyAgent.Image,
-							ImagePullPolicy: corev1.PullIfNotPresent,
-							Command: []string{
-								"/agent",
-							},
-							Args: addonAgentArgs,
-							VolumeMounts: []corev1.VolumeMount{
-								{
-									Name:      "hub-kubeconfig",
-									ReadOnly:  true,
-									MountPath: "/etc/kubeconfig/",
-								},
-							},
-							ReadinessProbe: &corev1.Probe{
-								ProbeHandler: corev1.ProbeHandler{
-									HTTPGet: &corev1.HTTPGetAction{
-										Port: intstr.FromInt(8888),
-									},
-								},
-							},
-						},
-					},
-					Volumes: []corev1.Volume{
-						{
-							Name: "ca",
-							VolumeSource: corev1.VolumeSource{
-								Secret: &corev1.SecretVolumeSource{
-									SecretName: AgentCASecretName,
-								},
-							},
-						},
-						{
-							Name: "hub",
-							VolumeSource: corev1.VolumeSource{
-								Secret: &corev1.SecretVolumeSource{
-									SecretName: AgentSecretName,
-								},
-							},
-						},
-						{
-							Name: "hub-kubeconfig",
-							VolumeSource: corev1.VolumeSource{
-								Secret: &corev1.SecretVolumeSource{
-									SecretName: "cluster-proxy-hub-kubeconfig",
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-	}
-}
-
-func newCASecret(namespace, name string, caData []byte) *corev1.Secret {
-	return &corev1.Secret{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "v1",
-			Kind:       "Secret",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: namespace,
-			Name:      name,
-		},
-		Data: map[string][]byte{
-			selfsigned.TLSCACert: caData,
-		},
-	}
-}
-
-func newClusterService(namespace, name string) *corev1.Service {
-	const nativeKubernetesInClusterService = "kubernetes.default.svc.cluster.local"
-	return &corev1.Service{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "v1",
-			Kind:       "Service",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: namespace,
-			Name:      name,
-		},
-		Spec: corev1.ServiceSpec{
-			Type:         corev1.ServiceTypeExternalName,
-			ExternalName: nativeKubernetesInClusterService,
-		},
-	}
-}

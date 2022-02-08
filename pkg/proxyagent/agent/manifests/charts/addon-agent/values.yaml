@@ -1,0 +1,29 @@
+clusterName: loopback
+
+agentDeploymentName: cluster-proxy-proxy-agent
+
+includeNamespaceCreation: false
+
+# Image registry
+registry: quay.io/open-cluster-management
+
+# Image of the cluster-gateway instances
+image: cluster-proxy
+
+# Image tag
+tag: v0.1.3
+
+# Number of replicas
+replicas: 1
+
+spokeAddonNamespace: "open-cluster-management-cluster-proxy"
+
+agentDeploymentAnnotations: {}
+
+additionalProxyAgentArgs: []
+
+serviceEntryPoint: ""
+
+base64EncodedCAData: Zm9vCg==
+
+serviceDomain: ""

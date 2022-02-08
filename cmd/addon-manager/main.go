@@ -158,11 +158,27 @@ func main() {
 		setupLog.Error(err, "unable to set up ready check")
 		os.Exit(1)
 	}
-	addonManager.AddAgent(agent.NewProxyAgent(
+	caCertData, caKeyData, err := selfSigner.CA().Config.GetPEMBytes()
+	if err != nil {
+		setupLog.Error(err, "unable to get content from signer CA")
+		os.Exit(1)
+	}
+
+	clusterProxyAddon, err := agent.NewAgentAddon(
+		mgr.GetScheme(),
+		caCertData,
+		caKeyData,
 		mgr.GetClient(),
-		nativeClient,
-		selfSigner,
-	))
+		nativeClient)
+	if err != nil {
+		setupLog.Error(err, "unable to instantiate cluster-proxy addon")
+		os.Exit(1)
+	}
+
+	if err := addonManager.AddAgent(clusterProxyAddon); err != nil {
+		setupLog.Error(err, "unable to register cluster-proxy addon")
+		os.Exit(1)
+	}
 
 	ctx, cancel := context.WithCancel(ctrl.SetupSignalHandler())
 	defer cancel()

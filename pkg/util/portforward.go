@@ -38,12 +38,29 @@ func NewRoundRobinLocalProxy(
 	podNamespace,
 	podSelector string,
 	targetPort int32) LocalProxyServer {
+	return NewRoundRobinLocalProxyWithReqId(
+		restConfig,
+		readiness,
+		podNamespace,
+		podSelector,
+		targetPort,
+		0,
+	)
+}
+
+func NewRoundRobinLocalProxyWithReqId(
+	restConfig *rest.Config,
+	readiness *atomic.Value,
+	podNamespace,
+	podSelector string,
+	targetPort int32,
+	reqId int) LocalProxyServer {
 	return &roundRobin{
 		restConfig:           restConfig,
 		proxyServerNamespace: podNamespace,
 		podSelector:          podSelector,
 		targetPort:           targetPort,
-		reqId:                0,
+		reqId:                reqId,
 		lock:                 &sync.Mutex{},
 		firstConnReceived:    readiness,
 	}

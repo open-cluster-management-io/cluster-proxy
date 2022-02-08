@@ -84,37 +84,7 @@ var _ = Describe("Basic install Test",
 
 		It("Probe cluster health",
 			func() {
-				cfg := f.HubRESTConfig()
-				c := f.HubRuntimeClient()
-				proxyConfiguration := &proxyv1alpha1.ManagedProxyConfiguration{}
-				err := c.Get(context.TODO(), types.NamespacedName{
-					Name: "cluster-proxy",
-				}, proxyConfiguration)
-				Expect(err).NotTo(HaveOccurred())
-				waitAgentReady(proxyConfiguration, f.HubNativeClient())
-
-				By("Running local port-forward stream to proxy service")
-				localProxy := util.NewRoundRobinLocalProxy(
-					cfg,
-					&atomic.Value{},
-					proxyConfiguration.Spec.ProxyServer.Namespace,
-					common.LabelKeyComponentName+"="+common.ComponentNameProxyServer, // TODO: configurable label selector?
-					8090,
-				)
-
-				ctx, cancel := context.WithCancel(context.TODO())
-				defer cancel()
-
-				closeFn, err := localProxy.Listen(ctx)
-				Expect(err).NotTo(HaveOccurred())
-				defer closeFn()
-
-				mungledRestConfig := buildTunnelRestConfig(ctx, f, proxyConfiguration)
-				nativeClient, err := kubernetes.NewForConfig(mungledRestConfig)
-				Expect(err).NotTo(HaveOccurred())
-				data, err := nativeClient.RESTClient().Get().AbsPath("/healthz").DoRaw(context.TODO())
-				Expect(err).NotTo(HaveOccurred())
-				Expect(string(data)).To(Equal("ok"))
+				probeOnce(f)
 			})
 
 		It("ClusterProxy configuration - scale proxy agent to 1", func() {
@@ -223,7 +193,6 @@ var _ = Describe("Basic install Test",
 				}).
 				WithTimeout(time.Minute).
 				Should(BeTrue())
-
 			waitAgentReady(proxyConfiguration, f.HubNativeClient())
 		})
 
@@ -251,44 +220,51 @@ var _ = Describe("Basic install Test",
 			Expect(err).NotTo(HaveOccurred())
 			Expect(proxyAgentDeploy.Annotations[common.AnnotationKeyConfigurationGeneration]).
 				To(Equal(strconv.Itoa(int(expectedGeneration))))
+			waitAgentReady(proxyConfiguration, f.HubNativeClient())
 		})
 
 		It("Probe cluster health should work after proxy servers restart",
 			func() {
-				cfg := f.HubRESTConfig()
-				c := f.HubRuntimeClient()
-				proxyConfiguration := &proxyv1alpha1.ManagedProxyConfiguration{}
-
-				err := c.Get(context.TODO(), types.NamespacedName{
-					Name: "cluster-proxy",
-				}, proxyConfiguration)
-				Expect(err).NotTo(HaveOccurred())
-
-				By("Running local port-forward stream to proxy service")
-				localProxy := util.NewRoundRobinLocalProxy(
-					cfg,
-					&atomic.Value{},
-					proxyConfiguration.Spec.ProxyServer.Namespace,
-					common.LabelKeyComponentName+"="+common.ComponentNameProxyServer, // TODO: configurable label selector?
-					8090,
-				)
-
-				ctx, cancel := context.WithCancel(context.TODO())
-				defer cancel()
-
-				closeFn, err := localProxy.Listen(ctx)
-				Expect(err).NotTo(HaveOccurred())
-				defer closeFn()
-
-				mungledRestConfig := buildTunnelRestConfig(ctx, f, proxyConfiguration)
-				nativeClient, err := kubernetes.NewForConfig(mungledRestConfig)
-				Expect(err).NotTo(HaveOccurred())
-				data, err := nativeClient.RESTClient().Get().AbsPath("/healthz").DoRaw(context.TODO())
-				Expect(err).NotTo(HaveOccurred())
-				Expect(string(data)).To(Equal("ok"))
+				probeOnce(f)
 			})
 	})
 
+func probeOnce(f framework.Framework) {
+	Eventually(
+		func() (bool, error) {
+			cfg := f.HubRESTConfig()
+			c := f.HubRuntimeClient()
+			proxyConfiguration := &proxyv1alpha1.ManagedProxyConfiguration{}
+			err := c.Get(context.TODO(), types.NamespacedName{
+				Name: "cluster-proxy",
+			}, proxyConfiguration)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Running local port-forward stream to proxy service")
+			localProxy := util.NewRoundRobinLocalProxyWithReqId(
+				cfg,
+				&atomic.Value{},
+				proxyConfiguration.Spec.ProxyServer.Namespace,
+				common.LabelKeyComponentName+"="+common.ComponentNameProxyServer, // TODO: configurable label selector?
+				8090,
+				200,
+			)
+
+			ctx, cancel := context.WithCancel(context.TODO())
+			defer cancel()
+
+			closeFn, err := localProxy.Listen(ctx)
+			Expect(err).NotTo(HaveOccurred())
+			defer closeFn()
+
+			mungledRestConfig := buildTunnelRestConfig(ctx, f, proxyConfiguration)
+			mungledRestConfig.Timeout = time.Second * 10
+			nativeClient, err := kubernetes.NewForConfig(mungledRestConfig)
+			Expect(err).NotTo(HaveOccurred())
+			data, err := nativeClient.RESTClient().Get().AbsPath("/healthz").DoRaw(context.TODO())
+			return string(data) == "ok", err
+		}).WithTimeout(time.Minute).WithPolling(time.Second * 10)
+}
 func buildTunnelRestConfig(ctx context.Context, f framework.Framework, proxyConfiguration *proxyv1alpha1.ManagedProxyConfiguration) *rest.Config {
 	hubRestConfig := f.HubRESTConfig()
 	tunnelTlsCfg, err := util.GetKonnectivityTLSConfig(hubRestConfig, proxyConfiguration)
