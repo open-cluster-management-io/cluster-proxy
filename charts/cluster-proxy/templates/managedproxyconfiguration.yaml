@@ -24,4 +24,3 @@ spec:
       {{- end }}
   proxyAgent:
     image: {{ .Values.registry }}/{{ .Values.proxyAgentImage }}:{{ .Values.tag }}
-    proxyServerHost:
