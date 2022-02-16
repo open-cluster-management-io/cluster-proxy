@@ -31,7 +31,7 @@ spec:
       serviceAccount: cluster-proxy
       containers:
         - name: proxy-agent
-          image: {{ .Values.registry }}/{{ .Values.image }}:{{ .Values.tag }}
+          image: {{ .Values.proxyAgentImage }}
           imagePullPolicy: IfNotPresent
           command:
             - /proxy-agent

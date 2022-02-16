@@ -9,7 +9,7 @@ spec:
     signer:
       type: SelfSigned
   proxyServer:
-    image: {{ .Values.registry }}/{{ .Values.proxyServerImage }}:{{ .Values.tag }}
+    image: {{ .Values.proxyServerImage }}
     namespace: {{ .Release.Namespace }}
     entrypoint:
       {{- if .Values.proxyServer.entrypointAddress }}
@@ -23,4 +23,4 @@ spec:
       type: PortForward
       {{- end }}
   proxyAgent:
-    image: {{ .Values.registry }}/{{ .Values.proxyAgentImage }}:{{ .Values.tag }}
+    image: {{ .Values.proxyAgentImage }}
