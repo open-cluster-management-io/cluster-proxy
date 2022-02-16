@@ -141,6 +141,7 @@ func GetClusterProxyValueFunc(runtimeClient client.Client, nativeClient kubernet
 			"registry":                   registry,
 			"image":                      image,
 			"tag":                        tag,
+			"proxyAgentImage":            proxyConfig.Spec.ProxyAgent.Image,
 			"replicas":                   proxyConfig.Spec.ProxyAgent.Replicas,
 			"base64EncodedCAData":        base64.StdEncoding.EncodeToString(caCertData),
 			"serviceEntryPoint":          serviceEntryPoint,
