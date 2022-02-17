@@ -19,23 +19,15 @@ rules:
       - clustermanagementaddons/status
       - managedclusteraddons/status
     verbs:
-      - get
-      - list
-      - watch
-      - create
-      - update
-      - patch
+      - '*'
   - apiGroups:
       - proxy.open-cluster-management.io
     resources:
       - managedproxyconfigurations
       - managedproxyconfigurations/status
+      - managedproxyconfigurations/finalizers
     verbs:
-      - get
-      - list
-      - watch
-      - update
-      - patch
+      - '*'
   - apiGroups:
       - certificates.k8s.io
     resources:
