@@ -13,12 +13,10 @@ import (
 	csrv1 "k8s.io/api/certificates/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/utils/pointer"
 	"open-cluster-management.io/addon-framework/pkg/addonfactory"
 	"open-cluster-management.io/addon-framework/pkg/agent"
 	"open-cluster-management.io/addon-framework/pkg/utils"
@@ -65,8 +63,36 @@ func NewAgentAddon(scheme *runtime.Scheme, caCertData, caKeyData []byte, runtime
 			CSRApproveCheck: func(cluster *clusterv1.ManagedCluster, addon *addonv1alpha1.ManagedClusterAddOn, csr *csrv1.CertificateSigningRequest) bool {
 				return cluster.Spec.HubAcceptsClient
 			},
-			PermissionConfig: NewClusterProxySetupPermissionFunc(runtimeClient, nativeClient),
-			CSRSign:          CustomSignerWithExpiry(ProxyAgentSignerName, caKeyData, caCertData, time.Hour*24*180),
+			PermissionConfig: utils.NewRBACPermissionConfigBuilder(nativeClient).
+				WithStaticRole(&rbacv1.Role{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "cluster-proxy-addon-agent",
+					},
+					Rules: []rbacv1.PolicyRule{
+						{
+							APIGroups: []string{"coordination.k8s.io"},
+							Verbs:     []string{"*"},
+							Resources: []string{"leases"},
+						},
+					},
+				}).
+				WithStaticRoleBinding(&rbacv1.RoleBinding{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "cluster-proxy-addon-agent",
+					},
+					RoleRef: rbacv1.RoleRef{
+						Kind: "Role",
+						Name: "cluster-proxy-addon-agent",
+					},
+					Subjects: []rbacv1.Subject{
+						{
+							Kind: rbacv1.GroupKind,
+							Name: common.SubjectGroupClusterProxy,
+						},
+					},
+				}).
+				Build(),
+			CSRSign: CustomSignerWithExpiry(ProxyAgentSignerName, caKeyData, caCertData, time.Hour*24*180),
 		}).
 		WithInstallStrategy(agent.InstallAllStrategy(common.AddonInstallNamespace)).
 		WithGetValuesFuncs(GetClusterProxyValueFunc(runtimeClient, nativeClient, caCertData)).
@@ -156,99 +182,7 @@ func CustomSignerWithExpiry(customSignerName string, caKey, caData []byte, durat
 		if csr.Spec.SignerName != customSignerName {
 			return nil
 		}
-		return utils.DefaultSignerWithExpiry(caKey, caData, time.Hour*24*180)(csr)
-	}
-}
-
-type SetupPermissionFunc func(cluster *clusterv1.ManagedCluster, addon *addonv1alpha1.ManagedClusterAddOn) error
-
-func NewClusterProxySetupPermissionFunc(
-	runtimeClient client.Client,
-	nativeClient kubernetes.Interface) SetupPermissionFunc {
-	return func(cluster *clusterv1.ManagedCluster, addon *addonv1alpha1.ManagedClusterAddOn) error {
-		// prepping
-		clusterAddon := &addonv1alpha1.ClusterManagementAddOn{}
-		if err := runtimeClient.Get(context.TODO(), types.NamespacedName{
-			Name: addon.Name,
-		}, clusterAddon); err != nil {
-			return err
-		}
-		proxyConfig := &proxyv1alpha1.ManagedProxyConfiguration{}
-		if err := runtimeClient.Get(context.TODO(), types.NamespacedName{
-			Name: clusterAddon.Spec.AddOnConfiguration.CRName,
-		}, proxyConfig); err != nil {
-			return err
-		}
-
-		namespace := cluster.Name
-
-		// TODO: consider switching to SSA at some point
-		role := &rbacv1.Role{
-			ObjectMeta: metav1.ObjectMeta{
-				Namespace: namespace,
-				Name:      "cluster-proxy-addon-agent",
-				OwnerReferences: []metav1.OwnerReference{
-					{
-						APIVersion:         addonv1alpha1.GroupVersion.String(),
-						Kind:               "ManagedClusterAddOn",
-						Name:               addon.Name,
-						BlockOwnerDeletion: pointer.Bool(true),
-						UID:                addon.UID,
-					},
-				},
-			},
-			Rules: []rbacv1.PolicyRule{
-				{
-					APIGroups: []string{"coordination.k8s.io"},
-					Verbs:     []string{"*"},
-					Resources: []string{"leases"},
-				},
-			},
-		}
-
-		roleBinding := &rbacv1.RoleBinding{
-			ObjectMeta: metav1.ObjectMeta{
-				Namespace: namespace,
-				Name:      "cluster-proxy-addon-agent",
-				OwnerReferences: []metav1.OwnerReference{
-					{
-						APIVersion:         addonv1alpha1.GroupVersion.String(),
-						Kind:               "ManagedClusterAddOn",
-						Name:               addon.Name,
-						BlockOwnerDeletion: pointer.Bool(true),
-						UID:                addon.UID,
-					},
-				},
-			},
-			RoleRef: rbacv1.RoleRef{
-				Kind: "Role",
-				Name: "cluster-proxy-addon-agent",
-			},
-			Subjects: []rbacv1.Subject{
-				{
-					Kind: rbacv1.GroupKind,
-					Name: common.SubjectGroupClusterProxy,
-				},
-			},
-		}
-
-		if _, err := nativeClient.RbacV1().Roles(namespace).Create(
-			context.TODO(),
-			role,
-			metav1.CreateOptions{}); err != nil {
-			if !apierrors.IsAlreadyExists(err) {
-				return err
-			}
-		}
-		if _, err := nativeClient.RbacV1().RoleBindings(namespace).Create(
-			context.TODO(),
-			roleBinding,
-			metav1.CreateOptions{}); err != nil {
-			if !apierrors.IsAlreadyExists(err) {
-				return err
-			}
-		}
-		return nil
+		return utils.DefaultSignerWithExpiry(caKey, caData, duration)(csr)
 	}
 }
 
