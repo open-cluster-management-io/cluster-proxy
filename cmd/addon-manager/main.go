@@ -31,10 +31,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/klog/v2"
-	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/healthz"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-
+	"k8s.io/klog/v2/klogr"
 	"open-cluster-management.io/addon-framework/pkg/addonmanager"
 	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
 	"open-cluster-management.io/api/client/addon/clientset/versioned"
@@ -44,6 +41,8 @@ import (
 	"open-cluster-management.io/cluster-proxy/pkg/proxyagent/agent"
 	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/controllers"
 	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/operator/authentication/selfsigned"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -66,6 +65,7 @@ func main() {
 	var probeAddr string
 	var signerSecretNamespace, signerSecretName string
 
+	logger := klogr.New()
 	klog.SetOutput(os.Stdout)
 	klog.InitFlags(flag.CommandLine)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":58080", "The address the metric endpoint binds to.")
@@ -80,14 +80,10 @@ func main() {
 	flag.StringVar(&config.AgentImageName, "agent-image-name",
 		config.AgentImageName,
 		"The name of the addon agent's image")
-	opts := zap.Options{
-		Development: true,
-	}
-	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
 
-	// init log compoment
-	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+	// pipe controller-runtime logs to klog
+	ctrl.SetLogger(logger)
 
 	if err := config.ValidateAgentImage(); err != nil {
 		setupLog.Error(err, "failed to validate agent image name")
