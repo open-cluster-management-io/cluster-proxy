@@ -18,3 +18,4 @@ proxyAgentImage: quay.io/open-cluster-management/cluster-proxy:v0.1.4
 proxyServer:
   entrypointLoadBalancer: false
   entrypointAddress: ""
+  port: 8091
