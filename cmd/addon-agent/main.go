@@ -5,13 +5,16 @@ import (
 	"flag"
 	"net"
 	"net/http"
+	"os"
 	"sync/atomic"
 
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
+	"k8s.io/klog/v2/klogr"
 	"open-cluster-management.io/cluster-proxy/pkg/common"
 	"open-cluster-management.io/cluster-proxy/pkg/proxyagent/health"
 	"open-cluster-management.io/cluster-proxy/pkg/util"
+	ctrl "sigs.k8s.io/controller-runtime"
 )
 
 var (
@@ -23,6 +26,8 @@ var (
 
 func main() {
 
+	logger := klogr.New()
+	klog.SetOutput(os.Stdout)
 	klog.InitFlags(flag.CommandLine)
 	flag.StringVar(&hubKubeconfig, "hub-kubeconfig", "",
 		"The kubeconfig to talk to hub cluster")
@@ -33,6 +38,9 @@ func main() {
 	flag.BoolVar(&enablePortForwardProxy, "enable-port-forward-proxy", false,
 		"If true, running a local server forwarding tunnel shakes to proxy-server pods")
 	flag.Parse()
+
+	// pipe controller-runtime logs to klog
+	ctrl.SetLogger(logger)
 
 	cfg, err := clientcmd.BuildConfigFromFlags("", hubKubeconfig)
 	if err != nil {
