@@ -134,6 +134,12 @@ image:
 		--build-arg ADDON_AGENT_IMAGE_NAME=$(IMAGE_REGISTRY_NAME)/$(IMAGE_NAME):$(IMAGE_TAG) \
 		-t $(IMAGE_REGISTRY_NAME)/$(IMAGE_NAME):$(IMAGE_TAG) .
 
+pure-image:
+	docker build \
+		-f cmd/pure.Dockerfile \
+		--build-arg ADDON_AGENT_IMAGE_NAME=$(IMAGE_REGISTRY_NAME)/$(IMAGE_NAME):$(IMAGE_TAG) \
+		-t $(IMAGE_REGISTRY_NAME)/$(IMAGE_NAME):$(IMAGE_TAG) .
+
 test-integration:
 	@echo "TODO: Run integration test"
 
