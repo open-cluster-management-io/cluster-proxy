@@ -192,6 +192,12 @@ spec:
                               are deployed.'
                             type: string
                         type: object
+                      port:
+                        default: 8091
+                        description: '`port` is the target port to access proxy servers'
+                        format: int32
+                        minimum: 1
+                        type: integer
                       type:
                         description: '`type` is the type of the entrypoint of the
                           proxy servers. Currently supports "Hostname", "LoadBalancerService"'

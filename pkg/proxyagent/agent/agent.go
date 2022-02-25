@@ -156,6 +156,11 @@ func GetClusterProxyValueFunc(runtimeClient client.Client, nativeClient kubernet
 			annotations[common.AnnotationKeyConfigurationGeneration] = strconv.Itoa(int(proxyConfig.Generation))
 		}
 
+		serviceEntryPointPort := proxyConfig.Spec.ProxyServer.Entrypoint.Port
+		if serviceEntryPointPort == 0 {
+			serviceEntryPointPort = 8091
+		}
+
 		registry, image, tag := config.GetParsedAgentImage()
 		return map[string]interface{}{
 			"agentDeploymentName":      "cluster-proxy-proxy-agent",
@@ -171,6 +176,7 @@ func GetClusterProxyValueFunc(runtimeClient client.Client, nativeClient kubernet
 			"replicas":                   proxyConfig.Spec.ProxyAgent.Replicas,
 			"base64EncodedCAData":        base64.StdEncoding.EncodeToString(caCertData),
 			"serviceEntryPoint":          serviceEntryPoint,
+			"serviceEntryPointPort":      serviceEntryPointPort,
 			"agentDeploymentAnnotations": annotations,
 			"additionalProxyAgentArgs":   addonAgentArgs,
 		}, nil
