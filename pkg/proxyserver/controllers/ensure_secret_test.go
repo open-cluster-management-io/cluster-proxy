@@ -32,6 +32,12 @@ func TestEnsureSecretRotation(t *testing.T) {
 			ProxyServer: v1alpha1.ManagedProxyConfigurationProxyServer{
 				InClusterServiceName: expectedServiceName,
 				Namespace:            expectedNamespace,
+				Entrypoint: &v1alpha1.ManagedProxyConfigurationProxyServerEntrypoint{
+					Type: v1alpha1.EntryPointTypeHostname,
+					Hostname: &v1alpha1.EntryPointHostname{
+						Value: "example.com",
+					},
+				},
 			},
 		},
 	}
@@ -45,6 +51,7 @@ func TestEnsureSecretRotation(t *testing.T) {
 		"foo",
 		"tik.bar",
 		"tik.bar.svc",
+		"example.com",
 	}, receivingSANs)
 }
 
