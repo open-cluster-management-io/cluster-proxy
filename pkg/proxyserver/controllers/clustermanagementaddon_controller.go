@@ -405,6 +405,9 @@ func (c *ClusterManagementAddonReconciler) ensureRotation(config *proxyv1alpha1.
 		entrypoint,
 		config.Spec.ProxyServer.InClusterServiceName+"."+config.Spec.ProxyServer.Namespace,
 		config.Spec.ProxyServer.InClusterServiceName+"."+config.Spec.ProxyServer.Namespace+".svc")
+	if config.Spec.ProxyServer.Entrypoint != nil && config.Spec.ProxyServer.Entrypoint.Type == proxyv1alpha1.EntryPointTypeHostname {
+		sans = append(sans, config.Spec.ProxyServer.Entrypoint.Hostname.Value)
+	}
 
 	tweakClientCertUsageFunc := func(cert *x509.Certificate) error {
 		cert.ExtKeyUsage = []x509.ExtKeyUsage{
