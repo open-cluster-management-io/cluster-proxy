@@ -219,6 +219,12 @@ type ManagedProxyConfigurationProxyServerEntrypoint struct {
 	// `hostname` points to a fixed hostname for serving agents' handshakes.
 	// +optional
 	Hostname *EntryPointHostname `json:"hostname"`
+
+	// `port` is the target port to access proxy servers
+	// +optional
+	// +kubebuilder:default=8091
+	// +kubebuilder:validation:Minimum=1
+	Port int32 `json:"port,omitempty"`
 }
 
 // EntryPointType is the type of the entrypoint.

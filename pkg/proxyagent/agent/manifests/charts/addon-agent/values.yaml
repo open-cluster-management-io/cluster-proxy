@@ -25,6 +25,7 @@ agentDeploymentAnnotations: {}
 additionalProxyAgentArgs: []
 
 serviceEntryPoint: ""
+serviceEntryPointPort: 8091
 
 base64EncodedCAData: Zm9vCg==
 
