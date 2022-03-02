@@ -167,6 +167,7 @@ func GetClusterProxyValueFunc(runtimeClient client.Client, nativeClient kubernet
 			"serviceDomain":            "svc.cluster.local",
 			"includeNamespaceCreation": true,
 			"spokeAddonNamespace":      "open-cluster-management-cluster-proxy",
+			"additionalProxyAgentArgs": proxyConfig.Spec.ProxyAgent.AdditionalArgs,
 
 			"clusterName":                cluster.Name,
 			"registry":                   registry,
@@ -178,7 +179,7 @@ func GetClusterProxyValueFunc(runtimeClient client.Client, nativeClient kubernet
 			"serviceEntryPoint":          serviceEntryPoint,
 			"serviceEntryPointPort":      serviceEntryPointPort,
 			"agentDeploymentAnnotations": annotations,
-			"additionalProxyAgentArgs":   addonAgentArgs,
+			"addonAgentArgs":             addonAgentArgs,
 		}, nil
 	}
 }

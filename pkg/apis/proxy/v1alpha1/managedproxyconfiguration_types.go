@@ -204,6 +204,10 @@ type ManagedProxyConfigurationProxyServer struct {
 	// `entrypoint` defines how will the proxy agents connecting the servers.
 	// +optional
 	Entrypoint *ManagedProxyConfigurationProxyServerEntrypoint `json:"entrypoint"`
+
+	// `additionalArgs` adds arbitrary additional command line args to the proxy-server.
+	// +optional
+	AdditionalArgs []string `json:"additionalArgs,omitempty"`
 }
 
 // ManagedProxyConfigurationProxyServerEntrypoint prescribes the ingress for serving
@@ -287,6 +291,9 @@ type ManagedProxyConfigurationProxyAgent struct {
 	// +optional
 	// +kubebuilder:default=3
 	Replicas int32 `json:"replicas"`
+	// `additionalArgs` defines args used in proxy-agent.
+	// +optional
+	AdditionalArgs []string `json:"additionalArgs,omitempty"`
 }
 
 const (

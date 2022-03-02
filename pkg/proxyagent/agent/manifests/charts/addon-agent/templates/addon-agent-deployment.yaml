@@ -42,6 +42,9 @@ spec:
             - --ca-cert=/etc/ca/ca.crt
             - --agent-cert=/etc/tls/tls.crt
             - --agent-key=/etc/tls/tls.key
+            {{- range .Values.additionalProxyAgentArgs }}
+            - {{ . }}
+            {{- end }}
           volumeMounts:
             - name: ca
               mountPath: /etc/ca
@@ -56,7 +59,7 @@ spec:
             - /agent
           args:
             - --v=2
-            {{- range .Values.additionalProxyAgentArgs }}
+            {{- range .Values.addonAgentArgs }}
             - {{ . }}
             {{- end }}
           volumeMounts:
