@@ -203,8 +203,7 @@ type ManagedProxyConfigurationProxyServer struct {
 	// Note that the replicas will also be reflected in the flag `--server-count`
 	// so that agents can discover all the server instances.
 	// +optional
-	// +kubebuilder:default=3
-	Replicas int32 `json:"replicas,omitempty"`
+	Replicas int32 `json:"replicas"`
 	// `inClusterServiceName` is the name of the in-cluster service for proxying
 	// requests inside the hub cluster to the proxy servers.
 	// +optional

@@ -2,6 +2,7 @@ package install
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"strconv"
 	"sync/atomic"
@@ -137,26 +138,28 @@ var _ = Describe("Basic install Test",
 			Expect(err).NotTo(HaveOccurred())
 
 			Eventually(
-				func() bool {
+				func() error {
 					deploy := &appsv1.Deployment{}
 					err = c.Get(context.TODO(), types.NamespacedName{
 						Namespace: proxyConfiguration.Spec.ProxyServer.Namespace,
 						Name:      "cluster-proxy",
 					}, deploy)
-					Expect(err).NotTo(HaveOccurred())
+					if err != nil {
+						return err
+					}
 					if deploy.Status.Replicas != targetReplicas {
-						return false
+						return fmt.Errorf("replicas in status is not correct, get %d", deploy.Status.Replicas)
 					}
 					if deploy.Status.UpdatedReplicas != targetReplicas {
-						return false
+						return fmt.Errorf("updatedReplicas in status is not correct, get %d", deploy.Status.UpdatedReplicas)
 					}
 					if deploy.Status.ReadyReplicas != targetReplicas {
-						return false
+						return fmt.Errorf("readyReplicas in status is not correct, get %d", deploy.Status.ReadyReplicas)
 					}
-					return true
+					return nil
 				}).
 				WithTimeout(time.Minute).
-				Should(BeTrue())
+				Should(Succeed())
 		})
 
 		It("ClusterProxy configuration - scale proxy server to 1", func() {
@@ -173,26 +176,28 @@ var _ = Describe("Basic install Test",
 			Expect(err).NotTo(HaveOccurred())
 
 			Eventually(
-				func() bool {
+				func() error {
 					deploy := &appsv1.Deployment{}
 					err = c.Get(context.TODO(), types.NamespacedName{
 						Namespace: proxyConfiguration.Spec.ProxyServer.Namespace,
 						Name:      "cluster-proxy",
 					}, deploy)
-					Expect(err).NotTo(HaveOccurred())
+					if err != nil {
+						return err
+					}
 					if deploy.Status.Replicas != targetReplicas {
-						return false
+						return fmt.Errorf("replicas in status is not correct, get %d", deploy.Status.Replicas)
 					}
 					if deploy.Status.UpdatedReplicas != targetReplicas {
-						return false
+						return fmt.Errorf("updatedReplicas in status is not correct, get %d", deploy.Status.UpdatedReplicas)
 					}
 					if deploy.Status.ReadyReplicas != targetReplicas {
-						return false
+						return fmt.Errorf("readyReplica in status is not correct, get %d", deploy.Status.ReadyReplicas)
 					}
-					return true
+					return nil
 				}).
 				WithTimeout(time.Minute).
-				Should(BeTrue())
+				Should(Succeed())
 			waitAgentReady(proxyConfiguration, f.HubNativeClient())
 		})
 

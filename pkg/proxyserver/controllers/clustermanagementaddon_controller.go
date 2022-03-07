@@ -47,8 +47,6 @@ var _ reconcile.Reconciler = &ClusterManagementAddonReconciler{}
 
 var log = ctrl.Log.WithName("ClusterManagementAddonReconciler")
 
-const addonName = "cluster-proxy"
-
 func RegisterClusterManagementAddonReconciler(
 	mgr manager.Manager,
 	selfSigner selfsigned.SelfSigner,
@@ -260,8 +258,8 @@ func (c *ClusterManagementAddonReconciler) ensure(incomingGeneration int64, gvk 
 		}, current); err != nil {
 		if !apierrors.IsNotFound(err) {
 			return false, false, errors.Wrapf(err,
-				"failed to get resource kind: %v, namespace: %s, name %s",
-				resource.GetObjectKind().GroupVersionKind(),
+				"failed to get resource kind: %s, namespace: %s, name %s",
+				gvk.Kind,
 				resource.GetNamespace(),
 				resource.GetName(),
 			)
@@ -270,8 +268,8 @@ func (c *ClusterManagementAddonReconciler) ensure(incomingGeneration int64, gvk 
 		if err := c.Client.Create(context.TODO(), resource); err != nil {
 			if !apierrors.IsAlreadyExists(err) {
 				return false, false, errors.Wrapf(err,
-					"failed to create resource kind: %v, namespace: %s, name %s",
-					resource.GetObjectKind().GroupVersionKind(),
+					"failed to create resource kind: %s, namespace: %s, name %s",
+					gvk.Kind,
 					resource.GetNamespace(),
 					resource.GetName(),
 				)
@@ -303,8 +301,8 @@ func (c *ClusterManagementAddonReconciler) ensure(incomingGeneration int64, gvk 
 				return c.ensure(incomingGeneration, gvk, resource)
 			}
 			return false, false, errors.Wrapf(err,
-				"failed to update resource kind: %v, namespace: %s, name %s",
-				resource.GetObjectKind().GroupVersionKind(),
+				"failed to update resource kind: %s, namespace: %s, name %s",
+				gvk.Kind,
 				resource.GetNamespace(),
 				resource.GetName(),
 			)

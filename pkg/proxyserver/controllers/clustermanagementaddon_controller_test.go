@@ -13,6 +13,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
+	"open-cluster-management.io/cluster-proxy/pkg/common"
 )
 
 var _ = Describe("ClusterManagementAddon Controller", func() {
@@ -30,7 +31,7 @@ var _ = Describe("ClusterManagementAddon Controller", func() {
 		// Create namespace
 		addon = &addonv1alpha1.ClusterManagementAddOn{
 			ObjectMeta: metav1.ObjectMeta{
-				Name: addonName,
+				Name: common.AddonName,
 			},
 			Spec: addonv1alpha1.ClusterManagementAddOnSpec{
 				AddOnConfiguration: addonv1alpha1.ConfigCoordinates{
@@ -47,6 +48,7 @@ var _ = Describe("ClusterManagementAddon Controller", func() {
 				ProxyServer: proxyv1alpha1.ManagedProxyConfigurationProxyServer{
 					Image:     "cluster-proxy",
 					Namespace: proxyServerNamespace,
+					Replicas:  3,
 					Entrypoint: &proxyv1alpha1.ManagedProxyConfigurationProxyServerEntrypoint{
 						Type: proxyv1alpha1.EntryPointTypePortForward,
 					},

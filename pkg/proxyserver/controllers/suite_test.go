@@ -116,7 +116,7 @@ var _ = BeforeSuite(func() {
 		mgr, selfSigner, kubeClient, kubeInformer.Core().V1().Secrets())
 	Expect(err).NotTo(HaveOccurred())
 
-	fmt.Printf("start manager")
+	By("start manager")
 	go kubeInformer.Start(ctx.Done())
 	go func() {
 		if err := mgr.Start(ctx); err != nil {

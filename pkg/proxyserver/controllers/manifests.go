@@ -26,10 +26,6 @@ func newOwnerReference(config *proxyv1alpha1.ManagedProxyConfiguration) metav1.O
 
 func newServiceAccount(config *proxyv1alpha1.ManagedProxyConfiguration) *corev1.ServiceAccount {
 	return &corev1.ServiceAccount{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "ServiceAccount",
-			APIVersion: "v1",
-		},
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: config.Spec.ProxyServer.Namespace,
 			Name:      common.AddonName,
@@ -42,10 +38,6 @@ func newServiceAccount(config *proxyv1alpha1.ManagedProxyConfiguration) *corev1.
 
 func newProxySecret(config *proxyv1alpha1.ManagedProxyConfiguration, caData []byte) *corev1.Secret {
 	return &corev1.Secret{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "Secret",
-			APIVersion: "v1",
-		},
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: config.Spec.ProxyServer.Namespace,
 			Name:      signerSecretName,
@@ -60,10 +52,6 @@ func newProxySecret(config *proxyv1alpha1.ManagedProxyConfiguration, caData []by
 }
 func newProxyService(config *proxyv1alpha1.ManagedProxyConfiguration) *corev1.Service {
 	return &corev1.Service{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "Service",
-			APIVersion: "v1",
-		},
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: config.Spec.ProxyServer.Namespace,
 			Name:      config.Spec.ProxyServer.InClusterServiceName,
@@ -92,10 +80,6 @@ func newProxyService(config *proxyv1alpha1.ManagedProxyConfiguration) *corev1.Se
 
 func newProxyServerDeployment(config *proxyv1alpha1.ManagedProxyConfiguration) *appsv1.Deployment {
 	return &appsv1.Deployment{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "Deployment",
-			APIVersion: "apps/v1",
-		},
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: config.Spec.ProxyServer.Namespace,
 			Name:      config.Name,
@@ -197,10 +181,6 @@ func newProxyServerDeployment(config *proxyv1alpha1.ManagedProxyConfiguration) *
 
 func newProxyServerRole(config *proxyv1alpha1.ManagedProxyConfiguration) *rbacv1.Role {
 	return &rbacv1.Role{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "Role",
-			APIVersion: "rbac.authorization.k8s.io/v1",
-		},
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: config.Spec.ProxyServer.Namespace,
 			Name:      "cluster-proxy-addon-agent:portforward",
@@ -220,10 +200,6 @@ func newProxyServerRole(config *proxyv1alpha1.ManagedProxyConfiguration) *rbacv1
 
 func newProxyServerRoleBinding(config *proxyv1alpha1.ManagedProxyConfiguration) *rbacv1.RoleBinding {
 	return &rbacv1.RoleBinding{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "RoleBinding",
-			APIVersion: "rbac.authorization.k8s.io/v1",
-		},
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: config.Spec.ProxyServer.Namespace,
 			Name:      "cluster-proxy-addon-agent:portforward",
