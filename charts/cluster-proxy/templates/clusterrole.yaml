@@ -17,6 +17,7 @@ rules:
       - clustermanagementaddons
       - managedclusteraddons
       - clustermanagementaddons/status
+      - clustermanagementaddons/finalizers
       - managedclusteraddons/status
     verbs:
       - '*'
