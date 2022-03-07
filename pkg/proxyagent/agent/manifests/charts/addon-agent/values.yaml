@@ -19,10 +19,11 @@ proxyAgentImage: quay.io/open-cluster-management/cluster-proxy:v0.1.4
 replicas: 1
 
 spokeAddonNamespace: "open-cluster-management-cluster-proxy"
+additionalProxyAgentArgs: []
 
 agentDeploymentAnnotations: {}
 
-additionalProxyAgentArgs: []
+addonAgentArgs: []
 
 serviceEntryPoint: ""
 serviceEntryPointPort: 8091

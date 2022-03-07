@@ -116,7 +116,7 @@ func newProxyServerDeployment(config *proxyv1alpha1.ManagedProxyConfiguration) *
 							Command: []string{
 								"/proxy-server",
 							},
-							Args: []string{
+							Args: append([]string{
 								"--server-count=" + strconv.Itoa(int(config.Spec.ProxyServer.Replicas)),
 								"--proxy-strategies=destHost",
 								"--server-ca-cert=/etc/server-ca-pki/ca.crt",
@@ -125,7 +125,7 @@ func newProxyServerDeployment(config *proxyv1alpha1.ManagedProxyConfiguration) *
 								"--cluster-ca-cert=/etc/server-ca-pki/ca.crt",
 								"--cluster-cert=/etc/agent-pki/tls.crt",
 								"--cluster-key=/etc/agent-pki/tls.key",
-							},
+							}, config.Spec.ProxyServer.AdditionalArgs...),
 							VolumeMounts: []corev1.VolumeMount{
 								{
 									Name:      "proxy-server-ca-certs",

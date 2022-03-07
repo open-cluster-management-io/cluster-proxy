@@ -133,6 +133,11 @@ spec:
                 description: '`proxyServer` structurelized the arguments for running
                   proxy agents.'
                 properties:
+                  additionalArgs:
+                    description: '`additionalArgs` defines args used in proxy-agent.'
+                    items:
+                      type: string
+                    type: array
                   image:
                     description: '`image` is the container image of the proxy agent.'
                     type: string
@@ -148,6 +153,12 @@ spec:
                 description: '`proxyServer` structurelized the arguments for running
                   proxy servers.'
                 properties:
+                  additionalArgs:
+                    description: '`additionalArgs` adds arbitrary additional command
+                      line args to the proxy-server.'
+                    items:
+                      type: string
+                    type: array
                   entrypoint:
                     description: '`entrypoint` defines how will the proxy agents connecting
                       the servers.'
