@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -158,6 +159,19 @@ type ManagedProxyConfigurationDeploy struct {
 	Ports ManagedProxyConfigurationDeployPorts `json:"ports"`
 }
 
+// NodePlacement describes node scheduling configuration for the pods.
+type NodePlacement struct {
+	// NodeSelector defines which Nodes the Pods are scheduled on. The default is an empty list.
+	// +optional
+	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
+
+	// Tolerations is attached by pods to tolerate any taint that matches
+	// the triple <key,value,effect> using the matching operator <operator>.
+	// The default is an empty list.
+	// +optional
+	Tolerations []v1.Toleration `json:"tolerations,omitempty"`
+}
+
 // ManagedProxyConfigurationDeployPorts is the expected port for wiring up proxy servers
 // and agents.
 type ManagedProxyConfigurationDeployPorts struct {
@@ -189,18 +203,17 @@ type ManagedProxyConfigurationProxyServer struct {
 	// Note that the replicas will also be reflected in the flag `--server-count`
 	// so that agents can discover all the server instances.
 	// +optional
-	// +kubebuilder:default=3
 	Replicas int32 `json:"replicas"`
 	// `inClusterServiceName` is the name of the in-cluster service for proxying
 	// requests inside the hub cluster to the proxy servers.
 	// +optional
 	// +kubebuilder:default=proxy-entrypoint
-	InClusterServiceName string `json:"inClusterServiceName"`
+	InClusterServiceName string `json:"inClusterServiceName,omitempty"`
 	// `namespace` is the namespace where we will deploy the proxy servers and related
 	// resources.
 	// +optional
 	// +kubebuilder:default=open-cluster-management-cluster-proxy
-	Namespace string `json:"namespace"`
+	Namespace string `json:"namespace,omitempty"`
 	// `entrypoint` defines how will the proxy agents connecting the servers.
 	// +optional
 	Entrypoint *ManagedProxyConfigurationProxyServerEntrypoint `json:"entrypoint"`
@@ -208,6 +221,10 @@ type ManagedProxyConfigurationProxyServer struct {
 	// `additionalArgs` adds arbitrary additional command line args to the proxy-server.
 	// +optional
 	AdditionalArgs []string `json:"additionalArgs,omitempty"`
+
+	// NodePlacement defines which Nodes the proxy server are scheduled on. The default is an empty list.
+	// +optional
+	NodePlacement NodePlacement `json:"nodePlacement,omitempty"`
 }
 
 // ManagedProxyConfigurationProxyServerEntrypoint prescribes the ingress for serving
@@ -219,10 +236,10 @@ type ManagedProxyConfigurationProxyServerEntrypoint struct {
 	Type EntryPointType `json:"type"`
 	// `loadBalancerService` points to a load-balancer typed service in the hub cluster.
 	// +optional
-	LoadBalancerService *EntryPointLoadBalancerService `json:"loadBalancerService"`
+	LoadBalancerService *EntryPointLoadBalancerService `json:"loadBalancerService,omitempty"`
 	// `hostname` points to a fixed hostname for serving agents' handshakes.
 	// +optional
-	Hostname *EntryPointHostname `json:"hostname"`
+	Hostname *EntryPointHostname `json:"hostname,omitempty"`
 
 	// `port` is the target port to access proxy servers
 	// +optional

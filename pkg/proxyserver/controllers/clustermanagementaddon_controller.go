@@ -11,12 +11,9 @@ import (
 
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 	"open-cluster-management.io/cluster-proxy/pkg/common"
-	proxyclient "open-cluster-management.io/cluster-proxy/pkg/generated/clientset/versioned"
-	proxylister "open-cluster-management.io/cluster-proxy/pkg/generated/listers/proxy/v1alpha1"
 
 	"open-cluster-management.io/addon-framework/pkg/certrotation"
 	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
-	addonlister "open-cluster-management.io/api/client/addon/listers/addon/v1alpha1"
 	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/operator/authentication/selfsigned"
 	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/operator/eventhandler"
 
@@ -90,13 +87,10 @@ type ClusterManagementAddonReconciler struct {
 	EventRecorder    events.Recorder
 
 	newCertRotatorFunc func(namespace, name string, sans ...string) selfsigned.CertRotation
-	proxyConfigClient  proxyclient.Interface
-	proxyConfigLister  proxylister.ManagedProxyConfigurationLister
-	addonLister        addonlister.ManagedClusterAddOnNamespaceLister
-	clusterAddonLister addonlister.ClusterManagementAddOnLister
 }
 
 func (c *ClusterManagementAddonReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	// TODO should add a filter to only watch addon with cluster-proxy name
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&addonv1alpha1.ClusterManagementAddOn{}).
 		Watches(
@@ -152,13 +146,13 @@ func (c *ClusterManagementAddonReconciler) Reconcile(ctx context.Context, reques
 	// ensure proxy-server cert rotation.
 	// at an interval of 10 hrs which is the default resync period of controller-runtime's informer.
 	if err := c.ensureRotation(config, entrypoint); err != nil {
-		return reconcile.Result{}, errors.Wrapf(err, "failed to rotate certificate")
+		return reconcile.Result{}, err
 	}
 
 	// deploying central proxy server instances into the hub cluster.
 	isModified, err := c.deployProxyServer(config)
 	if err != nil {
-		return reconcile.Result{}, err
+		return reconcile.Result{}, errors.Wrapf(err, "fails to deploy proxy server")
 	}
 	if !isModified {
 		klog.Infof("Proxy server resources are up-to-date")
@@ -263,12 +257,22 @@ func (c *ClusterManagementAddonReconciler) ensure(incomingGeneration int64, gvk 
 			Name:      resource.GetName(),
 		}, current); err != nil {
 		if !apierrors.IsNotFound(err) {
-			return false, false, err
+			return false, false, errors.Wrapf(err,
+				"failed to get resource kind: %s, namespace: %s, name %s",
+				gvk.Kind,
+				resource.GetNamespace(),
+				resource.GetName(),
+			)
 		}
 		// if not found, then create
 		if err := c.Client.Create(context.TODO(), resource); err != nil {
 			if !apierrors.IsAlreadyExists(err) {
-				return false, false, err
+				return false, false, errors.Wrapf(err,
+					"failed to create resource kind: %s, namespace: %s, name %s",
+					gvk.Kind,
+					resource.GetNamespace(),
+					resource.GetName(),
+				)
 			}
 		} else {
 			created = true
@@ -296,7 +300,12 @@ func (c *ClusterManagementAddonReconciler) ensure(incomingGeneration int64, gvk 
 			if apierrors.IsConflict(err) {
 				return c.ensure(incomingGeneration, gvk, resource)
 			}
-			return false, false, err
+			return false, false, errors.Wrapf(err,
+				"failed to update resource kind: %s, namespace: %s, name %s",
+				gvk.Kind,
+				resource.GetNamespace(),
+				resource.GetName(),
+			)
 		} else {
 			updated = true
 		}
@@ -422,7 +431,7 @@ func (c *ClusterManagementAddonReconciler) ensureRotation(config *proxyv1alpha1.
 		config.Spec.Authentication.Dump.Secrets.SigningProxyServerSecretName,
 		sans...)
 	if err := proxyServerRotator.EnsureTargetCertKeyPair(c.CAPair, c.CAPair.Config.Certs); err != nil {
-		return err
+		return errors.Wrapf(err, "fails to rotate proxy server cert")
 	}
 
 	// agent sever cert rotation
@@ -431,7 +440,7 @@ func (c *ClusterManagementAddonReconciler) ensureRotation(config *proxyv1alpha1.
 		config.Spec.Authentication.Dump.Secrets.SigningAgentServerSecretName,
 		sans...)
 	if err := agentServerRotator.EnsureTargetCertKeyPair(c.CAPair, c.CAPair.Config.Certs); err != nil {
-		return err
+		return errors.Wrapf(err, "fails to rotate proxy agent cert")
 	}
 
 	// proxy client cert rotation
@@ -440,7 +449,7 @@ func (c *ClusterManagementAddonReconciler) ensureRotation(config *proxyv1alpha1.
 		config.Spec.Authentication.Dump.Secrets.SigningProxyClientSecretName,
 		sans...)
 	if err := proxyClientRotator.EnsureTargetCertKeyPair(c.CAPair, c.CAPair.Config.Certs, tweakClientCertUsageFunc); err != nil {
-		return err
+		return errors.Wrapf(err, "fails to rotate proxy client cert")
 	}
 
 	return nil
@@ -468,45 +477,6 @@ func (c *ClusterManagementAddonReconciler) ensureNamespace(config *proxyv1alpha1
 			return nil
 		}
 		return errors.Wrapf(err, "failed check namespace %q's presence", config.Spec.ProxyServer.Namespace)
-	}
-	return nil
-}
-
-func (c *ClusterManagementAddonReconciler) ensureProxyServerSecret(config *proxyv1alpha1.ManagedProxyConfiguration) error {
-	namespace := config.Spec.ProxyServer.Namespace
-	name := config.Spec.Authentication.Dump.Secrets.SigningProxyServerSecretName
-	return c.ensureSecret(namespace, name)
-}
-
-func (c *ClusterManagementAddonReconciler) ensureAgentServerSecret(config *proxyv1alpha1.ManagedProxyConfiguration) error {
-	namespace := config.Spec.ProxyServer.Namespace
-	name := config.Spec.Authentication.Dump.Secrets.SigningAgentServerSecretName
-	return c.ensureSecret(namespace, name)
-}
-
-func (c *ClusterManagementAddonReconciler) ensureProxyClientSecret(config *proxyv1alpha1.ManagedProxyConfiguration) error {
-	namespace := config.Spec.ProxyServer.Namespace
-	name := config.Spec.Authentication.Dump.Secrets.SigningProxyClientSecretName
-	return c.ensureSecret(namespace, name)
-}
-
-func (c *ClusterManagementAddonReconciler) ensureSecret(namespace, name string) error {
-	secret, err := c.SecretLister.Secrets(namespace).Get(name)
-	if apierrors.IsNotFound(err) {
-		secret = &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{
-				Namespace: namespace,
-				Name:      name,
-			},
-		}
-		_, err := c.SecretGetter.Secrets(namespace).Create(context.TODO(), secret, metav1.CreateOptions{})
-		if apierrors.IsAlreadyExists(err) {
-			return nil
-		}
-		return errors.Wrapf(err, "failed creating secret's %q/%q", namespace, name)
-	}
-	if err != nil {
-		return errors.Wrapf(err, "failed checking secret's %q/%q's presence", namespace, name)
 	}
 	return nil
 }
