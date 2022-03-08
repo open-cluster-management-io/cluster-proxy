@@ -171,6 +171,8 @@ func newProxyServerDeployment(config *proxyv1alpha1.ManagedProxyConfiguration) *
 							},
 						},
 					},
+					NodeSelector: config.Spec.ProxyServer.NodePlacement.NodeSelector,
+					Tolerations:  config.Spec.ProxyServer.NodePlacement.Tolerations,
 				},
 			},
 		},
