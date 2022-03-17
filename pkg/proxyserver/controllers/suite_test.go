@@ -112,8 +112,7 @@ var _ = BeforeSuite(func() {
 	selfSigner, err := selfsigned.NewSelfSignerFromSecretOrGenerate(kubeClient, "default", "test-ca")
 	Expect(err).NotTo(HaveOccurred())
 
-	err = RegisterClusterManagementAddonReconciler(
-		mgr, selfSigner, kubeClient, kubeInformer.Core().V1().Secrets())
+	err = RegisterClusterManagementAddonReconciler(mgr, selfSigner, kubeClient, kubeInformer.Core().V1().Secrets(), true)
 	Expect(err).NotTo(HaveOccurred())
 
 	By("start manager")
