@@ -33,6 +33,7 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/klog/v2/klogr"
 	"open-cluster-management.io/addon-framework/pkg/addonmanager"
+	addonutil "open-cluster-management.io/addon-framework/pkg/utils"
 	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
 	"open-cluster-management.io/api/client/addon/clientset/versioned"
 	"open-cluster-management.io/api/client/addon/informers/externalversions"
@@ -114,6 +115,21 @@ func main() {
 		os.Exit(1)
 	}
 
+	supportsV1CSR, supportsV1beta1CSR, err := addonutil.IsCSRSupported(nativeClient)
+	if err != nil {
+		setupLog.Error(err, "unable to detect available CSR API versions")
+		os.Exit(1)
+	}
+
+	if supportsV1CSR {
+		setupLog.Info("V1 CSR API found")
+	} else if supportsV1beta1CSR {
+		setupLog.Info("V1 CSR API not found, falling back to v1beta1")
+	} else {
+		setupLog.Error(err, "No supported CSR api found")
+		os.Exit(1)
+	}
+
 	informerFactory := externalversions.NewSharedInformerFactory(client, 0)
 	nativeInformer := informers.NewSharedInformerFactoryWithOptions(nativeClient, 0)
 
@@ -130,6 +146,7 @@ func main() {
 		selfSigner,
 		nativeClient,
 		nativeInformer.Core().V1().Secrets(),
+		supportsV1CSR,
 	); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ClusterManagementAddonReconciler")
 		os.Exit(1)
@@ -154,16 +171,11 @@ func main() {
 		setupLog.Error(err, "unable to set up ready check")
 		os.Exit(1)
 	}
-	caCertData, caKeyData, err := selfSigner.CA().Config.GetPEMBytes()
-	if err != nil {
-		setupLog.Error(err, "unable to get content from signer CA")
-		os.Exit(1)
-	}
 
 	clusterProxyAddon, err := agent.NewAgentAddon(
-		mgr.GetScheme(),
-		caCertData,
-		caKeyData,
+		selfSigner,
+		signerSecretNamespace,
+		supportsV1CSR,
 		mgr.GetClient(),
 		nativeClient)
 	if err != nil {

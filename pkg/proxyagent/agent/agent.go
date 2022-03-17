@@ -14,7 +14,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"open-cluster-management.io/addon-framework/pkg/addonfactory"
@@ -25,6 +24,7 @@ import (
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 	"open-cluster-management.io/cluster-proxy/pkg/common"
 	"open-cluster-management.io/cluster-proxy/pkg/config"
+	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/operator/authentication/selfsigned"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -35,30 +35,39 @@ const (
 	ProxyAgentSignerName = "open-cluster-management.io/proxy-agent-signer"
 )
 
-func NewAgentAddon(scheme *runtime.Scheme, caCertData, caKeyData []byte, runtimeClient client.Client, nativeClient kubernetes.Interface) (agent.AgentAddon, error) {
+func NewAgentAddon(signer selfsigned.SelfSigner, signerNamespace string, v1CSRSupported bool, runtimeClient client.Client, nativeClient kubernetes.Interface) (agent.AgentAddon, error) {
+	caCertData, caKeyData, err := signer.CA().Config.GetPEMBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	regConfigs := []addonv1alpha1.RegistrationConfig{
+		{
+			SignerName: csrv1.KubeAPIServerClientSignerName,
+			Subject: addonv1alpha1.Subject{
+				User: common.SubjectUserClusterAddonAgent,
+				Groups: []string{
+					common.SubjectGroupClusterProxy,
+				},
+			},
+		},
+	}
+	// Register the custom signer CSR option if V1 csr is supported
+	if v1CSRSupported {
+		regConfigs = append(regConfigs, addonv1alpha1.RegistrationConfig{
+			SignerName: ProxyAgentSignerName,
+			Subject: addonv1alpha1.Subject{
+				User: common.SubjectUserClusterProxyAgent,
+				Groups: []string{
+					common.SubjectGroupClusterProxy,
+				},
+			},
+		})
+	}
 	return addonfactory.NewAgentAddonFactory(common.AddonName, FS, "manifests/charts/addon-agent").
 		WithAgentRegistrationOption(&agent.RegistrationOption{
 			CSRConfigurations: func(cluster *clusterv1.ManagedCluster) []addonv1alpha1.RegistrationConfig {
-				return []addonv1alpha1.RegistrationConfig{
-					{
-						SignerName: ProxyAgentSignerName,
-						Subject: addonv1alpha1.Subject{
-							User: common.SubjectUserClusterProxyAgent,
-							Groups: []string{
-								common.SubjectGroupClusterProxy,
-							},
-						},
-					},
-					{
-						SignerName: csrv1.KubeAPIServerClientSignerName,
-						Subject: addonv1alpha1.Subject{
-							User: common.SubjectUserClusterAddonAgent,
-							Groups: []string{
-								common.SubjectGroupClusterProxy,
-							},
-						},
-					},
-				}
+				return regConfigs
 			},
 			CSRApproveCheck: func(cluster *clusterv1.ManagedCluster, addon *addonv1alpha1.ManagedClusterAddOn, csr *csrv1.CertificateSigningRequest) bool {
 				return cluster.Spec.HubAcceptsClient
@@ -95,14 +104,20 @@ func NewAgentAddon(scheme *runtime.Scheme, caCertData, caKeyData []byte, runtime
 			CSRSign: CustomSignerWithExpiry(ProxyAgentSignerName, caKeyData, caCertData, time.Hour*24*180),
 		}).
 		WithInstallStrategy(agent.InstallAllStrategy(common.AddonInstallNamespace)).
-		WithGetValuesFuncs(GetClusterProxyValueFunc(runtimeClient, nativeClient, caCertData)).
+		WithGetValuesFuncs(GetClusterProxyValueFunc(runtimeClient, nativeClient, signerNamespace, caCertData, v1CSRSupported)).
 		BuildHelmAgentAddon()
 
 }
 
-func GetClusterProxyValueFunc(runtimeClient client.Client, nativeClient kubernetes.Interface, caCertData []byte) addonfactory.GetValuesFunc {
+func GetClusterProxyValueFunc(
+	runtimeClient client.Client,
+	nativeClient kubernetes.Interface,
+	signerNamespace string,
+	caCertData []byte,
+	v1CSRSupported bool) addonfactory.GetValuesFunc {
 	return func(cluster *clusterv1.ManagedCluster,
 		addon *addonv1alpha1.ManagedClusterAddOn) (addonfactory.Values, error) {
+
 		// prepping
 		clusterAddon := &addonv1alpha1.ClusterManagementAddOn{}
 		if err := runtimeClient.Get(context.TODO(), types.NamespacedName{
@@ -161,6 +176,20 @@ func GetClusterProxyValueFunc(runtimeClient client.Client, nativeClient kubernet
 			serviceEntryPointPort = 8091
 		}
 
+		// If v1 CSR is not supported in the hub cluster, copy and apply the secret named
+		// "agent-client" to the managed clusters.
+		certDataBase64, keyDataBase64 := "", ""
+		if !v1CSRSupported {
+			agentClientSecret, err := nativeClient.CoreV1().
+				Secrets(signerNamespace).
+				Get(context.TODO(), common.AgentClientSecretName, metav1.GetOptions{})
+			if err != nil {
+				return nil, err
+			}
+			certDataBase64 = base64.StdEncoding.EncodeToString(agentClientSecret.Data[corev1.TLSCertKey])
+			keyDataBase64 = base64.StdEncoding.EncodeToString(agentClientSecret.Data[corev1.TLSPrivateKeyKey])
+		}
+
 		registry, image, tag := config.GetParsedAgentImage()
 		return map[string]interface{}{
 			"agentDeploymentName":      "cluster-proxy-proxy-agent",
@@ -169,17 +198,20 @@ func GetClusterProxyValueFunc(runtimeClient client.Client, nativeClient kubernet
 			"spokeAddonNamespace":      "open-cluster-management-cluster-proxy",
 			"additionalProxyAgentArgs": proxyConfig.Spec.ProxyAgent.AdditionalArgs,
 
-			"clusterName":                cluster.Name,
-			"registry":                   registry,
-			"image":                      image,
-			"tag":                        tag,
-			"proxyAgentImage":            proxyConfig.Spec.ProxyAgent.Image,
-			"replicas":                   proxyConfig.Spec.ProxyAgent.Replicas,
-			"base64EncodedCAData":        base64.StdEncoding.EncodeToString(caCertData),
-			"serviceEntryPoint":          serviceEntryPoint,
-			"serviceEntryPointPort":      serviceEntryPointPort,
-			"agentDeploymentAnnotations": annotations,
-			"addonAgentArgs":             addonAgentArgs,
+			"clusterName":                   cluster.Name,
+			"registry":                      registry,
+			"image":                         image,
+			"tag":                           tag,
+			"proxyAgentImage":               proxyConfig.Spec.ProxyAgent.Image,
+			"replicas":                      proxyConfig.Spec.ProxyAgent.Replicas,
+			"base64EncodedCAData":           base64.StdEncoding.EncodeToString(caCertData),
+			"serviceEntryPoint":             serviceEntryPoint,
+			"serviceEntryPointPort":         serviceEntryPointPort,
+			"agentDeploymentAnnotations":    annotations,
+			"addonAgentArgs":                addonAgentArgs,
+			"includeStaticProxyAgentSecret": !v1CSRSupported,
+			"staticProxyAgentSecretCert":    certDataBase64,
+			"staticProxyAgentSecretKey":     keyDataBase64,
 		}, nil
 	}
 }
