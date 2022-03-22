@@ -51,7 +51,9 @@ func RegisterClusterManagementAddonReconciler(
 	mgr manager.Manager,
 	selfSigner selfsigned.SelfSigner,
 	nativeClient kubernetes.Interface,
-	secretInformer informercorev1.SecretInformer) error {
+	secretInformer informercorev1.SecretInformer,
+	supportsV1CSR bool,
+) error {
 	r := &ClusterManagementAddonReconciler{
 		Client:     mgr.GetClient(),
 		SelfSigner: selfSigner,
@@ -72,6 +74,7 @@ func RegisterClusterManagementAddonReconciler(
 		ServiceGetter:    nativeClient.CoreV1(),
 		DeploymentGetter: nativeClient.AppsV1(),
 		EventRecorder:    events.NewInMemoryRecorder("ClusterManagementAddonReconciler"),
+		supportsV1CSR:    supportsV1CSR,
 	}
 	return r.SetupWithManager(mgr)
 }
@@ -87,6 +90,7 @@ type ClusterManagementAddonReconciler struct {
 	EventRecorder    events.Recorder
 
 	newCertRotatorFunc func(namespace, name string, sans ...string) selfsigned.CertRotation
+	supportsV1CSR      bool
 }
 
 func (c *ClusterManagementAddonReconciler) SetupWithManager(mgr ctrl.Manager) error {
@@ -450,6 +454,20 @@ func (c *ClusterManagementAddonReconciler) ensureRotation(config *proxyv1alpha1.
 		sans...)
 	if err := proxyClientRotator.EnsureTargetCertKeyPair(c.CAPair, c.CAPair.Config.Certs, tweakClientCertUsageFunc); err != nil {
 		return errors.Wrapf(err, "fails to rotate proxy client cert")
+	}
+
+	if !c.supportsV1CSR {
+		// agent client cert rotation
+		// beta CSR running under Kubernetes release lower than 1.18 doesn't
+		// support custom CSR signer. so we need to sign the secret in the hub
+		// then apply it to the managed cluster via ManifestWork.
+		proxyClientRotator := c.newCertRotatorFunc(
+			config.Spec.ProxyServer.Namespace,
+			common.AgentClientSecretName,
+			sans...)
+		if err := proxyClientRotator.EnsureTargetCertKeyPair(c.CAPair, c.CAPair.Config.Certs, tweakClientCertUsageFunc); err != nil {
+			return errors.Wrapf(err, "fails to rotate proxy client cert")
+		}
 	}
 
 	return nil
