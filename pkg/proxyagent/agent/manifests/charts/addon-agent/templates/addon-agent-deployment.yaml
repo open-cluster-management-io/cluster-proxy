@@ -53,7 +53,7 @@ spec:
               mountPath: /etc/tls
               readOnly: true
         - name: addon-agent
-          image: {{ .Values.proxyAgentImage }}
+          image: {{ .Values.registry }}/{{ .Values.image }}:{{ .Values.tag }}
           imagePullPolicy: IfNotPresent
           command:
             - /agent
