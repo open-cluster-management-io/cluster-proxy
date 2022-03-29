@@ -56,10 +56,10 @@ func TestGetParsedAgentImage(t *testing.T) {
 		{
 			// empty image name
 			"",
-			true,
-			"",
-			"",
-			"",
+			false,
+			"quay.io/open-cluster-management.io",
+			"cluster-proxy-agent",
+			"latest",
 		},
 		{
 			// wrong image name
@@ -80,7 +80,7 @@ func TestGetParsedAgentImage(t *testing.T) {
 
 	for _, c := range testcases {
 		AgentImageName = c.agentImageName
-		r, i, tag, err := GetParsedAgentImage()
+		r, i, tag, err := GetParsedAgentImage("quay.io/open-cluster-management.io/cluster-proxy-agent")
 		if err != nil {
 			if c.expectErr {
 				continue
