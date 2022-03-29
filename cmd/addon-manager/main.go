@@ -86,11 +86,6 @@ func main() {
 	// pipe controller-runtime logs to klog
 	ctrl.SetLogger(logger)
 
-	if err := config.ValidateAgentImage(); err != nil {
-		setupLog.Error(err, "failed to validate agent image name")
-		os.Exit(1)
-	}
-
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
 		MetricsBindAddress:     metricsAddr,

@@ -3,18 +3,17 @@ package config
 import (
 	"fmt"
 	"strings"
+
+	"k8s.io/klog/v2"
 )
 
 var AgentImageName string
 
-func ValidateAgentImage() error {
+func GetParsedAgentImage(defaultAgentImageName string) (string, string, string, error) {
 	if len(AgentImageName) == 0 {
-		return fmt.Errorf("should set --agent-image-name")
+		klog.InfoS("AgentImageName is not set, use default value", "defaultAgentImageName", defaultAgentImageName)
+		AgentImageName = defaultAgentImageName
 	}
-	return nil
-}
-
-func GetParsedAgentImage() (string, string, string, error) {
 	imgParts := strings.Split(AgentImageName, "/")
 	if len(imgParts) != 2 && len(imgParts) != 3 {
 		// image name without registry is also legal.

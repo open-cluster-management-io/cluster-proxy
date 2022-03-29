@@ -190,7 +190,7 @@ func GetClusterProxyValueFunc(
 			keyDataBase64 = base64.StdEncoding.EncodeToString(agentClientSecret.Data[corev1.TLSPrivateKeyKey])
 		}
 
-		registry, image, tag, err := config.GetParsedAgentImage()
+		registry, image, tag, err := config.GetParsedAgentImage(proxyConfig.Spec.ProxyAgent.Image)
 		if err != nil {
 			return nil, err
 		}
