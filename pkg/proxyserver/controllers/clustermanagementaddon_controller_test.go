@@ -85,6 +85,22 @@ var _ = Describe("ClusterManagementAddon Controller", func() {
 
 	Context("Deploy proxy server", func() {
 		It("Should have a proxy server deployed correctly with default config", func() {
+			// Wait for reconcile done
+			Eventually(func() error {
+				var err error
+				currentConfig := &proxyv1alpha1.ManagedProxyConfiguration{}
+				err = ctrlClient.Get(ctx, client.ObjectKeyFromObject(config), currentConfig)
+				if err != nil {
+					return err
+				}
+				for _, c := range currentConfig.Status.Conditions {
+					if c.Type == proxyv1alpha1.ConditionTypeProxyServerDeployed && corev1.ConditionStatus(c.Status) == corev1.ConditionTrue {
+						return nil
+					}
+				}
+				return fmt.Errorf("managedproxy not ready")
+			}, 3*timeout, 3*interval).Should(Succeed())
+
 			Eventually(func() error {
 				_, err := kubeClient.CoreV1().Namespaces().Get(ctx, proxyServerNamespace, metav1.GetOptions{})
 				return err
