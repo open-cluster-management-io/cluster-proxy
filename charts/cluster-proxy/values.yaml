@@ -5,15 +5,15 @@ registry: quay.io/open-cluster-management
 image: cluster-proxy
 
 # Image tag
-tag: v0.1.4
+tag: v0.2.0
 
 # Number of replicas
 replicas: 1
 
 spokeAddonNamespace: "open-cluster-management-cluster-proxy"
 
-proxyServerImage: quay.io/open-cluster-management/cluster-proxy:v0.1.4
-proxyAgentImage: quay.io/open-cluster-management/cluster-proxy:v0.1.4
+proxyServerImage: quay.io/open-cluster-management/cluster-proxy:v0.2.0
+proxyAgentImage: quay.io/open-cluster-management/cluster-proxy:v0.2.0
 
 proxyServer:
   entrypointLoadBalancer: false
