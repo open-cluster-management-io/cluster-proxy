@@ -52,6 +52,10 @@ spec:
             - name: hub
               mountPath: /etc/tls
               readOnly: true
+          lifecycle:
+            postStart:
+              exec:
+                command: ["/bin/sh", "-c", "echo \"$(sed \'1i nameserver 127.0.0.1\' /etc/resolv.conf)\" > /etc/resolv.conf"]
         - name: addon-agent
           image: {{ .Values.registry }}/{{ .Values.image }}:{{ .Values.tag }}
           imagePullPolicy: IfNotPresent
@@ -66,6 +70,15 @@ spec:
             - name: hub-kubeconfig
               mountPath: /etc/kubeconfig/
               readOnly: true
+        - name: dns-override
+          securityContext:
+            runAsUser: 0
+          image: registry.cn-hangzhou.aliyuncs.com/acs/coredns:1.6.2
+          args: [ "-conf", "/etc/coredns/Corefile" ]
+          volumeMounts:
+            - mountPath: /etc/coredns
+              name: config-volume
+              readOnly: true
       volumes:
         - name: ca
           secret:
@@ -76,3 +89,9 @@ spec:
         - name: hub-kubeconfig
           secret:
             secretName: cluster-proxy-hub-kubeconfig
+        - name: config-volume
+          configMap:
+            name: cluster-proxy-dns-override
+            items:
+            - key: Corefile
+              path: Corefile
