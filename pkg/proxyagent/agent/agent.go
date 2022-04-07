@@ -64,6 +64,24 @@ func NewAgentAddon(signer selfsigned.SelfSigner, signerNamespace string, v1CSRSu
 			},
 		})
 	}
+
+	// Get InstallNamespace of AddonAgent
+	clusterAddon := &addonv1alpha1.ClusterManagementAddOn{}
+	if err := runtimeClient.Get(context.TODO(), types.NamespacedName{
+		Name: common.AddonName,
+	}, clusterAddon); err != nil {
+		return nil, err
+	}
+
+	proxyConfig := &proxyv1alpha1.ManagedProxyConfiguration{}
+	if err := runtimeClient.Get(context.TODO(), types.NamespacedName{
+		Name: clusterAddon.Spec.AddOnConfiguration.CRName,
+	}, proxyConfig); err != nil {
+		return nil, err
+	}
+
+	installNamespace := proxyConfig.Spec.ProxyAgent.InstallNamespace
+
 	return addonfactory.NewAgentAddonFactory(common.AddonName, FS, "manifests/charts/addon-agent").
 		WithAgentRegistrationOption(&agent.RegistrationOption{
 			CSRConfigurations: func(cluster *clusterv1.ManagedCluster) []addonv1alpha1.RegistrationConfig {
@@ -103,34 +121,20 @@ func NewAgentAddon(signer selfsigned.SelfSigner, signerNamespace string, v1CSRSu
 				Build(),
 			CSRSign: CustomSignerWithExpiry(ProxyAgentSignerName, caKeyData, caCertData, time.Hour*24*180),
 		}).
-		WithInstallStrategy(agent.InstallAllStrategy(common.AddonInstallNamespace)).
-		WithGetValuesFuncs(GetClusterProxyValueFunc(runtimeClient, nativeClient, signerNamespace, caCertData, v1CSRSupported)).
+		WithInstallStrategy(agent.InstallAllStrategy(installNamespace)).
+		WithGetValuesFuncs(GetClusterProxyValueFunc(nativeClient, signerNamespace, proxyConfig, caCertData, v1CSRSupported)).
 		BuildHelmAgentAddon()
 
 }
 
 func GetClusterProxyValueFunc(
-	runtimeClient client.Client,
 	nativeClient kubernetes.Interface,
 	signerNamespace string,
+	proxyConfig *proxyv1alpha1.ManagedProxyConfiguration,
 	caCertData []byte,
 	v1CSRSupported bool) addonfactory.GetValuesFunc {
 	return func(cluster *clusterv1.ManagedCluster,
 		addon *addonv1alpha1.ManagedClusterAddOn) (addonfactory.Values, error) {
-
-		// prepping
-		clusterAddon := &addonv1alpha1.ClusterManagementAddOn{}
-		if err := runtimeClient.Get(context.TODO(), types.NamespacedName{
-			Name: common.AddonName,
-		}, clusterAddon); err != nil {
-			return nil, err
-		}
-		proxyConfig := &proxyv1alpha1.ManagedProxyConfiguration{}
-		if err := runtimeClient.Get(context.TODO(), types.NamespacedName{
-			Name: clusterAddon.Spec.AddOnConfiguration.CRName,
-		}, proxyConfig); err != nil {
-			return nil, err
-		}
 		// this is how we set the right ingress endpoint for proxy servers to
 		// receive handshakes from proxy agents:
 		// 1. upon "Hostname" type, use the prescribed hostname directly
@@ -198,7 +202,7 @@ func GetClusterProxyValueFunc(
 			"agentDeploymentName":      "cluster-proxy-proxy-agent",
 			"serviceDomain":            "svc.cluster.local",
 			"includeNamespaceCreation": true,
-			"spokeAddonNamespace":      "open-cluster-management-cluster-proxy",
+			"spokeAddonNamespace":      proxyConfig.Spec.ProxyAgent.InstallNamespace,
 			"additionalProxyAgentArgs": proxyConfig.Spec.ProxyAgent.AdditionalArgs,
 
 			"clusterName":                   cluster.Name,

@@ -311,6 +311,10 @@ type ManagedProxyConfigurationProxyAgent struct {
 	// `additionalArgs` defines args used in proxy-agent.
 	// +optional
 	AdditionalArgs []string `json:"additionalArgs,omitempty"`
+	// `installNamespace` defines the namespace where the proxy-agent will be installed.
+	// +optional
+	// +default=open-cluster-management-cluster-proxy
+	InstallNamespace string `json:"installNamespace,omitempty"`
 }
 
 const (

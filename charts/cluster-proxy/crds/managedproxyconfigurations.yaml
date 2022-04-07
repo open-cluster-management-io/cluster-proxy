@@ -141,6 +141,10 @@ spec:
                   image:
                     description: '`image` is the container image of the proxy agent.'
                     type: string
+                  installNamespace:
+                    description: '`installNamespace` defines the namespace where the
+                      proxy-agent will be installed.'
+                    type: string
                   replicas:
                     default: 3
                     description: '`replicas` is the replicas of the agents.'
