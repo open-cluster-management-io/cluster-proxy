@@ -76,3 +76,7 @@ spec:
         - name: hub-kubeconfig
           secret:
             secretName: cluster-proxy-hub-kubeconfig
+      imagePullSecrets:
+      {{- range .Values.proxyAgentImagePullSecrets }}
+      - name: {{ . }}
+      {{- end }}

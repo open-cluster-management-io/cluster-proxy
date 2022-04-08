@@ -206,6 +206,7 @@ func GetClusterProxyValueFunc(
 			"image":                         image,
 			"tag":                           tag,
 			"proxyAgentImage":               proxyConfig.Spec.ProxyAgent.Image,
+			"proxyAgentImagePullSecrets":    proxyConfig.Spec.ProxyAgent.ImagePullSecrets,
 			"replicas":                      proxyConfig.Spec.ProxyAgent.Replicas,
 			"base64EncodedCAData":           base64.StdEncoding.EncodeToString(caCertData),
 			"serviceEntryPoint":             serviceEntryPoint,
