@@ -141,6 +141,12 @@ spec:
                   image:
                     description: '`image` is the container image of the proxy agent.'
                     type: string
+                  imagePullSecrets:
+                    description: '`imagePullSecrets` defines the imagePullSecrets
+                      used by proxy-agent'
+                    items:
+                      type: string
+                    type: array
                   replicas:
                     default: 3
                     description: '`replicas` is the replicas of the agents.'
