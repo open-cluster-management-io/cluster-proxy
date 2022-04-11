@@ -103,7 +103,7 @@ func NewAgentAddon(signer selfsigned.SelfSigner, signerNamespace string, v1CSRSu
 				Build(),
 			CSRSign: CustomSignerWithExpiry(ProxyAgentSignerName, caKeyData, caCertData, time.Hour*24*180),
 		}).
-		WithInstallStrategy(agent.InstallAllStrategy(common.AddonInstallNamespace)).
+		WithInstallStrategy(agent.InstallAllStrategy(config.AddonInstallNamespace)).
 		WithGetValuesFuncs(GetClusterProxyValueFunc(runtimeClient, nativeClient, signerNamespace, caCertData, v1CSRSupported)).
 		BuildHelmAgentAddon()
 
@@ -198,7 +198,7 @@ func GetClusterProxyValueFunc(
 			"agentDeploymentName":      "cluster-proxy-proxy-agent",
 			"serviceDomain":            "svc.cluster.local",
 			"includeNamespaceCreation": true,
-			"spokeAddonNamespace":      "open-cluster-management-cluster-proxy",
+			"spokeAddonNamespace":      addon.Spec.InstallNamespace,
 			"additionalProxyAgentArgs": proxyConfig.Spec.ProxyAgent.AdditionalArgs,
 
 			"clusterName":                   cluster.Name,

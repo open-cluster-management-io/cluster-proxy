@@ -7,7 +7,15 @@ import (
 	"k8s.io/klog/v2"
 )
 
+// AgentImageName is the image of the spoke addon agent.
+// Can be override via "--agent-image-name" on the hub addon manager.
 var AgentImageName string
+
+// AgentImageName is the installing namespace of the spoke addon agent.
+// Can be override via "--agent-install-namespace" on the hub addon manager.
+var AddonInstallNamespace = DefaultAddonInstallNamespace
+
+const DefaultAddonInstallNamespace = "open-cluster-management-cluster-proxy"
 
 func GetParsedAgentImage(defaultAgentImageName string) (string, string, string, error) {
 	if len(AgentImageName) == 0 {
