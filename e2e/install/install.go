@@ -24,6 +24,7 @@ import (
 	"open-cluster-management.io/cluster-proxy/e2e/framework"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 	"open-cluster-management.io/cluster-proxy/pkg/common"
+	"open-cluster-management.io/cluster-proxy/pkg/config"
 	"open-cluster-management.io/cluster-proxy/pkg/util"
 	konnectivity "sigs.k8s.io/apiserver-network-proxy/konnectivity-client/pkg/client"
 )
@@ -105,7 +106,7 @@ var _ = Describe("Basic install Test",
 				func() bool {
 					deploy := &appsv1.Deployment{}
 					err = c.Get(context.TODO(), types.NamespacedName{
-						Namespace: common.AddonInstallNamespace,
+						Namespace: config.AddonInstallNamespace,
 						Name:      proxyConfiguration.Name + "-" + common.ComponentNameProxyAgent,
 					}, deploy)
 					Expect(err).NotTo(HaveOccurred())
@@ -219,7 +220,7 @@ var _ = Describe("Basic install Test",
 				To(Equal(strconv.Itoa(int(expectedGeneration))))
 			proxyAgentDeploy := &appsv1.Deployment{}
 			err = c.Get(context.TODO(), types.NamespacedName{
-				Namespace: common.AddonInstallNamespace,
+				Namespace: config.AddonInstallNamespace,
 				Name:      proxyConfiguration.Name + "-" + common.ComponentNameProxyAgent,
 			}, proxyAgentDeploy)
 			Expect(err).NotTo(HaveOccurred())
@@ -295,7 +296,7 @@ func waitAgentReady(proxyConfiguration *proxyv1alpha1.ManagedProxyConfiguration,
 	Eventually(
 		func() int {
 			podList, err := client.CoreV1().
-				Pods(common.AddonInstallNamespace).
+				Pods(config.AddonInstallNamespace).
 				List(context.TODO(), metav1.ListOptions{
 					LabelSelector: common.LabelKeyComponentName + "=" + common.ComponentNameProxyAgent,
 				})
