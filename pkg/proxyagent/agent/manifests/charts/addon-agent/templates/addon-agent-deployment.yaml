@@ -52,6 +52,13 @@ spec:
             - name: hub
               mountPath: /etc/tls
               readOnly: true
+          resources:
+            requests:
+              memory: "100Mi"
+              cpu: "200m"
+            limits:
+              memory: "200Mi"
+              cpu: "300m"
         - name: addon-agent
           image: {{ .Values.registry }}/{{ .Values.image }}:{{ .Values.tag }}
           imagePullPolicy: IfNotPresent
@@ -66,6 +73,13 @@ spec:
             - name: hub-kubeconfig
               mountPath: /etc/kubeconfig/
               readOnly: true
+          resources:
+            requests:
+              memory: "50Mi"
+              cpu: "100m"
+            limits:
+              memory: "100Mi"
+              cpu: "200m"
       volumes:
         - name: ca
           secret:
