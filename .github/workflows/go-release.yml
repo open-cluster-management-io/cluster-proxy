@@ -36,6 +36,7 @@ jobs:
     outputs:
       MAJOR_RELEASE_VERSION: ${{ env.MAJOR_RELEASE_VERSION }}
       RELEASE_VERSION: ${{ env.RELEASE_VERSION }}
+      TRIMED_RELEASE_VERSION: ${{ env.TRIMED_RELEASE_VERSION }}
   images:
     name: images
     runs-on: ubuntu-latest
@@ -129,7 +130,7 @@ jobs:
                 ref: 'main',
                 inputs: {
                   repo:         "${{ github.repository }}",
-                  version:      "${{ env.TRIMED_RELEASE_VERSION }}",
+                  version:      "${{ needs.env.outputs.TRIMED_RELEASE_VERSION }}",
                   "chart-name": "${{ env.CHART_NAME }}",
                 },
               })
