@@ -94,7 +94,7 @@ func (c *FakeManagedProxyConfigurations) UpdateStatus(ctx context.Context, manag
 // Delete takes name of the managedProxyConfiguration and deletes it. Returns an error if one occurs.
 func (c *FakeManagedProxyConfigurations) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewRootDeleteAction(managedproxyconfigurationsResource, name), &v1alpha1.ManagedProxyConfiguration{})
+		Invokes(testing.NewRootDeleteActionWithOptions(managedproxyconfigurationsResource, name, opts), &v1alpha1.ManagedProxyConfiguration{})
 	return err
 }
 
