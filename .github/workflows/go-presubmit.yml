@@ -98,7 +98,7 @@ jobs:
         run: make build-e2e
       - name: Build image
         run: |
-          make image
+          make images
           kind load docker-image quay.io/open-cluster-management/cluster-proxy:latest  --name chart-testing
       - name: Install latest cluster-proxy
         run: |
