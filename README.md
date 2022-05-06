@@ -40,7 +40,7 @@ The overall architecture is shown below:
 1. Adding helm repo:
 
 ```shell
-$ helm repo add ocm https://open-cluster-management.oss-us-west-1.aliyuncs.com
+$ helm repo add ocm https://openclustermanagement.blob.core.windows.net/releases/
 $ helm repo update
 $ helm search repo ocm/cluster-proxy
 NAME                       	CHART VERSION	APP VERSION	DESCRIPTION                   
