@@ -1,0 +1,6 @@
+rules:
+  end-of-file:
+    enable: true
+    ignore:
+      - FQA.md
+      - hack/boilerplate.go.txt

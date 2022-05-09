@@ -15,4 +15,3 @@ spec:
       loadBalancerService: {}
   proxyAgent:
     image: "yue9944882/proxy-agent-amd64:v0.0.22"
-    proxyServerHost:
