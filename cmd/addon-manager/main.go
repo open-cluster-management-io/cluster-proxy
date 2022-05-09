@@ -81,6 +81,8 @@ func main() {
 	flag.StringVar(&config.AgentImageName, "agent-image-name",
 		config.AgentImageName,
 		"The name of the addon agent's image")
+	flag.StringVar(&config.AddonInstallNamespace, "agent-install-namespace", config.DefaultAddonInstallNamespace,
+		"The target namespace to install the addon agents.")
 	flag.Parse()
 
 	// pipe controller-runtime logs to klog

@@ -3,16 +3,18 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"net"
 	"net/http"
 	"os"
 	"sync/atomic"
 
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
 	"k8s.io/klog/v2/klogr"
+	"open-cluster-management.io/addon-framework/pkg/lease"
 	"open-cluster-management.io/cluster-proxy/pkg/common"
-	"open-cluster-management.io/cluster-proxy/pkg/proxyagent/health"
 	"open-cluster-management.io/cluster-proxy/pkg/util"
 	ctrl "sigs.k8s.io/controller-runtime"
 )
@@ -23,6 +25,9 @@ var (
 	proxyServerNamespace   string
 	enablePortForwardProxy bool
 )
+
+// envKeyPodNamespace represents the environment variable key for the addon agent namespace.
+const envKeyPodNamespace = "POD_NAMESPACE"
 
 func main() {
 
@@ -48,10 +53,16 @@ func main() {
 	}
 	cfg.UserAgent = "proxy-agent-addon-agent"
 
-	leaseUpdater, err := health.NewAddonHealthUpdater(cfg, clusterName)
+	spokeClient, err := kubernetes.NewForConfig(ctrl.GetConfigOrDie())
 	if err != nil {
-		panic(err)
+		panic(fmt.Errorf("failed to create spoke client, err: %w", err))
 	}
+	addonAgentNamespace := os.Getenv("POD_NAMESPACE")
+	if len(addonAgentNamespace) == 0 {
+		panic(fmt.Sprintf("Pod namespace is empty, please set the ENV for %s", envKeyPodNamespace))
+	}
+	leaseUpdater := lease.NewLeaseUpdater(spokeClient, common.AddonName, addonAgentNamespace).
+		WithHubLeaseConfig(cfg, clusterName)
 
 	ctx := context.Background()
 

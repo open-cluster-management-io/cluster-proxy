@@ -119,16 +119,16 @@ rm -rf $$TMP_DIR ;\
 endef
 
 client-gen:
-	go install k8s.io/code-generator/cmd/client-gen@v0.21.2
+	go install k8s.io/code-generator/cmd/client-gen@v0.23.0
+	go install sigs.k8s.io/apiserver-runtime/tools/apiserver-runtime-gen@v1.1.1
 	apiserver-runtime-gen \
  	--module open-cluster-management.io/cluster-proxy \
  	-g client-gen \
  	-g informer-gen \
  	-g lister-gen \
- 	--versions=open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1 \
- 	--install-generators=false
+ 	--versions=open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1
 
-image:
+images:
 	docker build \
 		-f cmd/Dockerfile \
 		--build-arg ADDON_AGENT_IMAGE_NAME=$(IMAGE_REGISTRY_NAME)/$(IMAGE_NAME):$(IMAGE_TAG) \
