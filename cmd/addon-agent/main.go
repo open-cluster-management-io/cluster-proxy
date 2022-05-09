@@ -93,12 +93,15 @@ func main() {
 		err := http.Serve(ln, http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 			if !readiness.Load().(bool) {
 				rw.WriteHeader(http.StatusInternalServerError)
-				rw.Write([]byte("not yet ready"))
+				if _, err = rw.Write([]byte("not yet ready")); err != nil {
+					klog.Errorf("failed to write 'not yet ready': %v", err)
+				}
 				klog.Infof("not yet ready")
 				return
 			}
-			rw.Write([]byte("ok"))
-			return
+			if _, err = rw.Write([]byte("ok")); err != nil {
+				klog.Errorf("failed to write 'ok': %v", err)
+			}
 		}))
 		klog.Errorf("health check server aborted: %v", err)
 	}()

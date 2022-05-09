@@ -11,8 +11,17 @@ import (
 var scheme = runtime.NewScheme()
 
 func init() {
-	proxyv1alpha1.AddToScheme(scheme)
-	clusterv1.AddToScheme(scheme)
-	addonv1alpha1.AddToScheme(scheme)
-	k8sscheme.AddToScheme(scheme)
+	var err error
+	if err = proxyv1alpha1.AddToScheme(scheme); err != nil {
+		panic(err)
+	}
+	if err = clusterv1.AddToScheme(scheme); err != nil {
+		panic(err)
+	}
+	if err = addonv1alpha1.AddToScheme(scheme); err != nil {
+		panic(err)
+	}
+	if err = k8sscheme.AddToScheme(scheme); err != nil {
+		panic(err)
+	}
 }
