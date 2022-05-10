@@ -516,8 +516,9 @@ func (c *ClusterManagementAddonReconciler) getCurrentState(isRedeployed bool, co
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			isCurrentlyDeployed = false
+		} else {
+			return nil, err
 		}
-		return nil, err
 	}
 	isSigned := true
 	proxyServerSecret, err := c.SecretGetter.Secrets(namespace).
@@ -527,8 +528,9 @@ func (c *ClusterManagementAddonReconciler) getCurrentState(isRedeployed bool, co
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			isSigned = false
+		} else {
+			return nil, err
 		}
-		return nil, err
 	}
 
 	agentServerSecret, err := c.SecretGetter.Secrets(namespace).
@@ -538,8 +540,9 @@ func (c *ClusterManagementAddonReconciler) getCurrentState(isRedeployed bool, co
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			isSigned = false
+		} else {
+			return nil, err
 		}
-		return nil, err
 	}
 	return &state{
 		isCurrentlyDeployed:       isCurrentlyDeployed,
