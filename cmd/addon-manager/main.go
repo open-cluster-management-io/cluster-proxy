@@ -189,7 +189,12 @@ func main() {
 	defer cancel()
 	go informerFactory.Start(ctx.Done())
 	go nativeInformer.Start(ctx.Done())
-	go addonManager.Start(ctx)
+	go func() {
+		if err := addonManager.Start(ctx); err != nil {
+			setupLog.Error(err, "unable to start addon manager")
+			os.Exit(1)
+		}
+	}()
 	setupLog.Info("starting manager")
 	if err := mgr.Start(ctx); err != nil {
 		setupLog.Error(err, "problem running manager")
