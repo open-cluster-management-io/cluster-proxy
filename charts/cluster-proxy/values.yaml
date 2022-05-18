@@ -12,8 +12,8 @@ replicas: 1
 
 spokeAddonNamespace: "open-cluster-management-cluster-proxy"
 
-proxyServerImage: quay.io/open-cluster-management/cluster-proxy:v0.2.1
-proxyAgentImage: quay.io/open-cluster-management/cluster-proxy:v0.2.1
+proxyServerImage: quay.io/open-cluster-management/cluster-proxy:v0.2.2
+proxyAgentImage: quay.io/open-cluster-management/cluster-proxy:v0.2.2
 
 proxyServer:
   entrypointLoadBalancer: false
