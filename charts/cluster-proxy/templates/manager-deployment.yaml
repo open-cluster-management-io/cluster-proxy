@@ -16,7 +16,7 @@ spec:
       serviceAccount: cluster-proxy
       containers:
         - name: manager
-          image: {{ .Values.registry }}/{{ .Values.image }}:{{ .Values.tag }}
+          image: {{ .Values.registry }}/{{ .Values.image }}:{{ .Values.tag | default (print "v" .Chart.Version) }}
           imagePullPolicy: IfNotPresent
           command:
             - /manager
