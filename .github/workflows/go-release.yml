@@ -36,9 +36,6 @@ jobs:
       - name: verify chart version
         run: |
           cat ./charts/cluster-proxy/Chart.yaml  | grep -q 'version: ${{ env.TRIMED_RELEASE_VERSION }}'
-          cat ./charts/cluster-proxy/values.yaml | grep -q 'tag: ${{ env.RELEASE_VERSION }}'
-          cat ./charts/cluster-proxy/values.yaml | grep -q 'proxyServerImage: quay.io/open-cluster-management/cluster-proxy:${{ env.RELEASE_VERSION }}'
-          cat ./charts/cluster-proxy/values.yaml | grep -q 'proxyAgentImage: quay.io/open-cluster-management/cluster-proxy:${{ env.RELEASE_VERSION }}'
     outputs:
       MAJOR_RELEASE_VERSION: ${{ env.MAJOR_RELEASE_VERSION }}
       RELEASE_VERSION: ${{ env.RELEASE_VERSION }}
