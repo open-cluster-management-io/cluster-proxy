@@ -4,9 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/openshift/library-go/pkg/controller/factory"
-	"github.com/openshift/library-go/pkg/operator/events"
-	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -15,6 +12,8 @@ import (
 	"k8s.io/klog/v2"
 	"open-cluster-management.io/addon-framework/pkg/addonmanager/constants"
 	"open-cluster-management.io/addon-framework/pkg/agent"
+	"open-cluster-management.io/addon-framework/pkg/basecontroller/factory"
+	"open-cluster-management.io/addon-framework/pkg/utils"
 	addonapiv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
 	addonv1alpha1client "open-cluster-management.io/api/client/addon/clientset/versioned"
 	addoninformerv1alpha1 "open-cluster-management.io/api/client/addon/informers/externalversions/addon/v1alpha1"
@@ -36,7 +35,6 @@ type addonHookDeployController struct {
 	workLister                worklister.ManifestWorkLister
 	agentAddons               map[string]agent.AgentAddon
 	cache                     *workCache
-	eventRecorder             events.Recorder
 }
 
 func NewAddonHookDeployController(
@@ -46,7 +44,6 @@ func NewAddonHookDeployController(
 	addonInformers addoninformerv1alpha1.ManagedClusterAddOnInformer,
 	workInformers workinformers.ManifestWorkInformer,
 	agentAddons map[string]agent.AgentAddon,
-	recorder events.Recorder,
 ) factory.Controller {
 	c := &addonHookDeployController{
 		workClient:                workClient,
@@ -56,13 +53,12 @@ func NewAddonHookDeployController(
 		workLister:                workInformers.Lister(),
 		agentAddons:               agentAddons,
 		cache:                     newWorkCache(),
-		eventRecorder:             recorder.WithComponentSuffix("addon-hook-deploy-controller"),
 	}
 
-	return factory.New().WithFilteredEventsInformersQueueKeyFunc(
-		func(obj runtime.Object) string {
+	return factory.New().WithFilteredEventsInformersQueueKeysFunc(
+		func(obj runtime.Object) []string {
 			key, _ := cache.MetaNamespaceKeyFunc(obj)
-			return key
+			return []string{key}
 		},
 		func(obj interface{}) bool {
 			accessor, _ := meta.Accessor(obj)
@@ -73,10 +69,10 @@ func NewAddonHookDeployController(
 			return true
 		},
 		addonInformers.Informer()).
-		WithFilteredEventsInformersQueueKeyFunc(
-			func(obj runtime.Object) string {
+		WithFilteredEventsInformersQueueKeysFunc(
+			func(obj runtime.Object) []string {
 				accessor, _ := meta.Accessor(obj)
-				return fmt.Sprintf("%s/%s", accessor.GetNamespace(), accessor.GetLabels()[constants.AddonLabel])
+				return []string{fmt.Sprintf("%s/%s", accessor.GetNamespace(), accessor.GetLabels()[constants.AddonLabel])}
 			},
 			func(obj interface{}) bool {
 				accessor, _ := meta.Accessor(obj)
@@ -100,11 +96,10 @@ func NewAddonHookDeployController(
 			},
 			workInformers.Informer(),
 		).
-		WithSync(c.sync).ToController("addon-hook-deploy-controller", recorder)
+		WithSync(c.sync).ToController("addon-hook-deploy-controller")
 }
 
-func (c *addonHookDeployController) sync(ctx context.Context, syncCtx factory.SyncContext) error {
-	key := syncCtx.QueueKey()
+func (c *addonHookDeployController) sync(ctx context.Context, syncCtx factory.SyncContext, key string) error {
 	klog.V(4).Infof("Reconciling addon hook deploy %q", key)
 
 	clusterName, addonName, err := cache.SplitMetaNamespaceKey(key)
@@ -143,13 +138,35 @@ func (c *addonHookDeployController) sync(ctx context.Context, syncCtx factory.Sy
 
 	objects, err := agentAddon.Manifests(managedCluster, managedClusterAddon)
 	if err != nil {
+		meta.SetStatusCondition(&managedClusterAddonCopy.Status.Conditions, metav1.Condition{
+			Type:    constants.AddonManifestApplied,
+			Status:  metav1.ConditionFalse,
+			Reason:  constants.AddonManifestAppliedReasonWorkApplyFailed,
+			Message: fmt.Sprintf("failed to get manifest from agent interface: %v", err),
+		})
+		if updateErr := utils.PatchAddonCondition(ctx, c.addonClient, managedClusterAddon, managedClusterAddonCopy); updateErr != nil {
+			return fmt.Errorf("failed to update managedclusteraddon status: %v; the err should be %v", updateErr, err)
+		}
 		return err
 	}
+
 	if len(objects) == 0 {
 		return nil
 	}
-	_, hookWork, err := buildManifestWorkFromObject(clusterName, addonName, objects)
+
+	// TODO: consider whether need to process the hosting cluster hooks
+	_, hookWork, err := newManagedManifestWorkBuilder(agentAddon.GetAgentAddonOptions().HostedModeEnabled).
+		buildManifestWorkFromObject(clusterName, managedClusterAddon, objects)
 	if err != nil {
+		meta.SetStatusCondition(&managedClusterAddonCopy.Status.Conditions, metav1.Condition{
+			Type:    constants.AddonManifestApplied,
+			Status:  metav1.ConditionFalse,
+			Reason:  constants.AddonManifestAppliedReasonWorkApplyFailed,
+			Message: fmt.Sprintf("failed to build manifestwork: %v", err),
+		})
+		if updateErr := utils.PatchAddonCondition(ctx, c.addonClient, managedClusterAddonCopy, managedClusterAddon); updateErr != nil {
+			return fmt.Errorf("failed to update managedclusteraddon status: %v; the err should be %v", updateErr, err)
+		}
 		return err
 	}
 
@@ -176,8 +193,23 @@ func (c *addonHookDeployController) sync(ctx context.Context, syncCtx factory.Sy
 
 	// apply hookWork when addon is deleting
 	hookWork.OwnerReferences = []metav1.OwnerReference{*owner}
-	hookWork, applyErr := applyWork(ctx, c.workClient, c.workLister, c.cache, c.eventRecorder, hookWork)
+	hookWork, err = applyWork(ctx, c.workClient, c.workLister, c.cache, hookWork)
+	if err != nil {
+		meta.SetStatusCondition(&managedClusterAddonCopy.Status.Conditions, metav1.Condition{
+			Type:    constants.AddonManifestApplied,
+			Status:  metav1.ConditionFalse,
+			Reason:  constants.AddonManifestAppliedReasonWorkApplyFailed,
+			Message: fmt.Sprintf("failed to apply manifestwork: %v", err),
+		})
+		if updateErr := utils.PatchAddonCondition(ctx, c.addonClient, managedClusterAddonCopy, managedClusterAddon); updateErr != nil {
+			return fmt.Errorf("failed to update managedclusteraddon status: %v; the err should be %v", updateErr, err)
+		}
+		return err
+	}
+
 	completed := hookWorkIsCompleted(hookWork)
+
+	// if the hook is completed, remove the finalizer
 	if completed && hasFinalizer(managedClusterAddonCopy.Finalizers, constants.PreDeleteHookFinalizer) {
 		finalizer := removeFinalizer(managedClusterAddonCopy.Finalizers, constants.PreDeleteHookFinalizer)
 		managedClusterAddonCopy.SetFinalizers(finalizer)
@@ -187,36 +219,23 @@ func (c *addonHookDeployController) sync(ctx context.Context, syncCtx factory.Sy
 	}
 
 	switch {
-	case applyErr != nil:
-		meta.SetStatusCondition(&managedClusterAddonCopy.Status.Conditions, metav1.Condition{
-			Type:    "HookManifestCompleted",
-			Status:  metav1.ConditionFalse,
-			Reason:  "ManifestWorkApplyFailed",
-			Message: fmt.Sprintf("failed to apply hook manifestwork: %v", err),
-		})
 	case completed:
 		meta.SetStatusCondition(&managedClusterAddonCopy.Status.Conditions, metav1.Condition{
-			Type:    "HookManifestCompleted",
+			Type:    constants.AddonHookManifestCompleted,
 			Status:  metav1.ConditionTrue,
 			Reason:  "HookManifestIsCompleted",
 			Message: fmt.Sprintf("hook manifestWork %v is completed.", hookWork.Name),
 		})
 	default:
 		meta.SetStatusCondition(&managedClusterAddonCopy.Status.Conditions, metav1.Condition{
-			Type:    "HookManifestCompleted",
+			Type:    constants.AddonHookManifestCompleted,
 			Status:  metav1.ConditionFalse,
 			Reason:  "HookManifestIsNotCompleted",
 			Message: fmt.Sprintf("hook manifestWork %v is not completed.", hookWork.Name),
 		})
 	}
 
-	if !equality.Semantic.DeepEqual(managedClusterAddonCopy.Status, managedClusterAddon.Status) {
-		_, err = c.addonClient.AddonV1alpha1().ManagedClusterAddOns(managedClusterAddonCopy.Namespace).UpdateStatus(
-			ctx, managedClusterAddonCopy, metav1.UpdateOptions{})
-		return err
-	}
-
-	return nil
+	return utils.PatchAddonCondition(ctx, c.addonClient, managedClusterAddonCopy, managedClusterAddon)
 }
 
 // hookWorkIsCompleted checks the hook resources are completed.
@@ -226,9 +245,6 @@ func (c *addonHookDeployController) sync(ctx context.Context, syncCtx factory.Sy
 // pod is completed if the phase of status is Succeeded.
 func hookWorkIsCompleted(hookWork *workapiv1.ManifestWork) bool {
 	if hookWork == nil {
-		return false
-	}
-	if !meta.IsStatusConditionTrue(hookWork.Status.Conditions, workapiv1.WorkApplied) {
 		return false
 	}
 	if !meta.IsStatusConditionTrue(hookWork.Status.Conditions, workapiv1.WorkAvailable) {
