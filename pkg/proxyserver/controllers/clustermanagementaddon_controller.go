@@ -70,13 +70,12 @@ func RegisterClusterManagementAddonReconciler(
 		CAPair:     selfSigner.CA(),
 		newCertRotatorFunc: func(namespace, name string, sans ...string) selfsigned.CertRotation {
 			return &certrotation.TargetRotation{
-				Namespace:     namespace,
-				Name:          name,
-				Validity:      time.Hour * 24 * 180,
-				HostNames:     sans,
-				Lister:        secretInformer.Lister(),
-				Client:        nativeClient.CoreV1(),
-				EventRecorder: events.NewInMemoryRecorder("ClusterManagementAddonReconciler"),
+				Namespace: namespace,
+				Name:      name,
+				Validity:  time.Hour * 24 * 180,
+				HostNames: sans,
+				Lister:    secretInformer.Lister(),
+				Client:    nativeClient.CoreV1(),
 			}
 		},
 		SecretLister:     secretInformer.Lister(),
