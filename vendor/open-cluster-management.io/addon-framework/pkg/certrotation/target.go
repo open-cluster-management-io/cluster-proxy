@@ -11,10 +11,9 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"open-cluster-management.io/addon-framework/pkg/utils"
 
 	"github.com/openshift/library-go/pkg/crypto"
-	"github.com/openshift/library-go/pkg/operator/events"
-	"github.com/openshift/library-go/pkg/operator/resource/resourceapply"
 	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
 	corev1listers "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/util/cert"
@@ -24,13 +23,12 @@ import (
 // of the lifetime of the old cert has passed, or the CA used to signed the old cert is
 // gone from the CA bundle.
 type TargetRotation struct {
-	Namespace     string
-	Name          string
-	Validity      time.Duration
-	HostNames     []string
-	Lister        corev1listers.SecretLister
-	Client        corev1client.SecretsGetter
-	EventRecorder events.Recorder
+	Namespace string
+	Name      string
+	Validity  time.Duration
+	HostNames []string
+	Lister    corev1listers.SecretLister
+	Client    corev1client.SecretsGetter
 }
 
 func (c TargetRotation) EnsureTargetCertKeyPair(signingCertKeyPair *crypto.CA, caBundleCerts []*x509.Certificate, fns ...crypto.CertificateExtensionFunc) error {
@@ -50,12 +48,11 @@ func (c TargetRotation) EnsureTargetCertKeyPair(signingCertKeyPair *crypto.CA, c
 		return nil
 	}
 
-	c.EventRecorder.Eventf("TargetUpdateRequired", "%q in %q requires a new target cert/key pair: %v", c.Name, c.Namespace, reason)
 	if err := c.setTargetCertKeyPairSecret(targetCertKeyPairSecret, c.Validity, signingCertKeyPair, fns...); err != nil {
 		return err
 	}
 
-	if _, _, err = resourceapply.ApplySecret(context.TODO(), c.Client, c.EventRecorder, targetCertKeyPairSecret); err != nil {
+	if _, _, err = utils.ApplySecret(context.TODO(), c.Client, targetCertKeyPairSecret); err != nil {
 		return err
 	}
 	return nil
@@ -92,8 +89,9 @@ func needNewTargetCertKeyPair(secret *corev1.Secret, caBundleCerts []*x509.Certi
 
 	maxWait := cert.NotAfter.Sub(cert.NotBefore) / 5
 	latestTime := cert.NotAfter.Add(-maxWait)
-	if time.Now().After(latestTime) {
-		return fmt.Sprintf("expired in %6.3f seconds", cert.NotAfter.Sub(time.Now()).Seconds())
+	now := time.Now()
+	if now.After(latestTime) {
+		return fmt.Sprintf("expired in %6.3f seconds", cert.NotAfter.Sub(now).Seconds())
 	}
 
 	// check the signer common name against all the common names in our ca bundle so we don't refresh early
