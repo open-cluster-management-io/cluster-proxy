@@ -194,7 +194,8 @@ func GetClusterProxyValueFunc(
 		if err != nil {
 			return nil, err
 		}
-		return map[string]interface{}{
+
+		values := map[string]interface{}{
 			"agentDeploymentName":      "cluster-proxy-proxy-agent",
 			"serviceDomain":            "svc.cluster.local",
 			"includeNamespaceCreation": true,
@@ -216,7 +217,14 @@ func GetClusterProxyValueFunc(
 			"includeStaticProxyAgentSecret": !v1CSRSupported,
 			"staticProxyAgentSecretCert":    certDataBase64,
 			"staticProxyAgentSecretKey":     keyDataBase64,
-		}, nil
+		}
+
+		if nodePlacement, ok := proxyConfig.Spec.ProxyAgent.AgentNodePlacements[cluster.Name]; ok {
+			values["nodeSelector"] = nodePlacement.NodeSelector
+			values["tolerations"] = nodePlacement.Tolerations
+		}
+
+		return values, nil
 	}
 }
 
