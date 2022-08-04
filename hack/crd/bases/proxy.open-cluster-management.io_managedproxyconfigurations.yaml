@@ -197,7 +197,7 @@ spec:
                           type: array
                       type: object
                     description: AgentNodePlacements defines which Nodes the proxy
-                      agent are scheduled on.
+                      agent are scheduled on. key is the name of the managed cluster.
                     type: object
                   image:
                     description: '`image` is the container image of the proxy agent.'

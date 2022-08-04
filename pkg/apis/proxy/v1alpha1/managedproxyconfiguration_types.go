@@ -315,7 +315,7 @@ type ManagedProxyConfigurationProxyAgent struct {
 	// `imagePullSecrets` defines the imagePullSecrets used by proxy-agent
 	// +optional
 	ImagePullSecrets []string `json:"imagePullSecrets,omitempty"`
-	// AgentNodePlacements defines which Nodes the proxy agent are scheduled on.
+	// AgentNodePlacements defines which Nodes the proxy agent are scheduled on. key is the name of the managed cluster.
 	// +optional
 	AgentNodePlacements map[string]NodePlacement `json:"agentNodePlacements,omitempty"`
 }
