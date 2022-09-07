@@ -35,7 +35,7 @@ const (
 	ProxyAgentSignerName = "open-cluster-management.io/proxy-agent-signer"
 )
 
-func NewAgentAddon(signer selfsigned.SelfSigner, signerNamespace string, v1CSRSupported bool, runtimeClient client.Client, nativeClient kubernetes.Interface) (agent.AgentAddon, error) {
+func NewAgentAddon(signer selfsigned.SelfSigner, signerNamespace string, v1CSRSupported bool, runtimeClient client.Client, nativeClient kubernetes.Interface, agentInstallAll bool) (agent.AgentAddon, error) {
 	caCertData, caKeyData, err := signer.CA().Config.GetPEMBytes()
 	if err != nil {
 		return nil, err
@@ -64,7 +64,8 @@ func NewAgentAddon(signer selfsigned.SelfSigner, signerNamespace string, v1CSRSu
 			},
 		})
 	}
-	return addonfactory.NewAgentAddonFactory(common.AddonName, FS, "manifests/charts/addon-agent").
+
+	agentFactory := addonfactory.NewAgentAddonFactory(common.AddonName, FS, "manifests/charts/addon-agent").
 		WithAgentRegistrationOption(&agent.RegistrationOption{
 			CSRConfigurations: func(cluster *clusterv1.ManagedCluster) []addonv1alpha1.RegistrationConfig {
 				return regConfigs
@@ -103,10 +104,13 @@ func NewAgentAddon(signer selfsigned.SelfSigner, signerNamespace string, v1CSRSu
 				Build(),
 			CSRSign: CustomSignerWithExpiry(ProxyAgentSignerName, caKeyData, caCertData, time.Hour*24*180),
 		}).
-		WithInstallStrategy(agent.InstallAllStrategy(config.AddonInstallNamespace)).
-		WithGetValuesFuncs(GetClusterProxyValueFunc(runtimeClient, nativeClient, signerNamespace, caCertData, v1CSRSupported)).
-		BuildHelmAgentAddon()
+		WithGetValuesFuncs(GetClusterProxyValueFunc(runtimeClient, nativeClient, signerNamespace, caCertData, v1CSRSupported))
 
+	if agentInstallAll {
+		agentFactory.WithInstallStrategy(agent.InstallAllStrategy(config.AddonInstallNamespace))
+	}
+
+	return agentFactory.BuildHelmAgentAddon()
 }
 
 func GetClusterProxyValueFunc(

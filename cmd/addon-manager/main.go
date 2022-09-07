@@ -65,6 +65,7 @@ func main() {
 	var enableLeaderElection bool
 	var probeAddr string
 	var signerSecretNamespace, signerSecretName string
+	var agentInstallAll bool
 
 	logger := klogr.New()
 	klog.SetOutput(os.Stdout)
@@ -83,6 +84,11 @@ func main() {
 		"The name of the addon agent's image")
 	flag.StringVar(&config.AddonInstallNamespace, "agent-install-namespace", config.DefaultAddonInstallNamespace,
 		"The target namespace to install the addon agents.")
+	flag.BoolVar(
+		&agentInstallAll, "agent-install-all", false,
+		"Configure the install strategy of agent on managed clusters. "+
+			"Enabling this will automatically install agent on all managed cluster.")
+
 	flag.Parse()
 
 	// pipe controller-runtime logs to klog
@@ -174,7 +180,8 @@ func main() {
 		signerSecretNamespace,
 		supportsV1CSR,
 		mgr.GetClient(),
-		nativeClient)
+		nativeClient,
+		agentInstallAll)
 	if err != nil {
 		setupLog.Error(err, "unable to instantiate cluster-proxy addon")
 		os.Exit(1)
