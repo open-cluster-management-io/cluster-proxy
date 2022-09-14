@@ -12,6 +12,7 @@ import (
 
 	//_ "open-cluster-management.io/cluster-proxy/test/e2e/configuration"
 	_ "open-cluster-management.io/cluster-proxy/test/e2e/certificate"
+	// _ "open-cluster-management.io/cluster-proxy/test/e2e/connect"
 	_ "open-cluster-management.io/cluster-proxy/test/e2e/install"
 )
 
