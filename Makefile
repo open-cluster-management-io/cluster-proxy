@@ -78,7 +78,7 @@ build: generate fmt vet
 	go build -o bin/addon-agent cmd/addon-agent/main.go
 
 build-e2e:
-	go test -c -o bin/e2e ./e2e/
+	go test -c -o bin/e2e ./test/e2e/
 
 docker-build: test ## Build docker image with the manager.
 	docker build -t ${IMG} .
