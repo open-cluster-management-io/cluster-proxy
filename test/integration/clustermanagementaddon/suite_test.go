@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package controllers
+package clustermanagementaddon
 
 import (
 	"context"
@@ -35,6 +35,7 @@ import (
 	"k8s.io/client-go/util/cert"
 	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
+	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/controllers"
 	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/operator/authentication/selfsigned"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -112,7 +113,7 @@ var _ = BeforeSuite(func() {
 	selfSigner, err := selfsigned.NewSelfSignerFromSecretOrGenerate(kubeClient, "default", "test-ca")
 	Expect(err).NotTo(HaveOccurred())
 
-	err = RegisterClusterManagementAddonReconciler(mgr, selfSigner, kubeClient, kubeInformer.Core().V1().Secrets(), true)
+	err = controllers.RegisterClusterManagementAddonReconciler(mgr, selfSigner, kubeClient, kubeInformer.Core().V1().Secrets(), true)
 	Expect(err).NotTo(HaveOccurred())
 
 	By("start manager")

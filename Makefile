@@ -62,14 +62,8 @@ golint:
 
 verify: fmt vet golint
 
-ENVTEST_ASSETS_DIR=$(shell pwd)/testbin
 test: manifests generate fmt vet ## Run tests.
-	mkdir -p ${ENVTEST_ASSETS_DIR}
-	test -f ${ENVTEST_ASSETS_DIR}/setup-envtest.sh || curl -sSLo ${ENVTEST_ASSETS_DIR}/setup-envtest.sh https://raw.githubusercontent.com/kubernetes-sigs/controller-runtime/v0.8.3/hack/setup-envtest.sh
-	source ${ENVTEST_ASSETS_DIR}/setup-envtest.sh; \
-		fetch_envtest_tools $(ENVTEST_ASSETS_DIR); \
-		setup_envtest_env $(ENVTEST_ASSETS_DIR); \
-		go test ./pkg/... -coverprofile cover.out
+	go test ./pkg/... -coverprofile cover.out
 
 ##@ Build
 
@@ -140,8 +134,14 @@ images:
 		--build-arg ADDON_AGENT_IMAGE_NAME=$(IMAGE_REGISTRY_NAME)/$(IMAGE_NAME):$(IMAGE_TAG) \
 		-t $(IMAGE_REGISTRY_NAME)/$(IMAGE_NAME):$(IMAGE_TAG) .
 
-test-integration:
-	@echo "TODO: Run integration test"
+ENVTEST_ASSETS_DIR=$(shell pwd)/testbin
+test-integration: manifests generate fmt vet
+	mkdir -p ${ENVTEST_ASSETS_DIR}
+	test -f ${ENVTEST_ASSETS_DIR}/setup-envtest.sh || curl -sSLo ${ENVTEST_ASSETS_DIR}/setup-envtest.sh https://raw.githubusercontent.com/kubernetes-sigs/controller-runtime/v0.8.3/hack/setup-envtest.sh
+	source ${ENVTEST_ASSETS_DIR}/setup-envtest.sh; \
+		fetch_envtest_tools $(ENVTEST_ASSETS_DIR); \
+		setup_envtest_env $(ENVTEST_ASSETS_DIR); \
+		go test ./test/integration/... -coverprofile cover.out
 
 test-e2e: build-e2e
 	./bin/e2e --test-cluster $(E2E_TEST_CLUSTER_NAME)
