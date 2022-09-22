@@ -6,7 +6,7 @@ import (
 
 	"github.com/onsi/ginkgo"
 	"github.com/onsi/gomega"
-	"open-cluster-management.io/cluster-proxy/e2e/framework"
+	"open-cluster-management.io/cluster-proxy/test/e2e/framework"
 )
 
 func TestMain(m *testing.M) {
