@@ -7,12 +7,12 @@ import (
 	"github.com/onsi/ginkgo"
 	"github.com/onsi/gomega"
 
-	"open-cluster-management.io/cluster-proxy/e2e/framework"
+	"open-cluster-management.io/cluster-proxy/test/e2e/framework"
 	// per-package e2e suite
 
-	//_ "open-cluster-management.io/cluster-proxy/e2e/configuration"
-	_ "open-cluster-management.io/cluster-proxy/e2e/certificate"
-	_ "open-cluster-management.io/cluster-proxy/e2e/install"
+	//_ "open-cluster-management.io/cluster-proxy/test/e2e/configuration"
+	_ "open-cluster-management.io/cluster-proxy/test/e2e/certificate"
+	_ "open-cluster-management.io/cluster-proxy/test/e2e/install"
 )
 
 func TestMain(m *testing.M) {

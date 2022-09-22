@@ -1,4 +1,4 @@
-package certificate
+package install
 
 import (
 	"os"
@@ -6,7 +6,7 @@ import (
 
 	"github.com/onsi/ginkgo"
 	"github.com/onsi/gomega"
-	"open-cluster-management.io/cluster-proxy/e2e/framework"
+	"open-cluster-management.io/cluster-proxy/test/e2e/framework"
 )
 
 func TestMain(m *testing.M) {
@@ -16,7 +16,7 @@ func TestMain(m *testing.M) {
 }
 
 func RunE2ETests(t *testing.T) {
-	ginkgo.RunSpecs(t, "ClusterProxy e2e suite -- certificate tests")
+	ginkgo.RunSpecs(t, "ClusterProxy e2e suite -- install tests")
 }
 
 func TestE2E(t *testing.T) {

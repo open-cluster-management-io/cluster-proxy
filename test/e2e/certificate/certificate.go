@@ -17,10 +17,10 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"open-cluster-management.io/addon-framework/pkg/addonmanager/constants"
 	addonapiv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
-	"open-cluster-management.io/cluster-proxy/e2e/framework"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 	"open-cluster-management.io/cluster-proxy/pkg/common"
 	"open-cluster-management.io/cluster-proxy/pkg/proxyagent/agent"
+	"open-cluster-management.io/cluster-proxy/test/e2e/framework"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
