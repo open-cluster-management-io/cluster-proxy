@@ -1,4 +1,4 @@
-package controllers
+package clustermanagementaddon
 
 import (
 	"fmt"
