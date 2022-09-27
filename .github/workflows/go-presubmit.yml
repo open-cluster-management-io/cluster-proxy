@@ -15,7 +15,6 @@ env:
   # Common versions
   GO_VERSION: '1.18'
   GO_REQUIRED_MIN_VERSION: ''
-  GOPATH: '/home/runner/work/cluster-proxy/cluster-proxy/go'
 defaults:
   run:
     working-directory: go/src/open-cluster-management.io/cluster-proxy
