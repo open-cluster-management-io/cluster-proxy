@@ -2,6 +2,7 @@ package eventhandler
 
 import (
 	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
+	"open-cluster-management.io/cluster-proxy/pkg/common"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -11,10 +12,6 @@ import (
 )
 
 var _ handler.EventHandler = &ClusterManagementAddonHandler{}
-
-const (
-	crdName = "managedproxyconfigurations.proxy.open-cluster-management.io"
-)
 
 type ClusterManagementAddonHandler struct {
 }
@@ -37,7 +34,7 @@ func (c ClusterManagementAddonHandler) Generic(event event.GenericEvent, limitin
 
 func (c ClusterManagementAddonHandler) process(obj runtime.Object, limitingInterface workqueue.RateLimitingInterface) {
 	a := obj.(*addonv1alpha1.ClusterManagementAddOn)
-	if a.Spec.AddOnConfiguration.CRDName == crdName {
+	if a.Name == common.AddonName {
 		req := reconcile.Request{}
 		req.Name = a.Spec.AddOnConfiguration.CRName
 		limitingInterface.Add(req)

@@ -34,7 +34,6 @@ import (
 	appsv1client "k8s.io/client-go/kubernetes/typed/apps/v1"
 	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
 	corev1listers "k8s.io/client-go/listers/core/v1"
-	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -54,16 +53,6 @@ func RegisterClusterManagementAddonReconciler(
 	secretInformer informercorev1.SecretInformer,
 	supportsV1CSR bool,
 ) error {
-	clusterAddonInformer, err := mgr.GetCache().
-		GetInformerForKind(context.TODO(), addonv1alpha1.GroupVersion.WithKind("ClusterManagementAddOn"))
-	if err != nil {
-		return err
-	}
-	proxyConfigurationInformer, err := mgr.GetCache().
-		GetInformerForKind(context.TODO(), proxyv1alpha1.GroupVersion.WithKind("ManagedProxyConfiguration"))
-	if err != nil {
-		return err
-	}
 	r := &ClusterManagementAddonReconciler{
 		Client:     mgr.GetClient(),
 		SelfSigner: selfSigner,
@@ -84,9 +73,6 @@ func RegisterClusterManagementAddonReconciler(
 		DeploymentGetter: nativeClient.AppsV1(),
 		EventRecorder:    events.NewInMemoryRecorder("ClusterManagementAddonReconciler"),
 
-		clusterAddonInformerReady:       clusterAddonInformer.HasSynced,
-		proxyConfigurationInformerReady: proxyConfigurationInformer.HasSynced,
-
 		supportsV1CSR: supportsV1CSR,
 	}
 	return r.SetupWithManager(mgr)
@@ -101,9 +87,6 @@ type ClusterManagementAddonReconciler struct {
 	DeploymentGetter appsv1client.DeploymentsGetter
 	ServiceGetter    corev1client.ServicesGetter
 	EventRecorder    events.Recorder
-
-	clusterAddonInformerReady       cache.InformerSynced
-	proxyConfigurationInformerReady cache.InformerSynced
 
 	newCertRotatorFunc func(namespace, name string, sans ...string) selfsigned.CertRotation
 	supportsV1CSR      bool
@@ -124,12 +107,6 @@ func (c *ClusterManagementAddonReconciler) SetupWithManager(mgr ctrl.Manager) er
 }
 
 func (c *ClusterManagementAddonReconciler) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
-	if !cache.WaitForCacheSync(ctx.Done(),
-		c.proxyConfigurationInformerReady,
-		c.clusterAddonInformerReady) {
-		return reconcile.Result{}, errors.New("informer cache not yet full-filled")
-	}
-
 	log.Info("Start reconcile", "name", request.Name)
 
 	// get the latest cluster-addon

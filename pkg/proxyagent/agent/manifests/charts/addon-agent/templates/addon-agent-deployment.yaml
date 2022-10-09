@@ -38,7 +38,7 @@ spec:
           args:
             - --proxy-server-host={{ .Values.serviceEntryPoint }}
             - --proxy-server-port={{ .Values.serviceEntryPointPort }}
-            - --agent-identifiers={{ list (printf "host=%s" .Values.clusterName) (printf "host=%s.%s" .Values.clusterName .Release.Namespace) (printf "host=%s.%s.%s" .Values.clusterName .Release.Namespace .Values.serviceDomain) | join "&" }}
+            - --agent-identifiers={{ .Values.agentIdentifiers }}
             - --ca-cert=/etc/ca/ca.crt
             - --agent-cert=/etc/tls/tls.crt
             - --agent-key=/etc/tls/tls.key

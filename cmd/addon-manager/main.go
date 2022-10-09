@@ -37,6 +37,7 @@ import (
 	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
 	"open-cluster-management.io/api/client/addon/clientset/versioned"
 	"open-cluster-management.io/api/client/addon/informers/externalversions"
+	clusterv1beta1 "open-cluster-management.io/api/cluster/v1beta1"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 	"open-cluster-management.io/cluster-proxy/pkg/config"
 	"open-cluster-management.io/cluster-proxy/pkg/proxyagent/agent"
@@ -57,6 +58,7 @@ func init() {
 
 	utilruntime.Must(addonv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(proxyv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(clusterv1beta1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 }
 
@@ -150,6 +152,10 @@ func main() {
 	}
 	if err := controllers.RegisterConfigurationNotifyReconciler(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ConfigurationNotifyReconciler")
+		os.Exit(1)
+	}
+	if err := controllers.RegisterServiceResolverReconciler(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "ServiceResolverReconciler")
 		os.Exit(1)
 	}
 

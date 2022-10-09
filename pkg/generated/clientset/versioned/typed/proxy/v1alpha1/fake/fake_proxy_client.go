@@ -16,6 +16,10 @@ func (c *FakeProxyV1alpha1) ManagedProxyConfigurations() v1alpha1.ManagedProxyCo
 	return &FakeManagedProxyConfigurations{c}
 }
 
+func (c *FakeProxyV1alpha1) ManagedProxyServiceResolvers() v1alpha1.ManagedProxyServiceResolverInterface {
+	return &FakeManagedProxyServiceResolvers{c}
+}
+
 // RESTClient returns a RESTClient that is used to communicate
 // with API server by this client implementation.
 func (c *FakeProxyV1alpha1) RESTClient() rest.Interface {
