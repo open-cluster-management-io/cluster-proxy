@@ -1,4 +1,4 @@
-package clustermanagementaddon
+package controllers
 
 import (
 	"fmt"
@@ -140,20 +140,25 @@ var _ = Describe("ClusterManagementAddon Controller", func() {
 				},
 			}
 
-			newConfig := &proxyv1alpha1.ManagedProxyConfiguration{}
-
-			err := ctrlClient.Get(ctx, client.ObjectKeyFromObject(config), newConfig)
-			Expect(err).ToNot(HaveOccurred())
-
-			newConfig.Spec.ProxyServer.NodePlacement = proxyv1alpha1.NodePlacement{
-				NodeSelector: nodeSelector,
-				Tolerations:  tolerations,
-			}
-
-			err = ctrlClient.Update(ctx, newConfig)
-			Expect(err).ToNot(HaveOccurred())
-
 			Eventually(func() error {
+				newConfig := &proxyv1alpha1.ManagedProxyConfiguration{}
+
+				err := ctrlClient.Get(ctx, client.ObjectKeyFromObject(config), newConfig)
+				if err != nil {
+					return err
+				}
+
+				newConfig.Spec.ProxyServer.NodePlacement = proxyv1alpha1.NodePlacement{
+					NodeSelector: nodeSelector,
+					Tolerations:  tolerations,
+				}
+
+				// Move update in to Eventually to avoid "the object has been modified; please apply your changes to the latest version and try again"
+				err = ctrlClient.Update(ctx, newConfig)
+				if err != nil {
+					return err
+				}
+
 				deployment, err := kubeClient.AppsV1().Deployments(proxyServerNamespace).Get(ctx, configName, metav1.GetOptions{})
 				if err != nil {
 					return err

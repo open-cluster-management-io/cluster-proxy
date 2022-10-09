@@ -39,6 +39,8 @@ func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource
 	// Group=proxy.open-cluster-management.io, Version=v1alpha1
 	case v1alpha1.SchemeGroupVersion.WithResource("managedproxyconfigurations"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Proxy().V1alpha1().ManagedProxyConfigurations().Informer()}, nil
+	case v1alpha1.SchemeGroupVersion.WithResource("managedproxyserviceresolvers"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Proxy().V1alpha1().ManagedProxyServiceResolvers().Informer()}, nil
 
 	}
 

@@ -71,9 +71,6 @@ build: generate fmt vet
 	go build -o bin/addon-manager cmd/addon-manager/main.go
 	go build -o bin/addon-agent cmd/addon-agent/main.go
 
-build-e2e:
-	go test -c -o bin/e2e ./test/e2e/
-
 docker-build: test ## Build docker image with the manager.
 	docker build -t ${IMG} .
 
@@ -142,6 +139,14 @@ test-integration: manifests generate fmt vet
 		fetch_envtest_tools $(ENVTEST_ASSETS_DIR); \
 		setup_envtest_env $(ENVTEST_ASSETS_DIR); \
 		go test ./test/integration/... -coverprofile cover.out
+
+e2e-job-image:
+	docker build \
+		-f test/e2e/job/Dockerfile \
+		-t $(IMAGE_REGISTRY_NAME)/$(IMAGE_NAME)-e2e-job:$(IMAGE_TAG) .
+
+build-e2e:
+	go test -c -o bin/e2e ./test/e2e/
 
 test-e2e: build-e2e
 	./bin/e2e --test-cluster $(E2E_TEST_CLUSTER_NAME)

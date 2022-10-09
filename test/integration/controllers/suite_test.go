@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package clustermanagementaddon
+package controllers
 
 import (
 	"context"
@@ -34,6 +34,7 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/util/cert"
 	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
+	clusterv1beta1 "open-cluster-management.io/api/cluster/v1beta1"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/controllers"
 	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/operator/authentication/selfsigned"
@@ -78,6 +79,7 @@ var _ = BeforeSuite(func() {
 		CRDDirectoryPaths: []string{
 			filepath.Join("..", "..", "..", "hack", "crd", "addon"),
 			filepath.Join("..", "..", "..", "hack", "crd", "bases"),
+			filepath.Join("..", "..", "..", "hack", "crd", "cluster"),
 		},
 		ErrorIfCRDPathMissing: true,
 	}
@@ -94,6 +96,9 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 
 	err = proxyv1alpha1.AddToScheme(scheme)
+	Expect(err).NotTo(HaveOccurred())
+
+	err = clusterv1beta1.AddToScheme(scheme)
 	Expect(err).NotTo(HaveOccurred())
 
 	kubeClient, err = kubernetes.NewForConfig(cfg)
@@ -114,6 +119,9 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 
 	err = controllers.RegisterClusterManagementAddonReconciler(mgr, selfSigner, kubeClient, kubeInformer.Core().V1().Secrets(), true)
+	Expect(err).NotTo(HaveOccurred())
+
+	err = controllers.RegisterServiceResolverReconciler(mgr)
 	Expect(err).NotTo(HaveOccurred())
 
 	By("start manager")
