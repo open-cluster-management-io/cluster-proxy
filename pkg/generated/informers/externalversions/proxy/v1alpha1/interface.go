@@ -10,6 +10,8 @@ import (
 type Interface interface {
 	// ManagedProxyConfigurations returns a ManagedProxyConfigurationInformer.
 	ManagedProxyConfigurations() ManagedProxyConfigurationInformer
+	// ManagedProxyServiceResolvers returns a ManagedProxyServiceResolverInformer.
+	ManagedProxyServiceResolvers() ManagedProxyServiceResolverInformer
 }
 
 type version struct {
@@ -26,4 +28,9 @@ func New(f internalinterfaces.SharedInformerFactory, namespace string, tweakList
 // ManagedProxyConfigurations returns a ManagedProxyConfigurationInformer.
 func (v *version) ManagedProxyConfigurations() ManagedProxyConfigurationInformer {
 	return &managedProxyConfigurationInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+}
+
+// ManagedProxyServiceResolvers returns a ManagedProxyServiceResolverInformer.
+func (v *version) ManagedProxyServiceResolvers() ManagedProxyServiceResolverInformer {
+	return &managedProxyServiceResolverInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
 }

@@ -5,6 +5,7 @@ import (
 
 	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
+	"open-cluster-management.io/cluster-proxy/pkg/common"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/util/workqueue"
@@ -48,7 +49,7 @@ func findRelatedAddon(c client.Client, cfgName string, limitingInterface workque
 		return
 	}
 	for _, addon := range list.Items {
-		if addon.Spec.AddOnConfiguration.CRDName == crdName {
+		if addon.Name == common.AddonName {
 			if addon.Spec.AddOnConfiguration.CRName == cfgName {
 				req := reconcile.Request{}
 				req.Namespace = addon.Namespace

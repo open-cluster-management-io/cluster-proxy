@@ -15,7 +15,6 @@ env:
   # Common versions
   GO_VERSION: '1.18'
   GO_REQUIRED_MIN_VERSION: ''
-  GOPATH: '/home/runner/work/cluster-proxy/cluster-proxy/go'
 defaults:
   run:
     working-directory: go/src/open-cluster-management.io/cluster-proxy
@@ -115,9 +114,7 @@ jobs:
           clusteradm accept --clusters loopback --wait 30
           kubectl wait --for=condition=ManagedClusterConditionAvailable managedcluster/loopback
           kubectl -n open-cluster-management scale deploy cluster-manager --replicas=0
-          kubectl apply -f ./e2e/crds/
-      - name: Build e2e binary
-        run: make build-e2e
+          kubectl apply -f ./test/e2e/crds/
       - name: Build image
         run: |
           make images
@@ -128,6 +125,6 @@ jobs:
              -n open-cluster-management-addon --create-namespace \
              cluster-proxy charts/cluster-proxy/ \
              --set tag=latest
-      - name: Run e2e test
+      - name: Build&Run e2e test
         run: |
           make test-e2e

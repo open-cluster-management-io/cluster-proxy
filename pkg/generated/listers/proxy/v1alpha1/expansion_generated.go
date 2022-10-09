@@ -5,3 +5,7 @@ package v1alpha1
 // ManagedProxyConfigurationListerExpansion allows custom methods to be added to
 // ManagedProxyConfigurationLister.
 type ManagedProxyConfigurationListerExpansion interface{}
+
+// ManagedProxyServiceResolverListerExpansion allows custom methods to be added to
+// ManagedProxyServiceResolverLister.
+type ManagedProxyServiceResolverListerExpansion interface{}
