@@ -6,23 +6,20 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"sync/atomic"
 	"time"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	clusterv1 "open-cluster-management.io/api/cluster/v1"
 	clusterv1beta1 "open-cluster-management.io/api/cluster/v1beta1"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
-	"open-cluster-management.io/cluster-proxy/pkg/common"
 	"open-cluster-management.io/cluster-proxy/pkg/util"
 
 	grpccredentials "google.golang.org/grpc/credentials"
@@ -35,7 +32,7 @@ const (
 	connectTestBasename = "connect"
 	serviceName         = "hello-world"
 	serviceNamespace    = "default"
-	managedclusterset   = "test"
+	managedclusterset   = "default"
 	managedclusterName  = "loopback"
 )
 
@@ -47,63 +44,33 @@ const (
 var _ = Describe("Connectivity Test", func() {
 	f := framework.NewE2EFramework(connectTestBasename)
 
-	c := f.HubRuntimeClient()
-	proxyConfiguration := &proxyv1alpha1.ManagedProxyConfiguration{}
-	err := c.Get(context.TODO(), types.NamespacedName{
-		Name: "cluster-proxy",
-	}, proxyConfiguration)
-	Expect(err).NotTo(HaveOccurred())
-
-	ctx, cancel := context.WithCancel(context.TODO())
-	defer cancel()
-
-	cfg := f.HubRESTConfig()
-	By("Running local port-forward stream to proxy service")
-
-	localProxy := util.NewRoundRobinLocalProxyWithReqId(
-		cfg,
-		&atomic.Value{},
-		proxyConfiguration.Spec.ProxyServer.Namespace,
-		common.LabelKeyComponentName+"="+common.ComponentNameProxyServer, // TODO: configurable label selector?
-		8090,
-		200,
-	)
-
-	closeFn, err := localProxy.Listen(ctx)
-	Expect(err).NotTo(HaveOccurred())
-	defer closeFn()
-
-	It("should return health when probe managed cluster kube-apiserver", func() {
-		Eventually(func() error {
-			return probeHealth(f)
-		}, 6*timeout, 3*interval).Should(Succeed())
-	})
-
-	It("should eventually connect to a hello-world/default service", func() {
+	It("should eventually connect to a kube-apiserver and hello-world service on managed cluster", func() {
 		var err error
 
 		err = deployHelleWorldApplication(context.Background(), serviceName, serviceNamespace, f)
-		Expect(err).NotTo(HaveOccurred())
+		if err != nil && !apierrors.IsAlreadyExists(err) {
+			Expect(err).NotTo(HaveOccurred())
+		}
 
 		err = deployMCS(context.Background(), managedclusterset, f)
-		Expect(err).NotTo(HaveOccurred())
-
-		err = attachMCS(context.Background(), managedclusterName, managedclusterset, f)
-		Expect(err).NotTo(HaveOccurred())
+		if err != nil && !apierrors.IsAlreadyExists(err) {
+			Expect(err).NotTo(HaveOccurred())
+		}
 
 		err = deployMPSR(context.Background(), serviceName, serviceName, serviceNamespace, managedclusterset, f)
-		Expect(err).NotTo(HaveOccurred())
-
-		// scalability test
-		for i := 0; i < 100; i++ {
-			name := fmt.Sprintf("%s-%d", serviceName, i)
-			err = deployMPSR(context.Background(), name, name, serviceNamespace, managedclusterset, f)
+		if err != nil && !apierrors.IsAlreadyExists(err) {
 			Expect(err).NotTo(HaveOccurred())
 		}
 
 		Eventually(func() error {
-			return checkWithSelfPordforward(f)
-		}, 6*timeout, 3*interval).Should(Succeed())
+			if err := probeHealth(f); err != nil {
+				return err
+			}
+			if err := checkWithSelfPordforward(f); err != nil {
+				return err
+			}
+			return nil
+		}, 20*timeout, 3*interval).Should(Succeed()) // This has to be more than 6 mins because agent render every 5 mins.
 	})
 })
 
@@ -121,7 +88,10 @@ func probeHealth(f framework.Framework) error {
 	ctx, cancel := context.WithCancel(context.TODO())
 	defer cancel()
 
-	mungledRestConfig := buildTunnelRestConfig(ctx, f, proxyConfiguration)
+	mungledRestConfig, err := buildTunnelRestConfig(ctx, f, proxyConfiguration)
+	if err != nil {
+		return err
+	}
 	mungledRestConfig.Timeout = time.Second * 10
 	nativeClient, err := kubernetes.NewForConfig(mungledRestConfig)
 	if err != nil {
@@ -191,17 +161,21 @@ func checkWithSelfPordforward(f framework.Framework) error {
 	return nil
 }
 
-func buildTunnelRestConfig(ctx context.Context, f framework.Framework, proxyConfiguration *proxyv1alpha1.ManagedProxyConfiguration) *rest.Config {
+func buildTunnelRestConfig(ctx context.Context, f framework.Framework, proxyConfiguration *proxyv1alpha1.ManagedProxyConfiguration) (*rest.Config, error) {
 	hubRestConfig := f.HubRESTConfig()
 	tunnelTlsCfg, err := util.GetKonnectivityTLSConfig(hubRestConfig, proxyConfiguration)
-	Expect(err).NotTo(HaveOccurred())
+	if err != nil {
+		return nil, err
+	}
 
 	tunnel, err := konnectivity.CreateSingleUseGrpcTunnel(
 		ctx,
 		net.JoinHostPort("127.0.0.1", "8090"),
 		grpc.WithTransportCredentials(grpccredentials.NewTLS(tunnelTlsCfg)),
 	)
-	Expect(err).NotTo(HaveOccurred())
+	if err != nil {
+		return nil, err
+	}
 
 	mungledRestConfig := rest.CopyConfig(hubRestConfig)
 	mungledRestConfig.TLSClientConfig = rest.TLSClientConfig{
@@ -209,7 +183,7 @@ func buildTunnelRestConfig(ctx context.Context, f framework.Framework, proxyConf
 	}
 	mungledRestConfig.Host = f.TestClusterName()
 	mungledRestConfig.Dial = tunnel.DialContext
-	return mungledRestConfig
+	return mungledRestConfig, nil
 }
 
 func deployHelleWorldApplication(ctx context.Context, name, namespace string, e2eframe framework.Framework) error {
@@ -281,21 +255,6 @@ func deployMCS(ctx context.Context, clusterset string, e2eframe framework.Framew
 			Name: clusterset,
 		},
 	})
-}
-
-func attachMCS(ctx context.Context, clustername string, managedclusterset string, e2eframe framework.Framework) error {
-	managedcluster := &clusterv1.ManagedCluster{}
-
-	var err error
-	err = e2eframe.HubRuntimeClient().Get(ctx, client.ObjectKey{Name: clustername}, managedcluster)
-	if err != nil {
-		return err
-	}
-
-	// Add managedclusterset label
-	managedcluster.Labels[clusterv1beta1.ClusterSetLabel] = managedclusterset
-
-	return e2eframe.HubRuntimeClient().Update(ctx, managedcluster)
 }
 
 func deployMPSR(ctx context.Context, name string, serviceName string, serviceNamespace string, managedclusterSet string, e2eframe framework.Framework) error {

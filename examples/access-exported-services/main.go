@@ -93,7 +93,7 @@ func main() {
 	client := http.Client{Transport: tr}
 
 	// Step4: Replace the host with the proxy host
-	resp, err := client.Get("http://" + proxyHost + ":8000" + "/hello")
+	resp, err := client.Get("http://" + proxyHost + ":8000")
 	if err != nil {
 		panic(err)
 	}
