@@ -74,7 +74,7 @@ func TestFilterMPSR(t *testing.T) {
 			expected: []serviceToExpose{
 				{
 					Host:         util.GenerateServiceURL("cluster1", "ns-2", "service-2"),
-					ExternalName: "service-2.ns-2.svc",
+					ExternalName: "service-2.ns-2",
 				},
 			},
 		},
@@ -132,7 +132,7 @@ func TestFilterMPSR(t *testing.T) {
 			expected: []serviceToExpose{
 				{
 					Host:         util.GenerateServiceURL("cluster1", "ns-1", "service-1"),
-					ExternalName: "service-1.ns-1.svc",
+					ExternalName: "service-1.ns-1",
 				},
 			},
 		},

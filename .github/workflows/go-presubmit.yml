@@ -127,4 +127,7 @@ jobs:
              --set tag=latest
       - name: Build&Run e2e test
         run: |
+          kubectl wait --for=condition=ProxyServerDeployed=true managedproxyconfiguration cluster-proxy --timeout=60s
+          kubectl wait --for=condition=Available deployment/cluster-proxy --timeout=60s -n open-cluster-management-addon
+          kubectl port-forward -n open-cluster-management-addon services/proxy-entrypoint 8090:8090 &
           make test-e2e
