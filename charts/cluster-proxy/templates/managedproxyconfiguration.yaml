@@ -10,6 +10,7 @@ spec:
       type: SelfSigned
   proxyServer:
     image: {{ .Values.proxyServerImage }}:{{ .Values.tag | default (print "v" .Chart.Version) }}
+    replicas: {{ .Values.replicas }}
     namespace: {{ .Release.Namespace }}
     entrypoint:
       {{- if .Values.proxyServer.entrypointAddress }}
@@ -25,3 +26,4 @@ spec:
       port: {{ .Values.proxyServer.port }}
   proxyAgent:
     image: {{ .Values.proxyAgentImage }}:{{ .Values.tag | default (print "v" .Chart.Version) }}
+    replicas: {{ .Values.replicas }}

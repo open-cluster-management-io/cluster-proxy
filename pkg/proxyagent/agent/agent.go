@@ -38,9 +38,14 @@ var FS embed.FS
 
 const (
 	ProxyAgentSignerName = "open-cluster-management.io/proxy-agent-signer"
+
+	// serviceDomain must added because coreDNS is not recursive resolver, and go dns client assume it is.
+	// See more details: https://coredns.io/manual/setups/#recursive-resolver; https://github.com/golang/go/blob/6f445a9db55f65e55c5be29d3c506ecf3be37915/src/net/dnsclient_unix.go#L666
+	// TODO: the serviceDomain should be configurable.
+	serviceDomain = "svc.cluster.local"
 )
 
-func NewAgentAddon(signer selfsigned.SelfSigner, signerNamespace string, v1CSRSupported bool, runtimeClient client.Client, nativeClient kubernetes.Interface) (agent.AgentAddon, error) {
+func NewAgentAddon(signer selfsigned.SelfSigner, signerNamespace string, v1CSRSupported bool, runtimeClient client.Client, nativeClient kubernetes.Interface, agentInstallAll bool) (agent.AgentAddon, error) {
 	caCertData, caKeyData, err := signer.CA().Config.GetPEMBytes()
 	if err != nil {
 		return nil, err
@@ -69,7 +74,8 @@ func NewAgentAddon(signer selfsigned.SelfSigner, signerNamespace string, v1CSRSu
 			},
 		})
 	}
-	return addonfactory.NewAgentAddonFactory(common.AddonName, FS, "manifests/charts/addon-agent").
+
+	agentFactory := addonfactory.NewAgentAddonFactory(common.AddonName, FS, "manifests/charts/addon-agent").
 		WithAgentRegistrationOption(&agent.RegistrationOption{
 			CSRConfigurations: func(cluster *clusterv1.ManagedCluster) []addonv1alpha1.RegistrationConfig {
 				return regConfigs
@@ -108,10 +114,13 @@ func NewAgentAddon(signer selfsigned.SelfSigner, signerNamespace string, v1CSRSu
 				Build(),
 			CSRSign: CustomSignerWithExpiry(ProxyAgentSignerName, caKeyData, caCertData, time.Hour*24*180),
 		}).
-		WithInstallStrategy(agent.InstallAllStrategy(config.AddonInstallNamespace)).
-		WithGetValuesFuncs(GetClusterProxyValueFunc(runtimeClient, nativeClient, signerNamespace, caCertData, v1CSRSupported)).
-		BuildHelmAgentAddon()
+		WithGetValuesFuncs(GetClusterProxyValueFunc(runtimeClient, nativeClient, signerNamespace, caCertData, v1CSRSupported))
 
+	if agentInstallAll {
+		agentFactory.WithInstallStrategy(agent.InstallAllStrategy(config.AddonInstallNamespace))
+	}
+
+	return agentFactory.BuildHelmAgentAddon()
 }
 
 func GetClusterProxyValueFunc(
@@ -238,7 +247,7 @@ func GetClusterProxyValueFunc(
 
 		return map[string]interface{}{
 			"agentDeploymentName":      "cluster-proxy-proxy-agent",
-			"serviceDomain":            "svc.cluster.local",
+			"serviceDomain":            serviceDomain,
 			"includeNamespaceCreation": true,
 			"spokeAddonNamespace":      addon.Spec.InstallNamespace,
 			"additionalProxyAgentArgs": proxyConfig.Spec.ProxyAgent.AdditionalArgs,
@@ -337,7 +346,7 @@ func managedProxyServiceResolverToFilterServiceToExpose(serviceResolvers []proxy
 func convertManagedProxyServiceResolverToService(clusterName string, sr proxyv1alpha1.ManagedProxyServiceResolver) serviceToExpose {
 	return serviceToExpose{
 		Host:         util.GenerateServiceURL(clusterName, sr.Spec.ServiceSelector.ServiceRef.Namespace, sr.Spec.ServiceSelector.ServiceRef.Name),
-		ExternalName: fmt.Sprintf("%s.%s.svc", sr.Spec.ServiceSelector.ServiceRef.Name, sr.Spec.ServiceSelector.ServiceRef.Namespace),
+		ExternalName: fmt.Sprintf("%s.%s", sr.Spec.ServiceSelector.ServiceRef.Name, sr.Spec.ServiceSelector.ServiceRef.Namespace),
 	}
 }
 
