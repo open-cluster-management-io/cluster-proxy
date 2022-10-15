@@ -149,4 +149,5 @@ build-e2e:
 	go test -c -o bin/e2e ./test/e2e/
 
 test-e2e: build-e2e
+	echo "Running e2e tests"
 	./bin/e2e --test-cluster $(E2E_TEST_CLUSTER_NAME)
