@@ -5,6 +5,7 @@ import (
 	"embed"
 	"encoding/base64"
 	"fmt"
+	"net"
 	"sort"
 	"strconv"
 	"strings"
@@ -38,11 +39,6 @@ var FS embed.FS
 
 const (
 	ProxyAgentSignerName = "open-cluster-management.io/proxy-agent-signer"
-
-	// serviceDomain must added because coreDNS is not recursive resolver, and go dns client assume it is.
-	// See more details: https://coredns.io/manual/setups/#recursive-resolver; https://github.com/golang/go/blob/6f445a9db55f65e55c5be29d3c506ecf3be37915/src/net/dnsclient_unix.go#L666
-	// TODO: the serviceDomain should be configurable.
-	serviceDomain = "svc.cluster.local"
 )
 
 func NewAgentAddon(signer selfsigned.SelfSigner, signerNamespace string, v1CSRSupported bool, runtimeClient client.Client, nativeClient kubernetes.Interface, agentInstallAll bool) (agent.AgentAddon, error) {
@@ -247,7 +243,7 @@ func GetClusterProxyValueFunc(
 
 		return map[string]interface{}{
 			"agentDeploymentName":      "cluster-proxy-proxy-agent",
-			"serviceDomain":            serviceDomain,
+			"serviceDomain":            getServiceDomain(),
 			"includeNamespaceCreation": true,
 			"spokeAddonNamespace":      addon.Spec.InstallNamespace,
 			"additionalProxyAgentArgs": proxyConfig.Spec.ProxyAgent.AdditionalArgs,
@@ -369,4 +365,22 @@ func removeDupAndSortServices(services []serviceToExpose) []serviceToExpose {
 	})
 
 	return newServices
+}
+
+// The serviceDomain must added because coreDNS is not recursive resolver, and go dns client assume it is.
+// See more details: https://coredns.io/manual/setups/#recursive-resolver; https://github.com/golang/go/blob/6f445a9db55f65e55c5be29d3c506ecf3be37915/src/net/dnsclient_unix.go#L666
+func getServiceDomain() string {
+	apiSvc := "kubernetes.default"
+
+	// In normal case, it will return: `kubernetes.default.svc.cluster.local.`
+	cname, err := net.LookupCNAME(apiSvc)
+	if err != nil {
+		defaultClusterDomain := "svc.cluster.local"
+		return defaultClusterDomain
+	}
+
+	clusterDomain := strings.TrimPrefix(cname, fmt.Sprintf("%s.", apiSvc))
+	clusterDomain = strings.TrimSuffix(clusterDomain, ".")
+
+	return clusterDomain
 }
