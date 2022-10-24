@@ -306,6 +306,9 @@ func (rt *bearerAuthRoundTripper) RoundTrip(req *http.Request) (*http.Response, 
 		return rt.rt.RoundTrip(req)
 	}
 
+	req.Header.Set("Host", "prometheus-k8s.openshift-monitoring.svc")
+	fmt.Println("host:", "prometheus-k8s.openshift-monitoring.svc")
+
 	req = utilnet.CloneRequest(req)
 	token := rt.bearer
 	if rt.source != nil {
