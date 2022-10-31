@@ -25,11 +25,11 @@ var proxyServerHost string
 var proxyServerPort string
 
 // Assumes that the cluster-proxy is installed in the open-cluster-management-addon namespace.
-// `proxyCACert` could be found in Secret `proxy-server-ca` in the `open-cluster-management-addon`` namespace.
+// `proxyCACert` could be found in Secret `proxy-server-ca` in the `open-cluster-management-addon“ namespace.
 var proxyCACertPath string
 
 // Assumes that the cluster-proxy is installed in the open-cluster-management-addon namespace.
-// `proxyCert` and `proxyKey` could be found in Secret `proxy-client` in the `open-cluster-management-addon`` namespace.
+// `proxyCert` and `proxyKey` could be found in Secret `proxy-client` in the `open-cluster-management-addon“ namespace.
 var proxyCertPath string
 var proxyKeyPath string
 

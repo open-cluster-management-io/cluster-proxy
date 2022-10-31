@@ -14,6 +14,8 @@ import (
 	"google.golang.org/grpc"
 	grpccredentials "google.golang.org/grpc/credentials"
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -82,6 +84,117 @@ var _ = Describe("Basic install Test",
 				}).
 				WithTimeout(time.Minute).
 				Should(BeTrue())
+		})
+
+		It("ManagedClusterAddon should be configured with AddOnDeployMentConfig", func() {
+			deployConfigName := "deploy-config"
+			nodeSelector := map[string]string{"kubernetes.io/os": "linux"}
+			tolerations := []corev1.Toleration{{Key: "node-role.kubernetes.io/infra", Operator: corev1.TolerationOpExists, Effect: corev1.TaintEffectNoSchedule}}
+
+			c := f.HubRuntimeClient()
+			By("Prepare a AddOnDeployMentConfig for cluster-proxy")
+			Eventually(func() error {
+				return c.Create(context.TODO(), &addonapiv1alpha1.AddOnDeploymentConfig{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      deployConfigName,
+						Namespace: f.TestClusterName(),
+					},
+					Spec: addonapiv1alpha1.AddOnDeploymentConfigSpec{
+						NodePlacement: &addonapiv1alpha1.NodePlacement{
+							NodeSelector: nodeSelector,
+							Tolerations:  tolerations,
+						},
+					},
+				})
+			}).WithTimeout(time.Minute).ShouldNot(HaveOccurred())
+
+			By("Add the config to cluster-proxy")
+			Eventually(func() error {
+				addon := &addonapiv1alpha1.ManagedClusterAddOn{}
+				if err := c.Get(context.TODO(), types.NamespacedName{
+					Namespace: f.TestClusterName(),
+					Name:      "cluster-proxy",
+				}, addon); err != nil {
+					return err
+				}
+
+				addon.Spec.Configs = []addonapiv1alpha1.AddOnConfig{
+					{
+						ConfigGroupResource: addonapiv1alpha1.ConfigGroupResource{
+							Group:    "addon.open-cluster-management.io",
+							Resource: "addondeploymentconfigs",
+						},
+						ConfigReferent: addonapiv1alpha1.ConfigReferent{
+							Namespace: f.TestClusterName(),
+							Name:      deployConfigName,
+						},
+					},
+				}
+
+				return c.Update(context.TODO(), addon)
+			}).WithTimeout(time.Minute).ShouldNot(HaveOccurred())
+
+			By("Ensure the config is referenced")
+			Eventually(func() error {
+				addon := &addonapiv1alpha1.ManagedClusterAddOn{}
+				if err := c.Get(context.TODO(), types.NamespacedName{
+					Namespace: f.TestClusterName(),
+					Name:      "cluster-proxy",
+				}, addon); err != nil {
+					return err
+				}
+
+				if len(addon.Status.ConfigReferences) == 0 {
+					return fmt.Errorf("no config references in addon status")
+				}
+				if addon.Status.ConfigReferences[0].Name != deployConfigName {
+					return fmt.Errorf("unexpected config references %v", addon.Status.ConfigReferences)
+				}
+				return nil
+			}).WithTimeout(time.Minute).ShouldNot(HaveOccurred())
+
+			By("Ensure the cluster-proxy is configured")
+			Eventually(func() error {
+				deploy := &appsv1.Deployment{}
+				if err := c.Get(context.TODO(), types.NamespacedName{
+					Namespace: config.AddonInstallNamespace,
+					Name:      "cluster-proxy-proxy-agent",
+				}, deploy); err != nil {
+					return err
+				}
+
+				if deploy.Status.AvailableReplicas != *deploy.Spec.Replicas {
+					return fmt.Errorf("unexpected available replicas %v", deploy.Status)
+				}
+
+				if !equality.Semantic.DeepEqual(deploy.Spec.Template.Spec.NodeSelector, nodeSelector) {
+					return fmt.Errorf("unexpected nodeSeletcor %v", deploy.Spec.Template.Spec.NodeSelector)
+				}
+
+				if !equality.Semantic.DeepEqual(deploy.Spec.Template.Spec.Tolerations, tolerations) {
+					return fmt.Errorf("unexpected tolerations %v", deploy.Spec.Template.Spec.Tolerations)
+				}
+				return nil
+			}).WithTimeout(time.Minute).ShouldNot(HaveOccurred())
+
+			By("Ensure the cluster-proxy is available")
+			Eventually(func() error {
+				addon := &addonapiv1alpha1.ManagedClusterAddOn{}
+				if err := c.Get(context.TODO(), types.NamespacedName{
+					Namespace: f.TestClusterName(),
+					Name:      "cluster-proxy",
+				}, addon); err != nil {
+					return err
+				}
+
+				if !meta.IsStatusConditionTrue(
+					addon.Status.Conditions,
+					addonapiv1alpha1.ManagedClusterAddOnConditionAvailable) {
+					return fmt.Errorf("addon is unavailable")
+				}
+
+				return nil
+			}).WithTimeout(time.Minute).ShouldNot(HaveOccurred())
 		})
 
 		// TODO: since ginkgo test cases are run in parallel, we need refactor the scale cases.

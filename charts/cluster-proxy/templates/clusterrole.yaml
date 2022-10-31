@@ -23,6 +23,14 @@ rules:
     verbs:
       - '*'
   - apiGroups:
+      - addon.open-cluster-management.io
+    resources:
+      - addondeploymentconfigs
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
       - proxy.open-cluster-management.io
     resources:
       - managedproxyconfigurations
