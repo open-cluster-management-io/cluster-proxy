@@ -13,12 +13,14 @@ import (
 	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 	"open-cluster-management.io/cluster-proxy/pkg/common"
+	"open-cluster-management.io/cluster-proxy/pkg/config"
 	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/operator/authentication/selfsigned"
 	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/operator/eventhandler"
 
 	"github.com/openshift/library-go/pkg/crypto"
 	"github.com/openshift/library-go/pkg/operator/events"
 	"github.com/pkg/errors"
+
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -118,18 +120,18 @@ func (c *ClusterManagementAddonReconciler) Reconcile(ctx context.Context, reques
 		}
 		return reconcile.Result{}, err
 	}
-	if len(addon.Spec.AddOnConfiguration.CRName) == 0 {
+
+	managedProxyConfigurationName := config.FindDefaultManagedProxyConfigurationName(addon)
+	if len(managedProxyConfigurationName) == 0 {
 		log.Info("Skipping cluster-addon, no config coordinate", "name", request.Name)
 		return reconcile.Result{}, nil
 	}
 
 	// get the related proxy configuration
 	config := &proxyv1alpha1.ManagedProxyConfiguration{}
-	if err := c.Client.Get(ctx, types.NamespacedName{
-		Name: addon.Spec.AddOnConfiguration.CRName,
-	}, config); err != nil {
+	if err := c.Client.Get(ctx, types.NamespacedName{Name: managedProxyConfigurationName}, config); err != nil {
 		if apierrors.IsNotFound(err) {
-			log.Info("Cannot find proxy-configuration", "name", addon.Spec.AddOnConfiguration.CRName)
+			log.Info("Cannot find proxy-configuration", "name", managedProxyConfigurationName)
 			return reconcile.Result{}, nil
 		}
 		return reconcile.Result{}, err

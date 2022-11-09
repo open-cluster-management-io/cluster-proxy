@@ -36,6 +36,7 @@ import (
 	addonutil "open-cluster-management.io/addon-framework/pkg/utils"
 	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
 	"open-cluster-management.io/api/client/addon/clientset/versioned"
+	addonclient "open-cluster-management.io/api/client/addon/clientset/versioned"
 	"open-cluster-management.io/api/client/addon/informers/externalversions"
 	clusterv1beta1 "open-cluster-management.io/api/cluster/v1beta1"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
@@ -114,9 +115,16 @@ func main() {
 		setupLog.Error(err, "unable to set up addon client")
 		os.Exit(1)
 	}
+
 	nativeClient, err := kubernetes.NewForConfig(mgr.GetConfig())
 	if err != nil {
 		setupLog.Error(err, "unable to set up kubernetes native client")
+		os.Exit(1)
+	}
+
+	addonClient, err := addonclient.NewForConfig(mgr.GetConfig())
+	if err != nil {
+		setupLog.Error(err, "unable to set up ocm addon client")
 		os.Exit(1)
 	}
 
@@ -156,10 +164,7 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "ClusterManagementAddonReconciler")
 		os.Exit(1)
 	}
-	if err := controllers.RegisterConfigurationNotifyReconciler(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "ConfigurationNotifyReconciler")
-		os.Exit(1)
-	}
+
 	if err := controllers.RegisterServiceResolverReconciler(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ServiceResolverReconciler")
 		os.Exit(1)
@@ -187,7 +192,9 @@ func main() {
 		supportsV1CSR,
 		mgr.GetClient(),
 		nativeClient,
-		agentInstallAll)
+		agentInstallAll,
+		addonClient,
+	)
 	if err != nil {
 		setupLog.Error(err, "unable to instantiate cluster-proxy addon")
 		os.Exit(1)
