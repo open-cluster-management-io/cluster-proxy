@@ -26,3 +26,5 @@ index.yaml
 cluster-proxy-*.tgz
 
 /testbin
+
+join.sh

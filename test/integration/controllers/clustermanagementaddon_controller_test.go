@@ -28,14 +28,27 @@ var _ = Describe("ClusterManagementAddon Controller", func() {
 	)
 
 	BeforeEach(func() {
-		// Create namespace
 		addon = &addonv1alpha1.ClusterManagementAddOn{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: common.AddonName,
 			},
 			Spec: addonv1alpha1.ClusterManagementAddOnSpec{
-				AddOnConfiguration: addonv1alpha1.ConfigCoordinates{
-					CRName: configName,
+				SupportedConfigs: []addonv1alpha1.ConfigMeta{
+					{
+						ConfigGroupResource: addonv1alpha1.ConfigGroupResource{
+							Group:    "proxy.open-cluster-management.io",
+							Resource: "managedproxyconfigurations",
+						},
+						DefaultConfig: &addonv1alpha1.ConfigReferent{
+							Name: configName,
+						},
+					},
+					{
+						ConfigGroupResource: addonv1alpha1.ConfigGroupResource{
+							Group:    "addon.open-cluster-management.io",
+							Resource: "addondeploymentconfigs",
+						},
+					},
 				},
 			},
 		}

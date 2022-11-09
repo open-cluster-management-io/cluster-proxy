@@ -11,18 +11,19 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	certificatesv1 "k8s.io/api/certificates/v1"
 	csrv1 "k8s.io/api/certificates/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"open-cluster-management.io/addon-framework/pkg/addonfactory"
 	"open-cluster-management.io/addon-framework/pkg/agent"
 	"open-cluster-management.io/addon-framework/pkg/utils"
 	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
+	addonclient "open-cluster-management.io/api/client/addon/clientset/versioned"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
 	clusterv1beta1 "open-cluster-management.io/api/cluster/v1beta1"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
@@ -45,7 +46,14 @@ const (
 	serviceDomain = "svc.cluster.local"
 )
 
-func NewAgentAddon(signer selfsigned.SelfSigner, signerNamespace string, v1CSRSupported bool, runtimeClient client.Client, nativeClient kubernetes.Interface, agentInstallAll bool) (agent.AgentAddon, error) {
+func NewAgentAddon(
+	signer selfsigned.SelfSigner,
+	signerNamespace string,
+	v1CSRSupported bool,
+	runtimeClient client.Client,
+	nativeClient kubernetes.Interface,
+	agentInstallAll bool,
+	addonClient addonclient.Interface) (agent.AgentAddon, error) {
 	caCertData, caKeyData, err := signer.CA().Config.GetPEMBytes()
 	if err != nil {
 		return nil, err
@@ -114,7 +122,21 @@ func NewAgentAddon(signer selfsigned.SelfSigner, signerNamespace string, v1CSRSu
 				Build(),
 			CSRSign: CustomSignerWithExpiry(ProxyAgentSignerName, caKeyData, caCertData, time.Hour*24*180),
 		}).
-		WithGetValuesFuncs(GetClusterProxyValueFunc(runtimeClient, nativeClient, signerNamespace, caCertData, v1CSRSupported))
+		WithConfigGVRs(
+			schema.GroupVersionResource{
+				Group:    proxyv1alpha1.GroupVersion.Group,
+				Version:  proxyv1alpha1.GroupVersion.Version,
+				Resource: "managedproxyconfigurations",
+			},
+			addonfactory.AddOnDeploymentConfigGVR,
+		).
+		WithGetValuesFuncs(
+			GetClusterProxyValueFunc(runtimeClient, nativeClient, signerNamespace, caCertData, v1CSRSupported),
+			addonfactory.GetAddOnDeloymentConfigValues(
+				addonfactory.NewAddOnDeloymentConfigGetter(addonClient),
+				toAgentAddOnChartValues,
+			),
+		)
 
 	if agentInstallAll {
 		agentFactory.WithInstallStrategy(agent.InstallAllStrategy(config.AddonInstallNamespace))
@@ -132,19 +154,26 @@ func GetClusterProxyValueFunc(
 	return func(cluster *clusterv1.ManagedCluster,
 		addon *addonv1alpha1.ManagedClusterAddOn) (addonfactory.Values, error) {
 
-		// prepping
-		clusterAddon := &addonv1alpha1.ClusterManagementAddOn{}
-		if err := runtimeClient.Get(context.TODO(), types.NamespacedName{
-			Name: common.AddonName,
-		}, clusterAddon); err != nil {
-			return nil, err
+		managedProxyConfigurations := []string{}
+		for _, configReference := range addon.Status.ConfigReferences {
+			if config.IsManagedProxyConfiguration(configReference.ConfigGroupResource) {
+				managedProxyConfigurations = append(managedProxyConfigurations, configReference.Name)
+			}
 		}
+
+		// only handle there is only one managed proxy configuration for one addon
+		// TODO may consider to handle mutiple managed proxy configurations for one addon
+		if len(managedProxyConfigurations) != 1 {
+			return nil, fmt.Errorf("unexpected managed proxy configurations: %v", managedProxyConfigurations)
+		}
+
 		proxyConfig := &proxyv1alpha1.ManagedProxyConfiguration{}
 		if err := runtimeClient.Get(context.TODO(), types.NamespacedName{
-			Name: clusterAddon.Spec.AddOnConfiguration.CRName,
+			Name: managedProxyConfigurations[0],
 		}, proxyConfig); err != nil {
 			return nil, err
 		}
+
 		// this is how we set the right ingress endpoint for proxy servers to
 		// receive handshakes from proxy agents:
 		// 1. upon "Hostname" type, use the prescribed hostname directly
@@ -246,12 +275,11 @@ func GetClusterProxyValueFunc(
 		agentIdentifiers := strings.Join(aids, "&")
 
 		return map[string]interface{}{
-			"agentDeploymentName":      "cluster-proxy-proxy-agent",
-			"serviceDomain":            serviceDomain,
-			"includeNamespaceCreation": true,
-			"spokeAddonNamespace":      addon.Spec.InstallNamespace,
-			"additionalProxyAgentArgs": proxyConfig.Spec.ProxyAgent.AdditionalArgs,
-
+			"agentDeploymentName":           "cluster-proxy-proxy-agent",
+			"serviceDomain":                 serviceDomain,
+			"includeNamespaceCreation":      true,
+			"spokeAddonNamespace":           addon.Spec.InstallNamespace,
+			"additionalProxyAgentArgs":      proxyConfig.Spec.ProxyAgent.AdditionalArgs,
 			"clusterName":                   cluster.Name,
 			"registry":                      registry,
 			"image":                         image,
@@ -280,7 +308,7 @@ type serviceToExpose struct {
 }
 
 func CustomSignerWithExpiry(customSignerName string, caKey, caData []byte, duration time.Duration) agent.CSRSignerFunc {
-	return func(csr *certificatesv1.CertificateSigningRequest) []byte {
+	return func(csr *csrv1.CertificateSigningRequest) []byte {
 		if csr.Spec.SignerName != customSignerName {
 			return nil
 		}
@@ -369,4 +397,18 @@ func removeDupAndSortServices(services []serviceToExpose) []serviceToExpose {
 	})
 
 	return newServices
+}
+
+func toAgentAddOnChartValues(config addonv1alpha1.AddOnDeploymentConfig) (addonfactory.Values, error) {
+	values := addonfactory.Values{}
+	for _, variable := range config.Spec.CustomizedVariables {
+		values[variable.Name] = variable.Value
+	}
+
+	if config.Spec.NodePlacement != nil {
+		values["nodeSelector"] = config.Spec.NodePlacement.NodeSelector
+		values["tolerations"] = config.Spec.NodePlacement.Tolerations
+	}
+
+	return values, nil
 }

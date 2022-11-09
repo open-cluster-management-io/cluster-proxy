@@ -29,6 +29,12 @@ spec:
         proxy.open-cluster-management.io/component-name: proxy-agent
     spec:
       serviceAccount: cluster-proxy
+      {{- if .Values.tolerations }}
+      tolerations: {{ toYaml .Values.tolerations | nindent 8 }}
+      {{- end }}
+      {{- if .Values.nodeSelector }}
+      nodeSelector: {{ toYaml .Values.nodeSelector | nindent 8 }}
+      {{- end }}
       containers:
         - name: proxy-agent
           image: {{ .Values.proxyAgentImage }}

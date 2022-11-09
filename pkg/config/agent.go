@@ -1,8 +1,12 @@
+// TODO (skeeey) move this to the util package
 package config
 
 import (
 	"fmt"
 	"strings"
+
+	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
+	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 
 	"k8s.io/klog/v2"
 )
@@ -39,4 +43,32 @@ func GetParsedAgentImage(defaultAgentImageName string) (string, string, string, 
 	}
 
 	return registry, image, tag, nil
+}
+
+func FindDefaultManagedProxyConfigurationName(cma *addonv1alpha1.ClusterManagementAddOn) string {
+	for _, config := range cma.Spec.SupportedConfigs {
+		if !IsManagedProxyConfiguration(config.ConfigGroupResource) {
+			continue
+		}
+
+		if config.DefaultConfig == nil {
+			continue
+		}
+
+		return config.DefaultConfig.Name
+	}
+
+	return ""
+}
+
+func IsManagedProxyConfiguration(gr addonv1alpha1.ConfigGroupResource) bool {
+	if gr.Group != proxyv1alpha1.GroupVersion.Group {
+		return false
+	}
+
+	if gr.Resource != "managedproxyconfigurations" {
+		return false
+	}
+
+	return true
 }

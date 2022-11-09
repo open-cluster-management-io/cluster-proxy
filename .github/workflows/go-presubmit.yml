@@ -108,13 +108,11 @@ jobs:
       - name: Create k8s Kind Cluster
         uses: helm/kind-action@v1.2.0
       - name: Prepare OCM testing environment
-        run: |
+        run: | # fixed the OCM to the latest released version
           clusteradm init --output-join-command-file join.sh --wait
           sh -c "$(cat join.sh) loopback --force-internal-endpoint-lookup"
           clusteradm accept --clusters loopback --wait 30
           kubectl wait --for=condition=ManagedClusterConditionAvailable managedcluster/loopback
-          kubectl -n open-cluster-management scale deploy cluster-manager --replicas=0
-          kubectl apply -f ./test/e2e/crds/
       - name: Build image
         run: |
           make images
