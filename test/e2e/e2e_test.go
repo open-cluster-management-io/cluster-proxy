@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/onsi/ginkgo"
+	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
 
 	"open-cluster-management.io/cluster-proxy/test/e2e/framework"
