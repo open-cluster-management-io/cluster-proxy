@@ -211,8 +211,8 @@ func GetClusterProxyValueFunc(
 			serviceEntryPoint = "127.0.0.1"
 			addonAgentArgs = append(addonAgentArgs,
 				"--enable-port-forward-proxy=true")
-			annotations[common.AnnotationKeyConfigurationGeneration] = strconv.Itoa(int(proxyConfig.Generation))
 		}
+		annotations[common.AnnotationKeyConfigurationGeneration] = strconv.Itoa(int(proxyConfig.Generation))
 
 		serviceEntryPointPort := proxyConfig.Spec.ProxyServer.Entrypoint.Port
 		if serviceEntryPointPort == 0 {
