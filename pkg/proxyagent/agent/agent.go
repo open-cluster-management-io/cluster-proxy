@@ -139,7 +139,14 @@ func NewAgentAddon(
 		)
 
 	if agentInstallAll {
-		agentFactory.WithInstallStrategy(agent.InstallAllStrategy(config.AddonInstallNamespace))
+		agentFactory.WithInstallStrategy(agent.InstallByFilterFunctionStrategy(config.AddonInstallNamespace, func(cluster *clusterv1.ManagedCluster) bool {
+			if cluster.Annotations["import.open-cluster-management.io/klusterlet-deploy-mode"] == "Hosted" &&
+				cluster.Annotations["import.open-cluster-management.io/hosting-cluster-name"] != "" &&
+				cluster.Annotations["addon.open-cluster-management.io/enable-hosted-mode-addons"] == "true" {
+				return false
+			}
+			return true
+		}))
 	}
 
 	return agentFactory.BuildHelmAgentAddon()
