@@ -8,6 +8,7 @@ require (
 	github.com/openshift/library-go v0.0.0-20220525173854-9b950a41acdc
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.13.0
+	github.com/stolostron/cluster-lifecycle-api v0.0.0-20221107031926-6f0a02d2aaf5
 	github.com/stretchr/testify v1.7.2
 	google.golang.org/grpc v1.47.0
 	k8s.io/api v0.25.0
