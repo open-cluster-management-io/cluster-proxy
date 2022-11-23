@@ -40,9 +40,9 @@ var FS embed.FS
 const (
 	ProxyAgentSignerName = "open-cluster-management.io/proxy-agent-signer"
 
-	// serviceDomain must added because coreDNS is not recursive resolver, and go dns client assume it is.
+	// serviceDomain must added because go dns client won't recursivly search CNAME.
 	// See more details: https://coredns.io/manual/setups/#recursive-resolver; https://github.com/golang/go/blob/6f445a9db55f65e55c5be29d3c506ecf3be37915/src/net/dnsclient_unix.go#L666
-	// TODO: the serviceDomain should be configurable.
+	// The default value is "svc.cluster.local". We can also set a CustomizedVariables with key "serviceDomain" to overwrite it.
 	serviceDomain = "svc.cluster.local"
 )
 

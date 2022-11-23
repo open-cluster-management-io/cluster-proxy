@@ -575,6 +575,28 @@ func TestNewAgentAddon(t *testing.T) {
 				assert.Equal(t, tolerations, agentDeploy.Spec.Template.Spec.Tolerations)
 			},
 		},
+		{
+			name:    "with addon deployment config using a customized serviceDomain",
+			cluster: newCluster(clusterName, true),
+			addon: func() *addonv1alpha1.ManagedClusterAddOn {
+				addOn := newAddOn(addOnName, clusterName)
+				addOn.Status.ConfigReferences = []addonv1alpha1.ConfigReference{
+					newManagedProxyConfigReference(managedProxyConfigName),
+					newAddOndDeploymentConfigReference(addOndDeployConfigName, clusterName),
+				}
+				return addOn
+			}(),
+			managedProxyConfigs:     []runtimeclient.Object{newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypePortForward)},
+			addOndDeploymentConfigs: []runtime.Object{newAddOnDeploymentConfigWithCustomizedServiceDomain(addOndDeployConfigName, clusterName, "svc.test.com")},
+			v1CSRSupported:          true,
+			verifyManifests: func(t *testing.T, manifests []runtime.Object) {
+				assert.Len(t, manifests, len(expectedManifestNames))
+				assert.ElementsMatch(t, expectedManifestNames, manifestNames(manifests))
+				externalNameService := getKubeAPIServerExternalNameService(manifests)
+				assert.NotNil(t, externalNameService)
+				assert.Equal(t, "kubernetes.default.svc.test.com", externalNameService.Spec.ExternalName)
+			},
+		},
 	}
 
 	for _, c := range cases {
@@ -768,6 +790,27 @@ func newAddOnDeploymentConfig(name, namespace string) *addonv1alpha1.AddOnDeploy
 	}
 }
 
+func newAddOnDeploymentConfigWithCustomizedServiceDomain(name, namespace, serviceDomain string) *addonv1alpha1.AddOnDeploymentConfig {
+	return &addonv1alpha1.AddOnDeploymentConfig{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: addonv1alpha1.AddOnDeploymentConfigSpec{
+			NodePlacement: &addonv1alpha1.NodePlacement{
+				Tolerations:  tolerations,
+				NodeSelector: nodeSelector,
+			},
+			CustomizedVariables: []addonv1alpha1.CustomizedVariable{
+				{
+					Name:  "serviceDomain",
+					Value: serviceDomain,
+				},
+			},
+		},
+	}
+}
+
 func newLoadBalancerService(ingress string) *corev1.Service {
 	svc := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
@@ -810,6 +853,17 @@ func getAgentDeployment(manifests []runtime.Object) *appsv1.Deployment {
 	for _, manifest := range manifests {
 		switch obj := manifest.(type) {
 		case *appsv1.Deployment:
+			return obj
+		}
+	}
+
+	return nil
+}
+
+func getKubeAPIServerExternalNameService(manifests []runtime.Object) *corev1.Service {
+	for _, manifest := range manifests {
+		switch obj := manifest.(type) {
+		case *corev1.Service:
 			return obj
 		}
 	}
