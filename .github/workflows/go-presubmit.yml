@@ -73,7 +73,13 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
       - name: unit
         run: make test
-
+      - name: report coverage
+        uses: codecov/codecov-action@v2
+        with:
+          file: ./unit_coverage.out
+          flags: unit
+          name: unit
+          verbose: true
   integration:
     name: integration
     runs-on: ubuntu-latest
@@ -89,7 +95,13 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
       - name: integration
         run: make test-integration
-
+      - name: report coverage
+        uses: codecov/codecov-action@v2
+        with:
+          file: ./integration_coverage.out
+          flags: integration
+          name: integration
+          verbose: true
   e2e:
     name: e2e
     runs-on: ubuntu-latest
@@ -129,3 +141,10 @@ jobs:
           kubectl wait --for=condition=Available deployment/cluster-proxy --timeout=60s -n open-cluster-management-addon
           kubectl port-forward -n open-cluster-management-addon services/proxy-entrypoint 8090:8090 &
           make test-e2e
+      - name: report coverage
+        uses: codecov/codecov-action@v2
+        with:
+          file: ./e2e_coverage.out
+          flags: e2e
+          name: e2e
+          verbose: true

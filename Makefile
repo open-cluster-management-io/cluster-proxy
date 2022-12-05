@@ -23,6 +23,11 @@ SHELL = /usr/bin/env bash -o pipefail
 
 all: build
 
+##@ Tests
+UNIT_TEST_COVERAGE_FILE ?= unit_coverage.out
+INTERGRATRION_TEST_COVERAGE_FILE ?= integration_coverage.out
+E2E_TEST_COVERAGE_FILE ?= e2e_coverage.out
+
 ##@ General
 
 # The help target prints out all targets with their descriptions organized
@@ -63,7 +68,7 @@ golint:
 verify: fmt vet golint
 
 test: manifests generate fmt vet ## Run tests.
-	go test ./pkg/... -coverprofile cover.out
+	go test ./pkg/... -coverprofile $(UNIT_TEST_COVERAGE_FILE)
 
 ##@ Build
 
@@ -138,7 +143,7 @@ test-integration: manifests generate fmt vet
 	source ${ENVTEST_ASSETS_DIR}/setup-envtest.sh; \
 		fetch_envtest_tools $(ENVTEST_ASSETS_DIR); \
 		setup_envtest_env $(ENVTEST_ASSETS_DIR); \
-		go test ./test/integration/... -coverprofile cover.out
+		go test ./test/integration/... -coverprofile $(INTERGRATRION_TEST_COVERAGE_FILE)
 
 e2e-job-image:
 	docker build \
@@ -149,4 +154,4 @@ build-e2e:
 	go test -c -o bin/e2e ./test/e2e/
 
 test-e2e: build-e2e
-	./bin/e2e --test-cluster $(E2E_TEST_CLUSTER_NAME)
+	./bin/e2e --test-cluster $(E2E_TEST_CLUSTER_NAME) -test.coverprofile $(E2E_TEST_COVERAGE_FILE)
