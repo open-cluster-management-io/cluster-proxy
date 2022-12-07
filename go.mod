@@ -15,7 +15,7 @@ require (
 	k8s.io/client-go v0.25.0
 	k8s.io/klog/v2 v2.70.1
 	k8s.io/utils v0.0.0-20220728103510-ee6ede2d64ed
-	open-cluster-management.io/addon-framework v0.5.0
+	open-cluster-management.io/addon-framework v0.5.1-0.20221207035227-64204bec3525
 	open-cluster-management.io/api v0.9.0
 	sigs.k8s.io/apiserver-network-proxy v0.0.27
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.0.32
@@ -71,8 +71,6 @@ require (
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
-	github.com/nxadm/tail v1.4.8 // indirect
-	github.com/onsi/ginkgo v1.16.5 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/prometheus/client_model v0.2.0 // indirect
 	github.com/prometheus/common v0.37.0 // indirect
@@ -98,7 +96,6 @@ require (
 	google.golang.org/genproto v0.0.0-20220502173005-c8bf987b8c21 // indirect
 	google.golang.org/protobuf v1.28.1 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
-	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	helm.sh/helm/v3 v3.9.4 // indirect
