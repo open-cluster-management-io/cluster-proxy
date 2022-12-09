@@ -1,16 +1,17 @@
 # Cluster Proxy
 
+[![codecov](https://codecov.io/github/xuezhaojun/cluster-proxy/branch/main/graph/badge.svg?token=1D251PJR6D)](https://codecov.io/github/xuezhaojun/cluster-proxy)
+
 [![License](https://img.shields.io/:license-apache-blue.svg)](http://www.apache.org/licenses/LICENSE-2.0.html)
 [![Go](https://github.com/open-cluster-management-io/cluster-proxy/actions/workflows/go-presubmit.yml/badge.svg)](https://github.com/open-cluster-management-io/cluster-proxy/actions/workflows/go-presubmit.yml)
-
 
 ## What is Cluster Proxy?
 
 Cluster Proxy is a pluggable addon working on OCM rebased on the extensibility
-provided by [addon-framework](https://github.com/open-cluster-management-io/addon-framework) 
+provided by [addon-framework](https://github.com/open-cluster-management-io/addon-framework)
 which automates the installation of [apiserver-network-proxy](https://github.com/kubernetes-sigs/apiserver-network-proxy)
 on both hub cluster and managed clusters. The network proxy will be establishing
-reverse proxy tunnels from the managed cluster to the hub cluster to make the 
+reverse proxy tunnels from the managed cluster to the hub cluster to make the
 clients from the hub network can access the services in the managed clusters'
 network even if all the clusters are isolated in different VPCs.
 
@@ -18,8 +19,8 @@ Cluster Proxy consists of two components:
 
 - __Addon-Manager__: Manages the installation of proxy-servers i.e. proxy ingress
   in the hub cluster.
-  
-- __Addon-Agent__: Manages the installation of proxy-agents for each managed 
+
+- __Addon-Agent__: Manages the installation of proxy-agents for each managed
   clusters.
 
 The overall architecture is shown below:
@@ -43,7 +44,7 @@ The overall architecture is shown below:
 $ helm repo add ocm https://openclustermanagement.blob.core.windows.net/releases/
 $ helm repo update
 $ helm search repo ocm/cluster-proxy
-NAME                       	CHART VERSION	APP VERSION	DESCRIPTION                   
+NAME                       	CHART VERSION	APP VERSION	DESCRIPTION
 ocm/cluster-proxy          	<..>       	    1.0.0      	A Helm chart for Cluster-Proxy
 ```
 
@@ -52,7 +53,7 @@ ocm/cluster-proxy          	<..>       	    1.0.0      	A Helm chart for Cluster
 ```shell
 $ helm install \
     -n open-cluster-management-addon --create-namespace \
-    cluster-proxy ocm/cluster-proxy 
+    cluster-proxy ocm/cluster-proxy
 $ kubectl -n open-cluster-management-cluster-proxy get pod
 NAME                                           READY   STATUS        RESTARTS   AGE
 cluster-proxy-5d8db7ddf4-265tm                 1/1     Running       0          12s
@@ -60,23 +61,23 @@ cluster-proxy-addon-manager-778f6d679f-9pndv   1/1     Running       0          
 ...
 ```
 
-3. The addon will be automatically installed to your registered clusters, 
+3. The addon will be automatically installed to your registered clusters,
    verify the addon installation:
 
 ```shell
 $ kubectl get managedclusteraddon -A | grep cluster-proxy
 NAMESPACE         NAME                     AVAILABLE   DEGRADED   PROGRESSING
-<your cluster>    cluster-proxy            True                   
+<your cluster>    cluster-proxy            True
 ```
 
 ### Usage
 
-By default, the proxy servers are running in GPRC mode so the proxy clients 
+By default, the proxy servers are running in GPRC mode so the proxy clients
 are expected to proxy through the tunnels by the [konnectivity-client](https://github.com/kubernetes-sigs/apiserver-network-proxy#clients).
 Konnectivity is the underlying technique of Kubernetes' [egress-selector](https://kubernetes.io/docs/tasks/extend-kubernetes/setup-konnectivity/)
 feature and an example of konnectivity client is visible [here](https://github.com/open-cluster-management-io/cluster-proxy/tree/main/examples/test-client).
 
-Codewisely proxying to the managed cluster will be simply overriding the 
+Codewisely proxying to the managed cluster will be simply overriding the
 dialer of the kubernetes original client config object, e.g.:
 
 ```go
@@ -93,14 +94,14 @@ dialer of the kubernetes original client config object, e.g.:
   // The managed cluster's name.
   cfg.Host = clusterName
   // Override the default tcp dialer
-  cfg.Dial = tunnel.DialContext 
+  cfg.Dial = tunnel.DialContext
 ```
 
 ### Performance
 
 Here's the result of network bandwidth benchmarking via [goben](https://github.com/udhos/goben)
 with or without Cluster-Proxy (i.e. Apiserver-Network-Proxy) so roughly the proxying
-through the tunnel will involve 1/2 performance loss so it's recommended to avoid 
+through the tunnel will involve 1/2 performance loss so it's recommended to avoid
 transferring data-intensive traffic over the proxy.
 
 
