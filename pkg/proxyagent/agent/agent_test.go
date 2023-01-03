@@ -533,6 +533,26 @@ func TestNewAgentAddon(t *testing.T) {
 			},
 		},
 		{
+			name:    "customized proxy-agent replicas",
+			cluster: newCluster(clusterName, true),
+			addon: func() *addonv1alpha1.ManagedClusterAddOn {
+				addOn := newAddOn(addOnName, clusterName)
+				addOn.Status.ConfigReferences = []addonv1alpha1.ConfigReference{newManagedProxyConfigReference(managedProxyConfigName)}
+				return addOn
+			}(),
+			managedProxyConfigs:     []runtimeclient.Object{setProxyAgentReplicas(newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypeHostname), 2)},
+			addOndDeploymentConfigs: []runtime.Object{},
+			kubeObjs:                []runtime.Object{},
+			v1CSRSupported:          true,
+			verifyManifests: func(t *testing.T, manifests []runtime.Object) {
+				assert.Len(t, manifests, len(expectedManifestNames))
+				assert.ElementsMatch(t, expectedManifestNames, manifestNames(manifests))
+				agentDeploy := getAgentDeployment(manifests)
+				assert.NotNil(t, agentDeploy)
+				assert.Equal(t, *agentDeploy.Spec.Replicas, int32(2))
+			},
+		},
+		{
 			name:    "port forward proxy server",
 			cluster: newCluster(clusterName, true),
 			addon: func() *addonv1alpha1.ManagedClusterAddOn {
@@ -751,6 +771,11 @@ func newManagedProxyConfig(name string, entryPointType proxyv1alpha1.EntryPointT
 			},
 		},
 	}
+}
+
+func setProxyAgentReplicas(mpc *proxyv1alpha1.ManagedProxyConfiguration, replicas int32) *proxyv1alpha1.ManagedProxyConfiguration {
+	mpc.Spec.ProxyAgent.Replicas = replicas
+	return mpc
 }
 
 func newAddOnDeploymentConfig(name, namespace string) *addonv1alpha1.AddOnDeploymentConfig {
