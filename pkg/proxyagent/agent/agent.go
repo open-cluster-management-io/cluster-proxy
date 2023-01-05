@@ -53,6 +53,7 @@ func NewAgentAddon(
 	runtimeClient client.Client,
 	nativeClient kubernetes.Interface,
 	agentInstallAll bool,
+	enableKubeApiProxy bool,
 	addonClient addonclient.Interface) (agent.AgentAddon, error) {
 	caCertData, caKeyData, err := signer.CA().Config.GetPEMBytes()
 	if err != nil {
@@ -131,7 +132,7 @@ func NewAgentAddon(
 			addonfactory.AddOnDeploymentConfigGVR,
 		).
 		WithGetValuesFuncs(
-			GetClusterProxyValueFunc(runtimeClient, nativeClient, signerNamespace, caCertData, v1CSRSupported),
+			GetClusterProxyValueFunc(runtimeClient, nativeClient, signerNamespace, caCertData, v1CSRSupported, enableKubeApiProxy),
 			addonfactory.GetAddOnDeloymentConfigValues(
 				addonfactory.NewAddOnDeloymentConfigGetter(addonClient),
 				toAgentAddOnChartValues,
@@ -150,7 +151,9 @@ func GetClusterProxyValueFunc(
 	nativeClient kubernetes.Interface,
 	signerNamespace string,
 	caCertData []byte,
-	v1CSRSupported bool) addonfactory.GetValuesFunc {
+	v1CSRSupported bool,
+	enableKubeApiProxy bool,
+) addonfactory.GetValuesFunc {
 	return func(cluster *clusterv1.ManagedCluster,
 		addon *addonv1alpha1.ManagedClusterAddOn) (addonfactory.Values, error) {
 
@@ -263,11 +266,12 @@ func GetClusterProxyValueFunc(
 
 		servicesToExpose := removeDupAndSortServices(managedProxyServiceResolverToFilterServiceToExpose(serviceResolverList.Items, managedClusterSetMap, cluster.Name))
 
-		// add default agentIdentifiers
 		var aids []string
-		aids = append(aids, fmt.Sprintf("host=%s", cluster.Name))
-		aids = append(aids, fmt.Sprintf("host=%s.%s", cluster.Name, config.AddonInstallNamespace))
-
+		// add default kube-apiserver agentIdentifiers
+		if enableKubeApiProxy {
+			aids = append(aids, fmt.Sprintf("host=%s", cluster.Name))
+			aids = append(aids, fmt.Sprintf("host=%s.%s", cluster.Name, config.AddonInstallNamespace))
+		}
 		// add servicesToExpose into aids
 		for _, s := range servicesToExpose {
 			aids = append(aids, fmt.Sprintf("host=%s", s.Host))
@@ -296,8 +300,9 @@ func GetClusterProxyValueFunc(
 			"staticProxyAgentSecretCert":    certDataBase64,
 			"staticProxyAgentSecretKey":     keyDataBase64,
 			// support to access not only but also other other services on managed cluster
-			"agentIdentifiers": agentIdentifiers,
-			"servicesToExpose": servicesToExpose,
+			"agentIdentifiers":   agentIdentifiers,
+			"servicesToExpose":   servicesToExpose,
+			"enableKubeApiProxy": enableKubeApiProxy,
 		}, nil
 	}
 }
