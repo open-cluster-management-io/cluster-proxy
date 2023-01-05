@@ -23,6 +23,7 @@ import (
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
+
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -69,6 +70,7 @@ func main() {
 	var probeAddr string
 	var signerSecretNamespace, signerSecretName string
 	var agentInstallAll bool
+	var enableKubeApiProxy bool
 
 	logger := klogr.New()
 	klog.SetOutput(os.Stdout)
@@ -91,6 +93,7 @@ func main() {
 		&agentInstallAll, "agent-install-all", false,
 		"Configure the install strategy of agent on managed clusters. "+
 			"Enabling this will automatically install agent on all managed cluster.")
+	flag.BoolVar(&enableKubeApiProxy, "enable-kube-api-proxy", true, "Enable proxy to agent kube-apiserver")
 
 	flag.Parse()
 
@@ -193,6 +196,7 @@ func main() {
 		mgr.GetClient(),
 		nativeClient,
 		agentInstallAll,
+		enableKubeApiProxy,
 		addonClient,
 	)
 	if err != nil {

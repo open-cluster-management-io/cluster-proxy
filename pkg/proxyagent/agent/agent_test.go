@@ -424,6 +424,7 @@ func TestAgentAddonRegistrationOption(t *testing.T) {
 				nil,
 				fakeKubeClient,
 				c.agentInstallAll,
+				true,
 				nil,
 			)
 			assert.NoError(t, err)
@@ -532,6 +533,15 @@ func TestNewAgentAddon(t *testing.T) {
 		"cluster-proxy",             // service account
 	}
 
+	expectedManifestNamesWithoutClusterService := []string{
+		"cluster-proxy-proxy-agent", // deployment
+		"cluster-proxy-addon-agent", // role
+		"cluster-proxy-addon-agent", // rolebinding
+		"cluster-proxy-ca",          // ca
+		addOnName,                   // namespace
+		"cluster-proxy",             // service account
+	}
+
 	cases := []struct {
 		name                    string
 		cluster                 *clusterv1.ManagedCluster
@@ -540,6 +550,7 @@ func TestNewAgentAddon(t *testing.T) {
 		addOndDeploymentConfigs []runtime.Object
 		kubeObjs                []runtime.Object
 		v1CSRSupported          bool
+		enableKubeApiProxy      bool
 		expectedErrorMsg        string
 		verifyManifests         func(t *testing.T, manifests []runtime.Object)
 	}{
@@ -549,6 +560,7 @@ func TestNewAgentAddon(t *testing.T) {
 			managedProxyConfigs:     []runtimeclient.Object{},
 			addOndDeploymentConfigs: []runtime.Object{},
 			kubeObjs:                []runtime.Object{},
+			enableKubeApiProxy:      true,
 			expectedErrorMsg:        "unexpected managed proxy configurations: []",
 			verifyManifests:         func(t *testing.T, manifests []runtime.Object) {},
 		},
@@ -562,6 +574,7 @@ func TestNewAgentAddon(t *testing.T) {
 			managedProxyConfigs:     []runtimeclient.Object{},
 			addOndDeploymentConfigs: []runtime.Object{},
 			kubeObjs:                []runtime.Object{},
+			enableKubeApiProxy:      true,
 			expectedErrorMsg:        "managedproxyconfigurations.proxy.open-cluster-management.io \"none\" not found",
 			verifyManifests:         func(t *testing.T, manifests []runtime.Object) {},
 		},
@@ -575,6 +588,7 @@ func TestNewAgentAddon(t *testing.T) {
 			managedProxyConfigs:     []runtimeclient.Object{newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypeLoadBalancerService)},
 			addOndDeploymentConfigs: []runtime.Object{},
 			kubeObjs:                []runtime.Object{},
+			enableKubeApiProxy:      true,
 			expectedErrorMsg:        "services \"lbsvc\" not found",
 			verifyManifests:         func(t *testing.T, manifests []runtime.Object) {},
 		},
@@ -588,6 +602,7 @@ func TestNewAgentAddon(t *testing.T) {
 			managedProxyConfigs:     []runtimeclient.Object{newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypeLoadBalancerService)},
 			addOndDeploymentConfigs: []runtime.Object{},
 			kubeObjs:                []runtime.Object{newLoadBalancerService("")},
+			enableKubeApiProxy:      true,
 			expectedErrorMsg:        "the load-balancer service for proxy-server ingress is not yet provisioned",
 			verifyManifests:         func(t *testing.T, manifests []runtime.Object) {},
 		},
@@ -603,6 +618,7 @@ func TestNewAgentAddon(t *testing.T) {
 			addOndDeploymentConfigs: []runtime.Object{},
 			kubeObjs:                []runtime.Object{newLoadBalancerService("1.2.3.4")},
 			v1CSRSupported:          true,
+			enableKubeApiProxy:      true,
 			verifyManifests: func(t *testing.T, manifests []runtime.Object) {
 				assert.Len(t, manifests, len(expectedManifestNames))
 				assert.ElementsMatch(t, expectedManifestNames, manifestNames(manifests))
@@ -622,6 +638,7 @@ func TestNewAgentAddon(t *testing.T) {
 			managedProxyConfigs:     []runtimeclient.Object{newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypeLoadBalancerService)},
 			addOndDeploymentConfigs: []runtime.Object{},
 			kubeObjs:                []runtime.Object{newLoadBalancerService("1.2.3.4"), newAgentClientSecret()},
+			enableKubeApiProxy:      true,
 			verifyManifests: func(t *testing.T, manifests []runtime.Object) {
 				crsExpectedManifestNames := append(expectedManifestNames, "cluster-proxy-open-cluster-management.io-proxy-agent-signer-client-cert")
 				assert.Len(t, manifests, len(crsExpectedManifestNames))
@@ -640,12 +657,34 @@ func TestNewAgentAddon(t *testing.T) {
 			addOndDeploymentConfigs: []runtime.Object{},
 			kubeObjs:                []runtime.Object{},
 			v1CSRSupported:          true,
+			enableKubeApiProxy:      true,
 			verifyManifests: func(t *testing.T, manifests []runtime.Object) {
 				assert.Len(t, manifests, len(expectedManifestNames))
 				assert.ElementsMatch(t, expectedManifestNames, manifestNames(manifests))
 				agentDeploy := getAgentDeployment(manifests)
 				assert.NotNil(t, agentDeploy)
 				assert.Equal(t, getProxyServerHost(agentDeploy), "hostname")
+			},
+		},
+		{
+			name:    "customized proxy-agent replicas",
+			cluster: newCluster(clusterName, true),
+			addon: func() *addonv1alpha1.ManagedClusterAddOn {
+				addOn := newAddOn(addOnName, clusterName)
+				addOn.Status.ConfigReferences = []addonv1alpha1.ConfigReference{newManagedProxyConfigReference(managedProxyConfigName)}
+				return addOn
+			}(),
+			managedProxyConfigs:     []runtimeclient.Object{setProxyAgentReplicas(newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypeHostname), 2)},
+			addOndDeploymentConfigs: []runtime.Object{},
+			kubeObjs:                []runtime.Object{},
+			v1CSRSupported:          true,
+			enableKubeApiProxy:      true,
+			verifyManifests: func(t *testing.T, manifests []runtime.Object) {
+				assert.Len(t, manifests, len(expectedManifestNames))
+				assert.ElementsMatch(t, expectedManifestNames, manifestNames(manifests))
+				agentDeploy := getAgentDeployment(manifests)
+				assert.NotNil(t, agentDeploy)
+				assert.Equal(t, *agentDeploy.Spec.Replicas, int32(2))
 			},
 		},
 		{
@@ -660,6 +699,7 @@ func TestNewAgentAddon(t *testing.T) {
 			addOndDeploymentConfigs: []runtime.Object{},
 			kubeObjs:                []runtime.Object{},
 			v1CSRSupported:          true,
+			enableKubeApiProxy:      true,
 			verifyManifests: func(t *testing.T, manifests []runtime.Object) {
 				assert.Len(t, manifests, len(expectedManifestNames))
 				assert.ElementsMatch(t, expectedManifestNames, manifestNames(manifests))
@@ -682,29 +722,7 @@ func TestNewAgentAddon(t *testing.T) {
 			managedProxyConfigs:     []runtimeclient.Object{newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypePortForward)},
 			addOndDeploymentConfigs: []runtime.Object{newAddOnDeploymentConfig(addOndDeployConfigName, clusterName)},
 			v1CSRSupported:          true,
-			verifyManifests: func(t *testing.T, manifests []runtime.Object) {
-				assert.Len(t, manifests, len(expectedManifestNames))
-				assert.ElementsMatch(t, expectedManifestNames, manifestNames(manifests))
-				agentDeploy := getAgentDeployment(manifests)
-				assert.NotNil(t, agentDeploy)
-				assert.Equal(t, nodeSelector, agentDeploy.Spec.Template.Spec.NodeSelector)
-				assert.Equal(t, tolerations, agentDeploy.Spec.Template.Spec.Tolerations)
-			},
-		},
-		{
-			name:    "with addon deployment config using customized variables",
-			cluster: newCluster(clusterName, true),
-			addon: func() *addonv1alpha1.ManagedClusterAddOn {
-				addOn := newAddOn(addOnName, clusterName)
-				addOn.Status.ConfigReferences = []addonv1alpha1.ConfigReference{
-					newManagedProxyConfigReference(managedProxyConfigName),
-					newAddOndDeploymentConfigReference(addOndDeployConfigName, clusterName),
-				}
-				return addOn
-			}(),
-			managedProxyConfigs:     []runtimeclient.Object{newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypePortForward)},
-			addOndDeploymentConfigs: []runtime.Object{newAddOnDeploymentConfig(addOndDeployConfigName, clusterName)},
-			v1CSRSupported:          true,
+			enableKubeApiProxy:      true,
 			verifyManifests: func(t *testing.T, manifests []runtime.Object) {
 				assert.Len(t, manifests, len(expectedManifestNames))
 				assert.ElementsMatch(t, expectedManifestNames, manifestNames(manifests))
@@ -728,12 +746,57 @@ func TestNewAgentAddon(t *testing.T) {
 			managedProxyConfigs:     []runtimeclient.Object{newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypePortForward)},
 			addOndDeploymentConfigs: []runtime.Object{newAddOnDeploymentConfigWithCustomizedVariables(addOndDeployConfigName, clusterName, "replicas", "10")},
 			v1CSRSupported:          true,
+			enableKubeApiProxy:      true,
 			verifyManifests: func(t *testing.T, manifests []runtime.Object) {
 				assert.Len(t, manifests, len(expectedManifestNames))
 				assert.ElementsMatch(t, expectedManifestNames, manifestNames(manifests))
 				agentDeploy := getAgentDeployment(manifests)
 				assert.NotNil(t, agentDeploy)
 				assert.Equal(t, int32(10), *agentDeploy.Spec.Replicas)
+			},
+		},
+		{
+			name:    "with addon deployment config using a customized serviceDomain",
+			cluster: newCluster(clusterName, true),
+			addon: func() *addonv1alpha1.ManagedClusterAddOn {
+				addOn := newAddOn(addOnName, clusterName)
+				addOn.Status.ConfigReferences = []addonv1alpha1.ConfigReference{
+					newManagedProxyConfigReference(managedProxyConfigName),
+					newAddOndDeploymentConfigReference(addOndDeployConfigName, clusterName),
+				}
+				return addOn
+			}(),
+			managedProxyConfigs:     []runtimeclient.Object{newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypePortForward)},
+			addOndDeploymentConfigs: []runtime.Object{newAddOnDeploymentConfigWithCustomizedServiceDomain(addOndDeployConfigName, clusterName, "svc.test.com")},
+			v1CSRSupported:          true,
+			enableKubeApiProxy:      true,
+			verifyManifests: func(t *testing.T, manifests []runtime.Object) {
+				assert.Len(t, manifests, len(expectedManifestNames))
+				assert.ElementsMatch(t, expectedManifestNames, manifestNames(manifests))
+				externalNameService := getKubeAPIServerExternalNameService(manifests)
+				assert.NotNil(t, externalNameService)
+				assert.Equal(t, "kubernetes.default.svc.test.com", externalNameService.Spec.ExternalName)
+			},
+		},
+		{
+			name:    "enable-kube-api-proxy is false",
+			cluster: newCluster(clusterName, true),
+			addon: func() *addonv1alpha1.ManagedClusterAddOn {
+				addOn := newAddOn(addOnName, clusterName)
+				addOn.Status.ConfigReferences = []addonv1alpha1.ConfigReference{
+					newManagedProxyConfigReference(managedProxyConfigName),
+					newAddOndDeploymentConfigReference(addOndDeployConfigName, clusterName),
+				}
+				return addOn
+			}(),
+			managedProxyConfigs:     []runtimeclient.Object{newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypePortForward)},
+			addOndDeploymentConfigs: []runtime.Object{newAddOnDeploymentConfigWithCustomizedServiceDomain(addOndDeployConfigName, clusterName, "svc.test.com")},
+			v1CSRSupported:          true,
+			enableKubeApiProxy:      false,
+			verifyManifests: func(t *testing.T, manifests []runtime.Object) {
+				// expect cluster service not created.
+				assert.Len(t, manifests, len(expectedManifestNames)-1)
+				assert.ElementsMatch(t, expectedManifestNamesWithoutClusterService, manifestNames(manifests))
 			},
 		},
 	}
@@ -751,6 +814,7 @@ func TestNewAgentAddon(t *testing.T) {
 				fakeRuntimeClient,
 				fakeKubeClient,
 				false,
+				c.enableKubeApiProxy,
 				fakeAddonClient,
 			)
 			assert.NoError(t, err)
@@ -926,6 +990,11 @@ func newManagedProxyConfig(name string, entryPointType proxyv1alpha1.EntryPointT
 	}
 }
 
+func setProxyAgentReplicas(mpc *proxyv1alpha1.ManagedProxyConfiguration, replicas int32) *proxyv1alpha1.ManagedProxyConfiguration {
+	mpc.Spec.ProxyAgent.Replicas = replicas
+	return mpc
+}
+
 func newAddOnDeploymentConfig(name, namespace string) *addonv1alpha1.AddOnDeploymentConfig {
 	return &addonv1alpha1.AddOnDeploymentConfig{
 		ObjectMeta: metav1.ObjectMeta{
@@ -956,6 +1025,27 @@ func newAddOnDeploymentConfigWithCustomizedVariables(name, namespace, k, v strin
 				{
 					Name:  k,
 					Value: v,
+				},
+			},
+		},
+	}
+}
+
+func newAddOnDeploymentConfigWithCustomizedServiceDomain(name, namespace, serviceDomain string) *addonv1alpha1.AddOnDeploymentConfig {
+	return &addonv1alpha1.AddOnDeploymentConfig{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: addonv1alpha1.AddOnDeploymentConfigSpec{
+			NodePlacement: &addonv1alpha1.NodePlacement{
+				Tolerations:  tolerations,
+				NodeSelector: nodeSelector,
+			},
+			CustomizedVariables: []addonv1alpha1.CustomizedVariable{
+				{
+					Name:  "serviceDomain",
+					Value: serviceDomain,
 				},
 			},
 		},
@@ -1004,6 +1094,17 @@ func getAgentDeployment(manifests []runtime.Object) *appsv1.Deployment {
 	for _, manifest := range manifests {
 		switch obj := manifest.(type) {
 		case *appsv1.Deployment:
+			return obj
+		}
+	}
+
+	return nil
+}
+
+func getKubeAPIServerExternalNameService(manifests []runtime.Object) *corev1.Service {
+	for _, manifest := range manifests {
+		switch obj := manifest.(type) {
+		case *corev1.Service:
 			return obj
 		}
 	}
