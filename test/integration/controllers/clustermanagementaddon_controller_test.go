@@ -143,7 +143,7 @@ var _ = Describe("ClusterManagementAddon Controller", func() {
 			}, timeout, interval).Should(Succeed())
 		})
 
-		It("Should have a proxy server deployed correctly with node selector and toleration", func() {
+		It("Should have a proxy server deployed correctly with node selector, toleration and replicas", func() {
 			nodeSelector := map[string]string{"dev": "prod"}
 			tolerations := []corev1.Toleration{
 				{
@@ -165,6 +165,7 @@ var _ = Describe("ClusterManagementAddon Controller", func() {
 					NodeSelector: nodeSelector,
 					Tolerations:  tolerations,
 				}
+				newConfig.Spec.ProxyServer.Replicas = 1
 
 				// Move update in to Eventually to avoid "the object has been modified; please apply your changes to the latest version and try again"
 				err = ctrlClient.Update(ctx, newConfig)
@@ -182,6 +183,9 @@ var _ = Describe("ClusterManagementAddon Controller", func() {
 				}
 				if !equality.Semantic.DeepEqual(deployment.Spec.Template.Spec.Tolerations, tolerations) {
 					return fmt.Errorf("tolerations is not correct, got %v", deployment.Spec.Template.Spec.Tolerations)
+				}
+				if *deployment.Spec.Replicas != 1 {
+					return fmt.Errorf("replicas is not correct, got %d", *deployment.Spec.Replicas)
 				}
 				return err
 			}, timeout, interval).Should(Succeed())
