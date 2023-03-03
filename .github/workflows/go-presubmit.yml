@@ -15,9 +15,6 @@ env:
   # Common versions
   GO_VERSION: '1.19'
   GO_REQUIRED_MIN_VERSION: ''
-defaults:
-  run:
-    working-directory: go/src/open-cluster-management.io/cluster-proxy
 
 jobs:
   build:
@@ -26,9 +23,6 @@ jobs:
     steps:
       - name: checkout code
         uses: actions/checkout@v2
-        with:
-          fetch-depth: 1
-          path: go/src/open-cluster-management.io/cluster-proxy
       - name: install Go
         uses: actions/setup-go@v2
         with:
@@ -49,9 +43,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v2
-        with:
-          fetch-depth: 1
-          path: go/src/open-cluster-management.io/cluster-proxy
       - name: install Go
         uses: actions/setup-go@v2
         with:
@@ -64,15 +55,21 @@ jobs:
     steps:
       - name: checkout code
         uses: actions/checkout@v2
-        with:
-          fetch-depth: 1
-          path: go/src/open-cluster-management.io/cluster-proxy
       - name: install Go
         uses: actions/setup-go@v2
         with:
           go-version: ${{ env.GO_VERSION }}
       - name: unit
         run: make test
+      - name: report coverage
+        uses: codecov/codecov-action@v3
+        with:
+          token: ${{secrets.CODECOV_UPLOAD_TOKEN}}
+          files: ./cover.out
+          flags: unit
+          name: unit
+          verbose: true
+          fail_ci_if_error: true
 
   integration:
     name: integration
@@ -80,9 +77,6 @@ jobs:
     steps:
       - name: checkout code
         uses: actions/checkout@v2
-        with:
-          fetch-depth: 1
-          path: go/src/open-cluster-management.io/cluster-proxy
       - name: install Go
         uses: actions/setup-go@v2
         with:
@@ -96,9 +90,6 @@ jobs:
     steps:
       - name: checkout code
         uses: actions/checkout@v2
-        with:
-          fetch-depth: 1
-          path: go/src/open-cluster-management.io/cluster-proxy
       - name: install Go
         uses: actions/setup-go@v2
         with:
