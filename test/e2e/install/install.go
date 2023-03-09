@@ -209,7 +209,7 @@ var _ = Describe("Basic install Test",
 					return err
 				}
 				if proxyServerDeploy.Annotations[common.AnnotationKeyConfigurationGeneration] != strconv.Itoa(int(expectedGeneration)) {
-					return fmt.Errorf("proxy server deployment is not updated")
+					return fmt.Errorf("proxy server deployment is not updated, expected %v, got %v", expectedGeneration, proxyServerDeploy.Annotations[common.AnnotationKeyConfigurationGeneration])
 				}
 
 				proxyAgentDeploy := &appsv1.Deployment{}
