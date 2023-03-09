@@ -45,22 +45,6 @@ func GetParsedAgentImage(defaultAgentImageName string) (string, string, string, 
 	return registry, image, tag, nil
 }
 
-func FindDefaultManagedProxyConfigurationName(cma *addonv1alpha1.ClusterManagementAddOn) string {
-	for _, config := range cma.Spec.SupportedConfigs {
-		if !IsManagedProxyConfiguration(config.ConfigGroupResource) {
-			continue
-		}
-
-		if config.DefaultConfig == nil {
-			continue
-		}
-
-		return config.DefaultConfig.Name
-	}
-
-	return ""
-}
-
 func IsManagedProxyConfiguration(gr addonv1alpha1.ConfigGroupResource) bool {
 	if gr.Group != proxyv1alpha1.GroupVersion.Group {
 		return false

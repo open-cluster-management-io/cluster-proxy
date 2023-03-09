@@ -16,7 +16,7 @@ import (
 	"open-cluster-management.io/cluster-proxy/pkg/common"
 )
 
-var _ = Describe("ClusterManagementAddon Controller", func() {
+var _ = Describe("ManagedProxyConfigurationReconciler Test", func() {
 	var addon *addonv1alpha1.ClusterManagementAddOn
 	var config *proxyv1alpha1.ManagedProxyConfiguration
 
