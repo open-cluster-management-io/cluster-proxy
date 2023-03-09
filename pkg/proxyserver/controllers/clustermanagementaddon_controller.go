@@ -130,10 +130,6 @@ func (c *ClusterManagementAddonReconciler) Reconcile(ctx context.Context, reques
 	// get the related proxy configuration
 	config := &proxyv1alpha1.ManagedProxyConfiguration{}
 	if err := c.Client.Get(ctx, types.NamespacedName{Name: managedProxyConfigurationName}, config); err != nil {
-		if apierrors.IsNotFound(err) {
-			log.Info("Cannot find proxy-configuration", "name", managedProxyConfigurationName)
-			return reconcile.Result{}, nil
-		}
 		return reconcile.Result{}, err
 	}
 
