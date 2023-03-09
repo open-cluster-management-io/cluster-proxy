@@ -50,12 +50,11 @@ func findRelatedAddon(c client.Client, cfgName string, limitingInterface workque
 	}
 	for _, addon := range list.Items {
 		if addon.Name == common.AddonName {
-			if addon.Spec.AddOnConfiguration.CRName == cfgName {
-				req := reconcile.Request{}
-				req.Namespace = addon.Namespace
-				req.Name = addon.Name
-				limitingInterface.Add(req)
-			}
+			// There is only one clustermanagemetnaddon for "cluster-proxy", and the config file of cluster-proxy must be a managedproxyconfiguration. So we don't need to check whether "cluster-proxy" addon match the cfg.
+			req := reconcile.Request{}
+			req.Namespace = addon.Namespace
+			req.Name = addon.Name
+			limitingInterface.Add(req)
 		}
 	}
 }
