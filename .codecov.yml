@@ -1,5 +1,6 @@
 coverage:
   status:
+    patch: off # disable patch status, https://docs.codecov.com/docs/commit-status#patch-status
     project:
       default:
         target: auto

@@ -10,12 +10,9 @@ import (
 	"time"
 
 	"open-cluster-management.io/addon-framework/pkg/certrotation"
-	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 	"open-cluster-management.io/cluster-proxy/pkg/common"
-	"open-cluster-management.io/cluster-proxy/pkg/config"
 	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/operator/authentication/selfsigned"
-	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/operator/eventhandler"
 
 	"github.com/openshift/library-go/pkg/crypto"
 	"github.com/openshift/library-go/pkg/operator/events"
@@ -41,10 +38,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
-var _ reconcile.Reconciler = &ClusterManagementAddonReconciler{}
+var _ reconcile.Reconciler = &ManagedProxyConfigurationReconciler{}
 
 var log = ctrl.Log.WithName("ClusterManagementAddonReconciler")
 
@@ -55,7 +51,7 @@ func RegisterClusterManagementAddonReconciler(
 	secretInformer informercorev1.SecretInformer,
 	supportsV1CSR bool,
 ) error {
-	r := &ClusterManagementAddonReconciler{
+	r := &ManagedProxyConfigurationReconciler{
 		Client:     mgr.GetClient(),
 		SelfSigner: selfSigner,
 		CAPair:     selfSigner.CA(),
@@ -80,7 +76,7 @@ func RegisterClusterManagementAddonReconciler(
 	return r.SetupWithManager(mgr)
 }
 
-type ClusterManagementAddonReconciler struct {
+type ManagedProxyConfigurationReconciler struct {
 	client.Client
 	SelfSigner       selfsigned.SelfSigner
 	CAPair           *crypto.CA
@@ -94,42 +90,19 @@ type ClusterManagementAddonReconciler struct {
 	supportsV1CSR      bool
 }
 
-func (c *ClusterManagementAddonReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (c *ManagedProxyConfigurationReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	// TODO should add a filter to only watch addon with cluster-proxy name
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&addonv1alpha1.ClusterManagementAddOn{}).
-		Watches(
-			&source.Kind{
-				Type: &proxyv1alpha1.ManagedProxyConfiguration{},
-			},
-			&eventhandler.ManagedProxyConfigurationHandler{
-				Client: mgr.GetClient(),
-			}).
+		For(&proxyv1alpha1.ManagedProxyConfiguration{}).
 		Complete(c)
 }
 
-func (c *ClusterManagementAddonReconciler) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
+func (c *ManagedProxyConfigurationReconciler) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
 	log.Info("Start reconcile", "name", request.Name)
-
-	// get the latest cluster-addon
-	addon := &addonv1alpha1.ClusterManagementAddOn{}
-	if err := c.Client.Get(ctx, request.NamespacedName, addon); err != nil {
-		if apierrors.IsNotFound(err) {
-			log.Info("Cannot find cluster-addon", "name", request.Name)
-			return reconcile.Result{}, nil
-		}
-		return reconcile.Result{}, err
-	}
-
-	managedProxyConfigurationName := config.FindDefaultManagedProxyConfigurationName(addon)
-	if len(managedProxyConfigurationName) == 0 {
-		log.Info("Skipping cluster-addon, no config coordinate", "name", request.Name)
-		return reconcile.Result{}, nil
-	}
 
 	// get the related proxy configuration
 	config := &proxyv1alpha1.ManagedProxyConfiguration{}
-	if err := c.Client.Get(ctx, types.NamespacedName{Name: managedProxyConfigurationName}, config); err != nil {
+	if err := c.Client.Get(ctx, types.NamespacedName{Name: request.Name}, config); err != nil {
 		return reconcile.Result{}, err
 	}
 
@@ -166,7 +139,7 @@ func (c *ClusterManagementAddonReconciler) Reconcile(ctx context.Context, reques
 	return reconcile.Result{}, nil
 }
 
-func (c *ClusterManagementAddonReconciler) refreshStatus(isModified bool, config *proxyv1alpha1.ManagedProxyConfiguration) error {
+func (c *ManagedProxyConfigurationReconciler) refreshStatus(isModified bool, config *proxyv1alpha1.ManagedProxyConfiguration) error {
 	currentState, err := c.getCurrentState(isModified, config)
 	if err != nil {
 		return err
@@ -189,7 +162,7 @@ func (c *ClusterManagementAddonReconciler) refreshStatus(isModified bool, config
 	return c.Client.Status().Update(context.TODO(), editingConfig)
 }
 
-func (c *ClusterManagementAddonReconciler) deployProxyServer(config *proxyv1alpha1.ManagedProxyConfiguration) (bool, error) {
+func (c *ManagedProxyConfigurationReconciler) deployProxyServer(config *proxyv1alpha1.ManagedProxyConfiguration) (bool, error) {
 	resources := []client.Object{
 		newServiceAccount(config),
 		newProxyService(config),
@@ -236,7 +209,7 @@ func (c *ClusterManagementAddonReconciler) deployProxyServer(config *proxyv1alph
 	return anyCreated || anyUpdated, nil
 }
 
-func (c *ClusterManagementAddonReconciler) ensure(incomingGeneration int64, gvk schema.GroupVersionKind, resource client.Object) (bool, bool, error) {
+func (c *ManagedProxyConfigurationReconciler) ensure(incomingGeneration int64, gvk schema.GroupVersionKind, resource client.Object) (bool, bool, error) {
 	// appending a label to all the applied resources so that they can always be
 	// updated upon the configuration changes.
 	annotations := resource.GetAnnotations()
@@ -314,7 +287,7 @@ func (c *ClusterManagementAddonReconciler) ensure(incomingGeneration int64, gvk 
 	return created, updated, nil
 }
 
-func (c *ClusterManagementAddonReconciler) getConditions(s *state) []metav1.Condition {
+func (c *ManagedProxyConfigurationReconciler) getConditions(s *state) []metav1.Condition {
 	deployedCondition := metav1.Condition{
 		Type:    proxyv1alpha1.ConditionTypeProxyServerDeployed,
 		Status:  metav1.ConditionFalse,
@@ -355,7 +328,7 @@ func (c *ClusterManagementAddonReconciler) getConditions(s *state) []metav1.Cond
 	}
 }
 
-func (c *ClusterManagementAddonReconciler) ensureEntrypoint(config *proxyv1alpha1.ManagedProxyConfiguration) (string, error) {
+func (c *ManagedProxyConfigurationReconciler) ensureEntrypoint(config *proxyv1alpha1.ManagedProxyConfiguration) (string, error) {
 	if config.Spec.ProxyServer.Entrypoint.Type == proxyv1alpha1.EntryPointTypeLoadBalancerService {
 		proxyService := &corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{
@@ -403,7 +376,7 @@ func (c *ClusterManagementAddonReconciler) ensureEntrypoint(config *proxyv1alpha
 	return "", nil
 }
 
-func (c *ClusterManagementAddonReconciler) ensureRotation(config *proxyv1alpha1.ManagedProxyConfiguration, entrypoint string) error {
+func (c *ManagedProxyConfigurationReconciler) ensureRotation(config *proxyv1alpha1.ManagedProxyConfiguration, entrypoint string) error {
 	var hostNames []string
 	if config.Spec.Authentication.Signer.SelfSigned != nil {
 		hostNames = config.Spec.Authentication.Signer.SelfSigned.AdditionalSANs
@@ -470,14 +443,14 @@ func (c *ClusterManagementAddonReconciler) ensureRotation(config *proxyv1alpha1.
 	return nil
 }
 
-func (c *ClusterManagementAddonReconciler) ensureBasicResources(config *proxyv1alpha1.ManagedProxyConfiguration) error {
+func (c *ManagedProxyConfigurationReconciler) ensureBasicResources(config *proxyv1alpha1.ManagedProxyConfiguration) error {
 	if err := c.ensureNamespace(config); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (c *ClusterManagementAddonReconciler) ensureNamespace(config *proxyv1alpha1.ManagedProxyConfiguration) error {
+func (c *ManagedProxyConfigurationReconciler) ensureNamespace(config *proxyv1alpha1.ManagedProxyConfiguration) error {
 	if err := c.Client.Get(context.TODO(), types.NamespacedName{
 		Name: config.Spec.ProxyServer.Namespace,
 	}, &corev1.Namespace{}); err != nil {
@@ -505,7 +478,7 @@ type state struct {
 	agentServerCertExpireTime *metav1.Time
 }
 
-func (c *ClusterManagementAddonReconciler) getCurrentState(isRedeployed bool, config *proxyv1alpha1.ManagedProxyConfiguration) (*state, error) {
+func (c *ManagedProxyConfigurationReconciler) getCurrentState(isRedeployed bool, config *proxyv1alpha1.ManagedProxyConfiguration) (*state, error) {
 	namespace := config.Spec.ProxyServer.Namespace
 	name := config.Name
 	isCurrentlyDeployed := true
