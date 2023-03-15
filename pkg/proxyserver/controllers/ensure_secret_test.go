@@ -14,7 +14,7 @@ func TestEnsureSecretRotation(t *testing.T) {
 	receivingServiceNamespace := ""
 	receivingSANs := make([]string, 0)
 
-	r := &ClusterManagementAddonReconciler{
+	r := &ManagedProxyConfigurationReconciler{
 		newCertRotatorFunc: func(namespace, name string, sans ...string) selfsigned.CertRotation {
 			receivingServiceNamespace = namespace
 			receivingSANs = sans
