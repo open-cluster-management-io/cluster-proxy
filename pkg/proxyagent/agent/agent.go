@@ -115,8 +115,9 @@ func NewAgentAddon(
 					},
 					Subjects: []rbacv1.Subject{
 						{
-							Kind: rbacv1.GroupKind,
-							Name: common.SubjectGroupClusterProxy,
+							Kind:     rbacv1.GroupKind,
+							Name:     common.SubjectGroupClusterProxy,
+							APIGroup: rbacv1.GroupName,
 						},
 					},
 				}).
