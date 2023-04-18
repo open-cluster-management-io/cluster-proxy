@@ -15,7 +15,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
-	"open-cluster-management.io/addon-framework/pkg/addonmanager/constants"
 	addonapiv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 	"open-cluster-management.io/cluster-proxy/pkg/common"
@@ -47,8 +46,8 @@ var _ = Describe("Certificate rotation Test",
 						By("A csr with custom signer should be issued")
 						csrList := &certificatesv1.CertificateSigningRequestList{}
 						err := f.HubRuntimeClient().List(context.TODO(), csrList, client.MatchingLabels{
-							constants.AddonLabel:   common.AddonName,
-							constants.ClusterLabel: f.TestClusterName(),
+							addonapiv1alpha1.AddonLabelKey:          common.AddonName,
+							addonapiv1alpha1.AddonNamespaceLabelKey: f.TestClusterName(),
 						})
 						Expect(err).NotTo(HaveOccurred())
 						Expect(len(csrList.Items) >= 1).Should(BeTrue())
