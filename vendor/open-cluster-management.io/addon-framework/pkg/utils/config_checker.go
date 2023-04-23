@@ -3,8 +3,8 @@ package utils
 import (
 	"crypto/sha256"
 	"fmt"
-	"io/ioutil"
 	"net/http"
+	"os"
 	"sync"
 
 	"k8s.io/apiserver/pkg/server/healthz"
@@ -39,25 +39,26 @@ type configChecker struct {
 //
 // Example Code:
 // config_checker_server.go
-// type configCheckerServer struct {
-// 	checkers []heathz.HealthChecker
-// }
 //
-// func NewConfigCheckerServer(checkers []healthz.HealthChecker) *configCheckerServer {
-// 	return &configCheckerServer{checkers: checkers}
-// }
+//	type configCheckerServer struct {
+//		checkers []heathz.HealthChecker
+//	}
 //
-// func (s *configCheckerServer) ServerHttp(rw http.ResponseWriter, r *http.Request) {
-// 	for _, c := range s.chekers {
-// 		if c.Name() == r.URL {
-// 			if err := c.Check(); err != nil {
-// 				rw.WriteHeader(500)
-// 			} else {
-// 				rw.WriteHeader(200)
-// 			}
-// 		}
-// 	}
-// }
+//	func NewConfigCheckerServer(checkers []healthz.HealthChecker) *configCheckerServer {
+//		return &configCheckerServer{checkers: checkers}
+//	}
+//
+//	func (s *configCheckerServer) ServerHttp(rw http.ResponseWriter, r *http.Request) {
+//		for _, c := range s.chekers {
+//			if c.Name() == r.URL {
+//				if err := c.Check(); err != nil {
+//					rw.WriteHeader(500)
+//				} else {
+//					rw.WriteHeader(200)
+//				}
+//			}
+//		}
+//	}
 //
 // main.go
 // ...
@@ -118,7 +119,7 @@ func (cc *configChecker) Check(_ *http.Request) error {
 func load(configfiles []string) ([32]byte, error) {
 	var allContent []byte
 	for _, c := range configfiles {
-		content, err := ioutil.ReadFile(c)
+		content, err := os.ReadFile(c)
 		if err != nil {
 			return [32]byte{}, fmt.Errorf("read %s failed, %v", c, err)
 		}

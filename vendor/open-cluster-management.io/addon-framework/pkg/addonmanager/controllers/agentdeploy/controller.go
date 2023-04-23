@@ -16,8 +16,6 @@ import (
 	"open-cluster-management.io/addon-framework/pkg/addonmanager/constants"
 	"open-cluster-management.io/addon-framework/pkg/agent"
 	"open-cluster-management.io/addon-framework/pkg/basecontroller/factory"
-	"open-cluster-management.io/addon-framework/pkg/common/workapplier"
-	"open-cluster-management.io/addon-framework/pkg/common/workbuilder"
 	"open-cluster-management.io/addon-framework/pkg/utils"
 	addonapiv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
 	addonv1alpha1client "open-cluster-management.io/api/client/addon/clientset/versioned"
@@ -28,6 +26,8 @@ import (
 	workv1client "open-cluster-management.io/api/client/work/clientset/versioned"
 	workinformers "open-cluster-management.io/api/client/work/informers/externalversions/work/v1"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
+	"open-cluster-management.io/api/utils/work/v1/workapplier"
+	"open-cluster-management.io/api/utils/work/v1/workbuilder"
 	workapiv1 "open-cluster-management.io/api/work/v1"
 )
 
@@ -63,8 +63,10 @@ func NewAddonDeployController(
 	}
 
 	c := &addonDeployController{
-		workApplier:               workapplier.NewWorkApplierWithTypedClient(workClient, workInformers.Lister()),
-		workBuilder:               workbuilder.NewWorkBuilder(),
+		workApplier: workapplier.NewWorkApplierWithTypedClient(workClient, workInformers.Lister()),
+		// the default manifest limit in a work is 500k
+		// TODO: make the limit configurable
+		workBuilder:               workbuilder.NewWorkBuilder().WithManifestsLimit(500 * 1024),
 		addonClient:               addonClient,
 		managedClusterLister:      clusterInformers.Lister(),
 		managedClusterAddonLister: addonInformers.Lister(),
@@ -92,10 +94,10 @@ func NewAddonDeployController(
 				// in hosted mode, need get the addon namespace from the AddonNamespaceLabel, because
 				// the namespaces of manifestWork and addon may be different.
 				// in default mode, the addon and manifestWork are in the cluster namespace.
-				if addonNamespace, ok := accessor.GetLabels()[constants.AddonNamespaceLabel]; ok {
-					return []string{fmt.Sprintf("%s/%s", addonNamespace, accessor.GetLabels()[constants.AddonLabel])}
+				if addonNamespace, ok := accessor.GetLabels()[addonapiv1alpha1.AddonNamespaceLabelKey]; ok {
+					return []string{fmt.Sprintf("%s/%s", addonNamespace, accessor.GetLabels()[addonapiv1alpha1.AddonLabelKey])}
 				}
-				return []string{fmt.Sprintf("%s/%s", accessor.GetNamespace(), accessor.GetLabels()[constants.AddonLabel])}
+				return []string{fmt.Sprintf("%s/%s", accessor.GetNamespace(), accessor.GetLabels()[addonapiv1alpha1.AddonLabelKey])}
 			},
 			func(obj interface{}) bool {
 				accessor, _ := meta.Accessor(obj)
@@ -104,7 +106,7 @@ func NewAddonDeployController(
 				}
 
 				// only watch the addon deploy/hook manifestWorks here.
-				addonName, ok := accessor.GetLabels()[constants.AddonLabel]
+				addonName, ok := accessor.GetLabels()[addonapiv1alpha1.AddonLabelKey]
 				if !ok {
 					return false
 				}

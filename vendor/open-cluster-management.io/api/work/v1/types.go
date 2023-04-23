@@ -527,6 +527,9 @@ type AppliedManifestWorkSpec struct {
 	// +required
 	HubHash string `json:"hubHash"`
 
+	// AgentID represents the ID of the work agent who is to handle this AppliedManifestWork.
+	AgentID string `json:"agentID"`
+
 	// ManifestWorkName represents the name of the related manifestwork on the hub.
 	// +required
 	ManifestWorkName string `json:"manifestWorkName"`
@@ -542,6 +545,13 @@ type AppliedManifestWorkStatus struct {
 	// However, the resource will not be undeleted, so it can be removed from this list and eventual consistency is preserved.
 	// +optional
 	AppliedResources []AppliedManifestResourceMeta `json:"appliedResources,omitempty"`
+
+	// EvictionStartTime represents the current appliedmanifestwork will be evicted after a grace period.
+	// An appliedmanifestwork will be evicted from the managed cluster in the following two scenarios:
+	//   - the manifestwork of the current appliedmanifestwork is missing on the hub, or
+	//   - the appliedmanifestwork hub hash does not match the current hub hash of the work agent.
+	// +optional
+	EvictionStartTime *metav1.Time `json:"evictionStartTime,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

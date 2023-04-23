@@ -10,8 +10,8 @@ import (
 	"k8s.io/klog/v2"
 	"open-cluster-management.io/addon-framework/pkg/addonmanager/constants"
 	"open-cluster-management.io/addon-framework/pkg/agent"
-	"open-cluster-management.io/addon-framework/pkg/common/workbuilder"
 	addonapiv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
+	"open-cluster-management.io/api/utils/work/v1/workbuilder"
 	workapiv1 "open-cluster-management.io/api/work/v1"
 )
 
@@ -67,7 +67,7 @@ func newManifestWork(addonNamespace, addonName, clusterName string, manifests []
 			Name:      manifestWorkNameFunc(addonNamespace, addonName),
 			Namespace: clusterName,
 			Labels: map[string]string{
-				constants.AddonLabel: addonName,
+				addonapiv1alpha1.AddonLabelKey: addonName,
 			},
 		},
 		Spec: workapiv1.ManifestWorkSpec{
@@ -79,7 +79,7 @@ func newManifestWork(addonNamespace, addonName, clusterName string, manifests []
 
 	// if the addon namespace is not equal with the manifestwork namespace(cluster name), add the addon namespace label
 	if addonNamespace != clusterName {
-		work.Labels[constants.AddonNamespaceLabel] = addonNamespace
+		work.Labels[addonapiv1alpha1.AddonNamespaceLabelKey] = addonNamespace
 	}
 	return work
 }
@@ -103,8 +103,14 @@ func (b *addonWorksBuilder) isPreDeleteHookObject(obj runtime.Object) (bool, *wo
 	if err != nil {
 		return false, nil
 	}
+
 	labels := accessor.GetLabels()
-	if _, ok := labels[constants.PreDeleteHookLabel]; !ok {
+	annotations := accessor.GetAnnotations()
+
+	// TODO: deprecate PreDeleteHookLabel in the future release.
+	_, hasPreDeleteLabel := labels[addonapiv1alpha1.AddonPreDeleteHookLabelKey]
+	_, hasPreDeleteAnnotation := annotations[addonapiv1alpha1.AddonPreDeleteHookAnnotationKey]
+	if !hasPreDeleteLabel && !hasPreDeleteAnnotation {
 		return false, nil
 	}
 
@@ -165,7 +171,7 @@ func (m *hostingManifest) deployable(hostedModeEnabled bool, installMode string,
 		return false, nil
 	}
 
-	location, exist, err := constants.GetHostedManifestLocation(accessor.GetLabels())
+	location, exist, err := constants.GetHostedManifestLocation(accessor.GetLabels(), accessor.GetAnnotations())
 	if err != nil {
 		return false, err
 	}
@@ -173,7 +179,7 @@ func (m *hostingManifest) deployable(hostedModeEnabled bool, installMode string,
 		return false, nil
 	}
 
-	if exist && location == constants.HostedManifestLocationHostingLabelValue {
+	if exist && location == addonapiv1alpha1.HostedManifestLocationHostingValue {
 		klog.V(4).Infof("will deploy the manifest %s/%s on the hosting cluster in Hosted mode",
 			accessor.GetNamespace(), accessor.GetName())
 		return true, nil
@@ -205,7 +211,7 @@ func (m *managedManifest) deployable(hostedModeEnabled bool, installMode string,
 		return false, nil
 	}
 
-	location, exist, err := constants.GetHostedManifestLocation(accessor.GetLabels())
+	location, exist, err := constants.GetHostedManifestLocation(accessor.GetLabels(), accessor.GetAnnotations())
 	if err != nil {
 		return false, err
 	}
@@ -214,7 +220,7 @@ func (m *managedManifest) deployable(hostedModeEnabled bool, installMode string,
 		return true, nil
 	}
 
-	if !exist || location == constants.HostedManifestLocationManagedLabelValue {
+	if !exist || location == addonapiv1alpha1.HostedManifestLocationManagedValue {
 		klog.V(4).Infof("will deploy the manifest %s/%s on the managed cluster in Hosted mode",
 			accessor.GetNamespace(), accessor.GetName())
 		return true, nil
@@ -339,7 +345,7 @@ func (b *addonWorksBuilder) BuildHookWork(addonWorkNamespace string,
 	}
 	hookWork.Spec.ManifestConfigs = hookManifestConfigs
 	if addon.Namespace != addonWorkNamespace {
-		hookWork.Labels[constants.AddonNamespaceLabel] = addon.Namespace
+		hookWork.Labels[addonapiv1alpha1.AddonNamespaceLabelKey] = addon.Namespace
 	}
 	return hookWork, nil
 }
@@ -424,7 +430,7 @@ func newAddonWorkObjectMeta(namePrefix, addonName, addonNamespace, workNamespace
 			Name:      fmt.Sprintf("%s-%d", namePrefix, index),
 			Namespace: workNamespace,
 			Labels: map[string]string{
-				constants.AddonLabel: addonName,
+				addonapiv1alpha1.AddonLabelKey: addonName,
 			},
 		}
 		// This owner is only added to the manifestWork deployed in managed cluster ns.
@@ -435,7 +441,7 @@ func newAddonWorkObjectMeta(namePrefix, addonName, addonNamespace, workNamespace
 		}
 		// if the addon namespace is not equal with the manifestwork namespace(cluster name), add the addon namespace label
 		if addonNamespace != workNamespace {
-			objectMeta.Labels[constants.AddonNamespaceLabel] = addonNamespace
+			objectMeta.Labels[addonapiv1alpha1.AddonNamespaceLabelKey] = addonNamespace
 		}
 		return objectMeta
 	}
@@ -471,7 +477,7 @@ func getDeletionOrphaningRule(obj runtime.Object) (*workapiv1.OrphaningRule, err
 		return nil, err
 	}
 	annotations := accessor.GetAnnotations()
-	if _, ok := annotations[constants.AnnotationDeletionOrphan]; !ok {
+	if _, ok := annotations[addonapiv1alpha1.DeletionOrphanAnnotationKey]; !ok {
 		return nil, nil
 	}
 

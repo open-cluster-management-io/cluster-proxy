@@ -30,6 +30,9 @@ spec:
               description: Spec represents the desired configuration of AppliedManifestWork.
               type: object
               properties:
+                agentID:
+                  description: AgentID represents the ID of the work agent who is to handle this AppliedManifestWork.
+                  type: string
                 hubHash:
                   description: HubHash represents the hash of the first hub kube apiserver to identify which hub this AppliedManifestWork links to.
                   type: string
@@ -69,6 +72,10 @@ spec:
                       version:
                         description: Version is the version of the Kubernetes resource.
                         type: string
+                evictionStartTime:
+                  description: 'EvictionStartTime represents the current appliedmanifestwork will be evicted after a grace period. An appliedmanifestwork will be evicted from the managed cluster in the following two scenarios:   - the manifestwork of the current appliedmanifestwork is missing on the hub, or   - the appliedmanifestwork hub hash does not match the current hub hash of the work agent.'
+                  type: string
+                  format: date-time
       served: true
       storage: true
       subresources:
