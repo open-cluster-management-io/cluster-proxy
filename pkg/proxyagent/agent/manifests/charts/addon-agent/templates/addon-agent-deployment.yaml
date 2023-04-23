@@ -5,7 +5,7 @@ metadata:
   name: {{ .Values.agentDeploymentName }}
   annotations:
   {{- with .Values.agentDeploymentAnnotations }}
-  {{ toYaml . | indent 8 }}
+  {{ toYaml . | indent 2 }}
   {{- end }}
 spec:
   replicas: {{ .Values.replicas }}
@@ -22,8 +22,9 @@ spec:
     metadata:
       annotations:
       {{- with .Values.agentDeploymentAnnotations }}
-      {{ toYaml . | indent 8 }}
+      {{ toYaml . | indent 2 }}
       {{- end }}
+        target.workload.openshift.io/management: '{"effect": "PreferredDuringScheduling"}'
       labels:
         open-cluster-management.io/addon: cluster-proxy
         proxy.open-cluster-management.io/component-name: proxy-agent
