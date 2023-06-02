@@ -121,7 +121,6 @@ jobs:
       - name: submit charts to OCM chart repo
         uses: actions/github-script@v6
         with:
-          debug: ${{ secrets.ACTIONS_RUNNER_DEBUG }}
           github-token: ${{ secrets.OCM_BOT_PAT }}
           script: |
             try {
