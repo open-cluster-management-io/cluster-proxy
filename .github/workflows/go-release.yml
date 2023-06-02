@@ -122,7 +122,7 @@ jobs:
         uses: actions/github-script@v6
         with:
           debug: ${{ secrets.ACTIONS_RUNNER_DEBUG }}
-          github-token: ${{ secrets.PAT_TOKEN }}
+          github-token: ${{ secrets.OCM_BOT_PAT }}
           script: |
             try {
               const result = await github.rest.actions.createWorkflowDispatch({
