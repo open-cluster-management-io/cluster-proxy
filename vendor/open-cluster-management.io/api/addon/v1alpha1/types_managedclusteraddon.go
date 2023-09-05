@@ -7,6 +7,7 @@ import (
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:subresource:status
+// +kubebuilder:resource:scope="Namespaced",shortName={"mca","mcas"}
 // +kubebuilder:printcolumn:name="Available",type=string,JSONPath=`.status.conditions[?(@.type=="Available")].status`
 // +kubebuilder:printcolumn:name="Degraded",type=string,JSONPath=`.status.conditions[?(@.type=="Degraded")].status`
 // +kubebuilder:printcolumn:name="Progressing",type=string,JSONPath=`.status.conditions[?(@.type=="Progressing")].status`
@@ -42,7 +43,7 @@ type ManagedClusterAddOnSpec struct {
 
 	// configs is a list of add-on configurations.
 	// In scenario where the current add-on has its own configurations.
-	// An empty list means there are no defautl configurations for add-on.
+	// An empty list means there are no default configurations for add-on.
 	// The default is an empty list
 	// +optional
 	Configs []AddOnConfig `json:"configs,omitempty"`
@@ -60,8 +61,9 @@ type RegistrationConfig struct {
 	// subject is the user subject of the addon agent to be registered to the hub.
 	// If it is not set, the addon agent will have the default subject
 	// "subject": {
-	//	"user": "system:open-cluster-management:addon:{addonName}:{clusterName}:{agentName}",
-	//	"groups: ["system:open-cluster-management:addon", "system:open-cluster-management:addon:{addonName}", "system:authenticated"]
+	//   "user": "system:open-cluster-management:cluster:{clusterName}:addon:{addonName}:agent:{agentName}",
+	//   "groups: ["system:open-cluster-management:cluster:{clusterName}:addon:{addonName}",
+	//             "system:open-cluster-management:addon:{addonName}", "system:authenticated"]
 	// }
 	//
 	// +optional
@@ -112,18 +114,32 @@ type ManagedClusterAddOnStatus struct {
 	// +optional
 	AddOnMeta AddOnMeta `json:"addOnMeta,omitempty"`
 
-	// Deprecated: Use configReference instead
+	// Deprecated: Use configReferences instead.
 	// addOnConfiguration is a reference to configuration information for the add-on.
-	// This resource is use to locate the configuration resource for the add-on.
+	// This resource is used to locate the configuration resource for the add-on.
 	// +optional
 	AddOnConfiguration ConfigCoordinates `json:"addOnConfiguration,omitempty"`
+
+	// SupportedConfigs is a list of configuration types that are allowed to override the add-on configurations defined
+	// in ClusterManagementAddOn spec.
+	// The default is an empty list, which means the add-on configurations can not be overridden.
+	// +optional
+	// +listType=map
+	// +listMapKey=group
+	// +listMapKey=resource
+	SupportedConfigs []ConfigGroupResource `json:"supportedConfigs,omitempty"`
 
 	// configReferences is a list of current add-on configuration references.
 	// This will be overridden by the clustermanagementaddon configuration references.
 	// +optional
 	ConfigReferences []ConfigReference `json:"configReferences,omitempty"`
 
-	// registrations is the conifigurations for the addon agent to register to hub. It should be set by each addon controller
+	// namespace is the namespace on the managedcluster to put registration secret or lease for the addon. It is
+	// required when registration is set or healthcheck mode is Lease.
+	// +optional
+	Namespace string `json:"namespace,omitempty"`
+
+	// registrations is the configurations for the addon agent to register to hub. It should be set by each addon controller
 	// on hub to define how the addon agent on managedcluster is registered. With the registration defined,
 	// The addon agent can access to kube apiserver with kube style API or other endpoints on hub cluster with client
 	// certificate authentication. A csr will be created per registration configuration. If more than one
@@ -140,18 +156,6 @@ type ManagedClusterAddOnStatus struct {
 	// +optional
 	HealthCheck HealthCheck `json:"healthCheck,omitempty"`
 }
-
-const (
-	// ManagedClusterAddOnConditionAvailable represents that the addon agent is running on the managed cluster
-	ManagedClusterAddOnConditionAvailable string = "Available"
-
-	// ManagedClusterAddOnConditionDegraded represents that the addon agent is providing degraded service on
-	// the managed cluster.
-	ManagedClusterAddOnConditionDegraded string = "Degraded"
-
-	// ManagedClusterAddOnCondtionConfigured represents that the addon agent is configured with its configuration
-	ManagedClusterAddOnCondtionConfigured string = "Configured"
-)
 
 // ObjectReference contains enough information to let you inspect or modify the referred object.
 type ObjectReference struct {
@@ -178,13 +182,23 @@ type ConfigReference struct {
 	// This field is synced from ClusterManagementAddOn configGroupResource field.
 	ConfigGroupResource `json:",inline"`
 
+	// Deprecated: Use DesiredConfig instead
 	// This field is synced from ClusterManagementAddOn defaultConfig and ManagedClusterAddOn config fields.
 	// If both of them are defined, the ManagedClusterAddOn configs will overwrite the ClusterManagementAddOn
 	// defaultConfigs.
 	ConfigReferent `json:",inline"`
 
+	// Deprecated: Use LastAppliedConfig instead
 	// lastObservedGeneration is the observed generation of the add-on configuration.
 	LastObservedGeneration int64 `json:"lastObservedGeneration"`
+
+	// desiredConfig record the desired config spec hash.
+	// +optional
+	DesiredConfig *ConfigSpecHash `json:"desiredConfig"`
+
+	// lastAppliedConfig record the config spec hash when the corresponding ManifestWork is applied successfully.
+	// +optional
+	LastAppliedConfig *ConfigSpecHash `json:"lastAppliedConfig"`
 }
 
 // HealthCheckMode indicates the mode for the addon to check its healthiness status
@@ -266,7 +280,185 @@ const (
 	// HostedManifestLocationHostingValue is a value of the annotation HostedManifestLocationAnnotationKey,
 	// indicates the manifest will be deployed on the hosting cluster in Hosted mode.
 	HostedManifestLocationHostingValue = "hosting"
-	// HostedManifestLocationNoneValue is a value of the annotation HostedManifestLocationAnnotationKey,,
+	// HostedManifestLocationNoneValue is a value of the annotation HostedManifestLocationAnnotationKey,
 	// indicates the manifest will not be deployed in Hosted mode.
 	HostedManifestLocationNoneValue = "none"
+
+	// Finalizers on the managedClusterAddon.
+
+	// AddonDeprecatedPreDeleteHookFinalizer is the finalizer for an addon which has deployed hook objects.
+	// Deprecated: please use the AddonPreDeleteHookFinalizer instead.
+	AddonDeprecatedPreDeleteHookFinalizer = "cluster.open-cluster-management.io/addon-pre-delete"
+	// AddonDeprecatedHostingPreDeleteHookFinalizer is the finalizer for an addon which has deployed hook objects
+	// on hosting cluster.
+	// Deprecated: please use the AddonHostingPreDeleteHookFinalizer instead.
+	AddonDeprecatedHostingPreDeleteHookFinalizer = "cluster.open-cluster-management.io/hosting-addon-pre-delete"
+	// AddonDeprecatedHostingManifestFinalizer is the finalizer for an addon which has deployed manifests on the external
+	// hosting cluster in Hosted mode.
+	// Deprecated: please use the AddonHostingPreDeleteHookFinalizer instead.
+	AddonDeprecatedHostingManifestFinalizer = "cluster.open-cluster-management.io/hosting-manifests-cleanup"
+
+	// AddonPreDeleteHookFinalizer is the finalizer for an addon which has deployed hook objects.
+	AddonPreDeleteHookFinalizer = "addon.open-cluster-management.io/addon-pre-delete"
+	// AddonHostingPreDeleteHookFinalizer is the finalizer for an addon which has deployed hook objects
+	// on hosting cluster.
+	AddonHostingPreDeleteHookFinalizer = "addon.open-cluster-management.io/hosting-addon-pre-delete"
+	// AddonHostingManifestFinalizer is the finalizer for an addon which has deployed manifests on the external
+	// hosting cluster in Hosted mode.
+	AddonHostingManifestFinalizer = "addon.open-cluster-management.io/hosting-manifests-cleanup"
+)
+
+// addon status condition types
+const (
+	// ManagedClusterAddOnConditionAvailable represents that the addon agent is running on the managed cluster
+	ManagedClusterAddOnConditionAvailable string = "Available"
+
+	// ManagedClusterAddOnConditionDegraded represents that the addon agent is providing degraded service on
+	// the managed cluster.
+	ManagedClusterAddOnConditionDegraded string = "Degraded"
+
+	// Deprecated: Use ManagedClusterAddOnConditionProgressing instead
+	// ManagedClusterAddOnConditionConfigured represents that the addon agent is configured with its configuration
+	ManagedClusterAddOnConditionConfigured string = "Configured"
+
+	// ManagedClusterAddOnConditionProgressing represents that the addon agent is applying configurations.
+	ManagedClusterAddOnConditionProgressing string = "Progressing"
+
+	// ManagedClusterAddOnManifestApplied is a condition type representing whether the manifest of an addon is
+	// applied correctly.
+	ManagedClusterAddOnManifestApplied = "ManifestApplied"
+
+	// ManagedClusterAddOnHookManifestCompleted is a condition type representing whether the addon hook is completed.
+	ManagedClusterAddOnHookManifestCompleted = "HookManifestCompleted"
+
+	// ManagedClusterAddOnHostingManifestApplied is a condition type representing whether the manifest of an addon
+	// is applied on the hosting cluster correctly.
+	ManagedClusterAddOnHostingManifestApplied = "HostingManifestApplied"
+
+	// ManagedClusterAddOnHostingClusterValidity is a condition type representing whether the hosting cluster is
+	// valid in Hosted mode.
+	ManagedClusterAddOnHostingClusterValidity = "HostingClusterValidity"
+
+	// ManagedClusterAddOnRegistrationApplied is a condition type representing whether the registration of
+	// the addon agent is configured.
+	ManagedClusterAddOnRegistrationApplied = "RegistrationApplied"
+)
+
+// the reasons of condition ManagedClusterAddOnConditionAvailable
+const (
+	// AddonAvailableReasonWorkNotFound is the reason of condition Available indicating the addon manifestWorks
+	// are not found.
+	AddonAvailableReasonWorkNotFound = "WorkNotFound"
+
+	// AddonAvailableReasonWorkApplyFailed is the reason of condition Available indicating the addon manifestWorks
+	// are failed to apply.
+	AddonAvailableReasonWorkApplyFailed = "WorkApplyFailed"
+
+	// AddonAvailableReasonWorkNotApply is the reason of condition Available indicating the addon manifestWorks
+	// are not applied.
+	AddonAvailableReasonWorkNotApply = "WorkNotApplied"
+
+	// AddonAvailableReasonWorkApply is the reason of condition Available indicating the addon manifestWorks
+	// are applied.
+	AddonAvailableReasonWorkApply = "WorkApplied"
+
+	// AddonAvailableReasonNoProbeResult is the reason of condition Available indicating no probe result found in
+	// the manifestWorks for the health check.
+	AddonAvailableReasonNoProbeResult = "NoProbeResult"
+
+	// AddonAvailableReasonProbeUnavailable is the reason of condition Available indicating the probe result found
+	// does not meet the health check.
+	AddonAvailableReasonProbeUnavailable = "ProbeUnavailable"
+
+	// AddonAvailableReasonProbeAvailable is the reason of condition Available indicating the probe result found
+	// meets the health check.
+	AddonAvailableReasonProbeAvailable = "ProbeAvailable"
+
+	// AddonAvailableReasonLeaseUpdateStopped is the reason if condition Available indicating the lease stops updating
+	// during health check.
+	AddonAvailableReasonLeaseUpdateStopped = "ManagedClusterAddOnLeaseUpdateStopped"
+
+	// AddonAvailableReasonLeaseLeaseNotFound is the reason if condition Available indicating the lease is not found
+	// during health check.
+	AddonAvailableReasonLeaseLeaseNotFound = "ManagedClusterAddOnLeaseNotFound"
+
+	// AddonAvailableReasonLeaseLeaseUpdated is the reason if condition Available indicating the lease is updated
+	// during health check.
+	AddonAvailableReasonLeaseLeaseUpdated = "ManagedClusterAddOnLeaseUpdated"
+)
+
+// the reasons of condition ManagedClusterAddOnManifestApplied
+const (
+	// AddonManifestAppliedReasonWorkApplyFailed is the reason of condition AddonManifestApplied indicating
+	// the failure of apply manifestWork of the manifests.
+	AddonManifestAppliedReasonWorkApplyFailed = "ManifestWorkApplyFailed"
+
+	// AddonManifestAppliedReasonManifestsApplied is the reason of condition AddonManifestApplied indicating
+	// the manifests is applied on the managedCluster.
+	AddonManifestAppliedReasonManifestsApplied = "AddonManifestApplied"
+
+	// AddonManifestAppliedReasonManifestsApplyFailed is the reason of condition AddonManifestApplied indicating
+	// the failure to apply manifests on the managedCluster.
+	AddonManifestAppliedReasonManifestsApplyFailed = "AddonManifestAppliedFailed"
+)
+
+// the reasons of condition ManagedClusterAddOnHostingClusterValidity
+const (
+	// HostingClusterValidityReasonValid is the reason of condition HostingClusterValidity indicating the hosting
+	// cluster is valid.
+	HostingClusterValidityReasonValid = "HostingClusterValid"
+
+	// HostingClusterValidityReasonInvalid is the reason of condition HostingClusterValidity indicating the hosting
+	// cluster is invalid.
+	HostingClusterValidityReasonInvalid = "HostingClusterInvalid"
+)
+
+// the reason of condition ManagedClusterAddOnConditionProgressing
+const (
+	// ProgressingReasonInstalling is the reason of condition Progressing indicating the addon configuration is
+	// installing.
+	ProgressingReasonInstalling = "Installing"
+
+	// ProgressingReasonInstallSucceed is the reason of condition Progressing indicating the addon configuration is
+	// installed successfully.
+	ProgressingReasonInstallSucceed = "InstallSucceed"
+
+	// ProgressingReasonInstallFailed is the reason of condition Progressing indicating the addon configuration is
+	// installed failed.
+	ProgressingReasonInstallFailed = "InstallFailed"
+
+	// ProgressingReasonUpgrading is the reason of condition Progressing indicating the addon configuration is
+	// upgrading.
+	ProgressingReasonUpgrading = "Upgrading"
+
+	// ProgressingReasonUpgradeSucceed is the reason of condition Progressing indicating the addon configuration is
+	// upgraded successfully.
+	ProgressingReasonUpgradeSucceed = "UpgradeSucceed"
+
+	// ProgressingReasonUpgradeFailed is the reason of condition Progressing indicating the addon configuration is
+	// upgraded failed.
+	ProgressingReasonUpgradeFailed = "UpgradeFailed"
+
+	// ProgressingReasonWaitingForCanary is the reason of condition Progressing indicating the addon configuration
+	// upgrade is pending and waiting for canary is done.
+	ProgressingReasonWaitingForCanary = "WaitingForCanary"
+
+	// ProgressingReasonConfigurationUnsupported is the reason of condition Progressing indicating the addon configuration
+	// is not supported.
+	ProgressingReasonConfigurationUnsupported = "ConfigurationUnsupported"
+)
+
+// the reasons of condition ManagedClusterAddOnRegistrationApplied
+const (
+	// RegistrationAppliedNilRegistration is the reason of condition RegistrationApplied indicating that there is no
+	// registration option.
+	RegistrationAppliedNilRegistration = "NilRegistration"
+
+	// RegistrationAppliedSetPermissionFailed is the reason of condition RegistrationApplied indicating that it is
+	// failed to set up rbac for the addon agent.
+	RegistrationAppliedSetPermissionFailed = "SetPermissionFailed"
+
+	// RegistrationAppliedSetPermissionApplied is the reason of condition RegistrationApplied indicating that it is
+	// successful to set up rbac for the addon agent.
+	RegistrationAppliedSetPermissionApplied = "SetPermissionApplied"
 )

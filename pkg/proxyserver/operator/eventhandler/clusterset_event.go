@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"k8s.io/client-go/util/workqueue"
-	clusterv1beta1 "open-cluster-management.io/api/cluster/v1beta1"
+	clusterv1beta2 "open-cluster-management.io/api/cluster/v1beta2"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 	"open-cluster-management.io/cluster-proxy/pkg/util"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -20,27 +20,27 @@ type ClustersetHandler struct {
 }
 
 func (m ClustersetHandler) Create(event event.CreateEvent, limitingInterface workqueue.RateLimitingInterface) {
-	clusterset := event.Object.(*clusterv1beta1.ManagedClusterSet)
+	clusterset := event.Object.(*clusterv1beta2.ManagedClusterSet)
 	m.findClusterProxyAddon(clusterset, limitingInterface)
 }
 
 func (m ClustersetHandler) Update(event event.UpdateEvent, limitingInterface workqueue.RateLimitingInterface) {
-	clusterset := event.ObjectNew.(*clusterv1beta1.ManagedClusterSet)
+	clusterset := event.ObjectNew.(*clusterv1beta2.ManagedClusterSet)
 	m.findClusterProxyAddon(clusterset, limitingInterface)
 }
 
 func (m ClustersetHandler) Delete(event event.DeleteEvent, limitingInterface workqueue.RateLimitingInterface) {
-	clusterset := event.Object.(*clusterv1beta1.ManagedClusterSet)
+	clusterset := event.Object.(*clusterv1beta2.ManagedClusterSet)
 	m.findClusterProxyAddon(clusterset, limitingInterface)
 }
 
 func (m ClustersetHandler) Generic(event event.GenericEvent, limitingInterface workqueue.RateLimitingInterface) {
-	clusterset := event.Object.(*clusterv1beta1.ManagedClusterSet)
+	clusterset := event.Object.(*clusterv1beta2.ManagedClusterSet)
 	m.findClusterProxyAddon(clusterset, limitingInterface)
 }
 
 // findClusterProxyAddon will triger clustermanagementaddon on all managed clusters to reconcile.
-func (m *ClustersetHandler) findClusterProxyAddon(clusterset *clusterv1beta1.ManagedClusterSet, limitingInterface workqueue.RateLimitingInterface) {
+func (m *ClustersetHandler) findClusterProxyAddon(clusterset *clusterv1beta2.ManagedClusterSet, limitingInterface workqueue.RateLimitingInterface) {
 	var err error
 	// Check whether the clusterset is related with any managedproxyserviceresolver.
 	mpsrList := &proxyv1alpha1.ManagedProxyServiceResolverList{}

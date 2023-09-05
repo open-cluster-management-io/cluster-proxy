@@ -132,12 +132,12 @@ const (
 
 const (
 	// ManagedClusterTaintUnavailable is the key of the taint added to a managed cluster when it is not available.
-	// To be specific, the cluster has a condtion 'ManagedClusterConditionAvailable' with status of 'False';
+	// To be specific, the cluster has a condition 'ManagedClusterConditionAvailable' with status of 'False';
 	ManagedClusterTaintUnavailable string = "cluster.open-cluster-management.io/unavailable"
 	// ManagedClusterTaintUnreachable is the key of the taint added to a managed cluster when it is not reachable.
 	// To be specific,
 	// 1) The cluster has no condition 'ManagedClusterConditionAvailable';
-	// 2) Or the status of condtion 'ManagedClusterConditionAvailable' is 'Unknown';
+	// 2) Or the status of condition 'ManagedClusterConditionAvailable' is 'Unknown';
 	ManagedClusterTaintUnreachable string = "cluster.open-cluster-management.io/unreachable"
 )
 
@@ -233,4 +233,27 @@ type ManagedClusterList struct {
 const (
 	// ClusterNameLabelKey is the key of a label to set ManagedCluster name.
 	ClusterNameLabelKey = "open-cluster-management.io/cluster-name"
+)
+
+const (
+	// ClusterImageRegistriesAnnotationKey is an annotation key on ManagedCluster to configure image override for addons
+	// running on the ManagedCluster, the value of the annotation should be a json string like this:
+	//
+	// {
+	//   "registries": [
+	//     {
+	//       "source": "quay.io/ocm",
+	//       "mirrors": "quay.io/open-cluster-management"
+	//     }
+	//   ]
+	// }
+	//
+	// Note: Image registries configured in the addonDeploymentConfig will take precedence over this annotation.
+	ClusterImageRegistriesAnnotationKey = "open-cluster-management.io/image-registries"
+)
+
+const (
+	// ManagedClusterFinalizer is the name of the finalizer added to ManagedCluster, it is to ensure that resources
+	// relating to the ManagedCluster is removed when the ManagedCluster is deleted.
+	ManagedClusterFinalizer = "cluster.open-cluster-management.io/api-resource-cleanup"
 )
