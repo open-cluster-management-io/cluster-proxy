@@ -7,7 +7,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	clusterv1beta1 "open-cluster-management.io/api/cluster/v1beta1"
+	clusterv1beta2 "open-cluster-management.io/api/cluster/v1beta2"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -85,7 +85,7 @@ var _ = Describe("ServiceResolver Reconciler", func() {
 					},
 				},
 			}
-			clusterset := &clusterv1beta1.ManagedClusterSet{
+			clusterset := &clusterv1beta2.ManagedClusterSet{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "sr-test",
 				},
@@ -193,7 +193,7 @@ var _ = Describe("ServiceResolver Reconciler", func() {
 				},
 			},
 		}
-		clusterset := &clusterv1beta1.ManagedClusterSet{
+		clusterset := &clusterv1beta2.ManagedClusterSet{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: "sr-test3",
 				Finalizers: []string{
@@ -232,7 +232,7 @@ var _ = Describe("ServiceResolver Reconciler", func() {
 
 		It("Should return confition equals False, and reason is ManagedClusterSetDeleting", func() {
 			Eventually(func() error {
-				currentClusterSet := &clusterv1beta1.ManagedClusterSet{}
+				currentClusterSet := &clusterv1beta2.ManagedClusterSet{}
 				err := ctrlClient.Get(ctx, client.ObjectKey{Name: clusterset.Name}, currentClusterSet)
 				if err != nil {
 					return err
@@ -247,7 +247,7 @@ var _ = Describe("ServiceResolver Reconciler", func() {
 					return err
 				}
 
-				currentClusterSet := &clusterv1beta1.ManagedClusterSet{}
+				currentClusterSet := &clusterv1beta2.ManagedClusterSet{}
 				err = ctrlClient.Get(ctx, client.ObjectKey{Name: clusterset.Name}, currentClusterSet)
 				if err != nil {
 					return err
@@ -293,7 +293,7 @@ var _ = Describe("ServiceResolver Reconciler", func() {
 				},
 			},
 		}
-		clusterset := &clusterv1beta1.ManagedClusterSet{
+		clusterset := &clusterv1beta2.ManagedClusterSet{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: "sr-test4",
 			},

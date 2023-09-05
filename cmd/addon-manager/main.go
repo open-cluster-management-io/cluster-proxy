@@ -39,7 +39,7 @@ import (
 	"open-cluster-management.io/api/client/addon/clientset/versioned"
 	addonclient "open-cluster-management.io/api/client/addon/clientset/versioned"
 	"open-cluster-management.io/api/client/addon/informers/externalversions"
-	clusterv1beta1 "open-cluster-management.io/api/cluster/v1beta1"
+	clusterv1beta2 "open-cluster-management.io/api/cluster/v1beta2"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 	"open-cluster-management.io/cluster-proxy/pkg/config"
 	"open-cluster-management.io/cluster-proxy/pkg/proxyagent/agent"
@@ -60,7 +60,7 @@ func init() {
 
 	utilruntime.Must(addonv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(proxyv1alpha1.AddToScheme(scheme))
-	utilruntime.Must(clusterv1beta1.AddToScheme(scheme))
+	utilruntime.Must(clusterv1beta2.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 }
 

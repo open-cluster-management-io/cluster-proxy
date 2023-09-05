@@ -32,7 +32,7 @@ import (
 	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
 	fakeaddon "open-cluster-management.io/api/client/addon/clientset/versioned/fake"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
-	clusterv1beta1 "open-cluster-management.io/api/cluster/v1beta1"
+	clusterv1beta2 "open-cluster-management.io/api/cluster/v1beta2"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 	"open-cluster-management.io/cluster-proxy/pkg/config"
 	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/operator/authentication/selfsigned"
@@ -49,7 +49,7 @@ var (
 
 func init() {
 	testscheme.AddKnownTypes(proxyv1alpha1.SchemeGroupVersion, &proxyv1alpha1.ManagedProxyConfiguration{})
-	testscheme.AddKnownTypes(clusterv1beta1.SchemeGroupVersion, &clusterv1beta1.ManagedClusterSetList{})
+	testscheme.AddKnownTypes(clusterv1beta2.SchemeGroupVersion, &clusterv1beta2.ManagedClusterSetList{})
 	testscheme.AddKnownTypes(proxyv1alpha1.SchemeGroupVersion, &proxyv1alpha1.ManagedProxyServiceResolverList{})
 }
 
@@ -57,7 +57,7 @@ func TestFilterMPSR(t *testing.T) {
 	testcases := []struct {
 		name      string
 		resolvers []proxyv1alpha1.ManagedProxyServiceResolver
-		mcsMap    map[string]clusterv1beta1.ManagedClusterSet
+		mcsMap    map[string]clusterv1beta2.ManagedClusterSet
 		expected  []serviceToExpose
 	}{
 		{
@@ -105,7 +105,7 @@ func TestFilterMPSR(t *testing.T) {
 					},
 				},
 			},
-			mcsMap: map[string]clusterv1beta1.ManagedClusterSet{
+			mcsMap: map[string]clusterv1beta2.ManagedClusterSet{
 				"set-1": {
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "set-1",
@@ -163,7 +163,7 @@ func TestFilterMPSR(t *testing.T) {
 					},
 				},
 			},
-			mcsMap: map[string]clusterv1beta1.ManagedClusterSet{
+			mcsMap: map[string]clusterv1beta2.ManagedClusterSet{
 				"set-1": {
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "set-1",
@@ -197,15 +197,15 @@ func TestFilterMCS(t *testing.T) {
 	testcases := []struct {
 		name          string
 		clusterlabels map[string]string
-		clusters      []clusterv1beta1.ManagedClusterSet
-		expected      map[string]clusterv1beta1.ManagedClusterSet
+		clusters      []clusterv1beta2.ManagedClusterSet
+		expected      map[string]clusterv1beta2.ManagedClusterSet
 	}{
 		{
 			name: "filter out the cluster with deletion timestamp",
 			clusterlabels: map[string]string{
-				clusterv1beta1.ClusterSetLabel: "set-1",
+				clusterv1beta2.ClusterSetLabel: "set-1",
 			},
-			clusters: []clusterv1beta1.ManagedClusterSet{
+			clusters: []clusterv1beta2.ManagedClusterSet{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:              "set-1",
@@ -213,14 +213,14 @@ func TestFilterMCS(t *testing.T) {
 					},
 				},
 			},
-			expected: map[string]clusterv1beta1.ManagedClusterSet{},
+			expected: map[string]clusterv1beta2.ManagedClusterSet{},
 		},
 		{
 			name: "filter out the cluster without the current cluster label",
 			clusterlabels: map[string]string{
-				clusterv1beta1.ClusterSetLabel: "set-1",
+				clusterv1beta2.ClusterSetLabel: "set-1",
 			},
-			clusters: []clusterv1beta1.ManagedClusterSet{
+			clusters: []clusterv1beta2.ManagedClusterSet{
 				{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "set-1",
@@ -232,7 +232,7 @@ func TestFilterMCS(t *testing.T) {
 					},
 				},
 			},
-			expected: map[string]clusterv1beta1.ManagedClusterSet{
+			expected: map[string]clusterv1beta2.ManagedClusterSet{
 				"set-1": {
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "set-1",
