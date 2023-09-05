@@ -8,7 +8,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
-	clusterv1beta1 "open-cluster-management.io/api/cluster/v1beta1"
+	clusterv1beta2 "open-cluster-management.io/api/cluster/v1beta2"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/operator/eventhandler"
 	"open-cluster-management.io/cluster-proxy/pkg/util"
@@ -42,7 +42,7 @@ func (c *ServiceResolverReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		).
 		Watches(
 			&source.Kind{
-				Type: &clusterv1beta1.ManagedClusterSet{},
+				Type: &clusterv1beta2.ManagedClusterSet{},
 			},
 			&eventhandler.ClustersetHandler{
 				Client: mgr.GetClient(),
@@ -82,7 +82,7 @@ func (c *ServiceResolverReconciler) refreshManageProxyServiceResolversStatus() e
 			}
 		} else {
 			// get managedclusterset
-			managedClusterSet := &clusterv1beta1.ManagedClusterSet{}
+			managedClusterSet := &clusterv1beta2.ManagedClusterSet{}
 			if err := c.Client.Get(context.TODO(), types.NamespacedName{
 				Name: resolver.Spec.ManagedClusterSelector.ManagedClusterSet.Name,
 			}, managedClusterSet); err != nil {
