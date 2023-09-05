@@ -34,7 +34,7 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/util/cert"
 	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
-	clusterv1beta1 "open-cluster-management.io/api/cluster/v1beta1"
+	clusterv1beta2 "open-cluster-management.io/api/cluster/v1beta2"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/controllers"
 	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/operator/authentication/selfsigned"
@@ -95,7 +95,7 @@ var _ = BeforeSuite(func() {
 	err = proxyv1alpha1.AddToScheme(scheme)
 	Expect(err).NotTo(HaveOccurred())
 
-	err = clusterv1beta1.AddToScheme(scheme)
+	err = clusterv1beta2.AddToScheme(scheme)
 	Expect(err).NotTo(HaveOccurred())
 
 	kubeClient, err = kubernetes.NewForConfig(cfg)

@@ -18,7 +18,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	clusterv1beta1 "open-cluster-management.io/api/cluster/v1beta1"
+	clusterv1beta2 "open-cluster-management.io/api/cluster/v1beta2"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 	"open-cluster-management.io/cluster-proxy/pkg/util"
 
@@ -250,7 +250,7 @@ func deployHelleWorldApplication(ctx context.Context, name, namespace string, e2
 }
 
 func deployMCS(ctx context.Context, clusterset string, e2eframe framework.Framework) error {
-	return e2eframe.HubRuntimeClient().Create(ctx, &clusterv1beta1.ManagedClusterSet{
+	return e2eframe.HubRuntimeClient().Create(ctx, &clusterv1beta2.ManagedClusterSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: clusterset,
 		},
