@@ -54,6 +54,7 @@ type internalWorkBuilder struct {
 	executorOption                 *workapiv1.ManifestWorkExecutor
 	existingManifestWorks          []workapiv1.ManifestWork
 	manifestConfigOption           []workapiv1.ManifestConfigOption
+	annotations                    map[string]string
 }
 type WorkBuilderOption func(*internalWorkBuilder) *internalWorkBuilder
 
@@ -81,6 +82,13 @@ func ManifestConfigOption(option []workapiv1.ManifestConfigOption) WorkBuilderOp
 func ManifestWorkExecutorOption(executor *workapiv1.ManifestWorkExecutor) WorkBuilderOption {
 	return func(builder *internalWorkBuilder) *internalWorkBuilder {
 		builder.executorOption = executor
+		return builder
+	}
+}
+
+func ManifestAnnotations(annotations map[string]string) WorkBuilderOption {
+	return func(builder *internalWorkBuilder) *internalWorkBuilder {
+		builder.annotations = annotations
 		return builder
 	}
 }
@@ -159,12 +167,11 @@ func (f *internalWorkBuilder) buildManifestWorks(objects []runtime.Object) (appl
 	}
 
 	// this step to update the existing manifestWorks, update the existing manifests and delete non-existing manifest
-	for workIndex := 0; workIndex < len(f.existingManifestWorks); workIndex++ {
-		work := f.existingManifestWorks[workIndex].DeepCopy()
-		f.setManifestWorkOptions(work)
-		work.Spec.Workload.Manifests = []workapiv1.Manifest{}
-		for manifestIndex := 0; manifestIndex < len(f.existingManifestWorks[workIndex].Spec.Workload.Manifests); manifestIndex++ {
-			manifest := f.existingManifestWorks[workIndex].Spec.Workload.Manifests[manifestIndex]
+	for _, existingWork := range f.existingManifestWorks {
+		// new a work with init work meta and keep the existing work name.
+		requiredWork := f.initManifestWorkWithName(existingWork.Name)
+
+		for _, manifest := range existingWork.Spec.Workload.Manifests {
 			key, err := generateManifestKey(manifest)
 			if err != nil {
 				return nil, nil, err
@@ -173,14 +180,14 @@ func (f *internalWorkBuilder) buildManifestWorks(objects []runtime.Object) (appl
 			// currently,we have 80% threshold for the size of manifests, update directly.
 			// TODO: need to consider if the size of updated manifests is more then the limit of manifestWork.
 			if _, ok := requiredMapper[key]; ok {
-				work.Spec.Workload.Manifests = append(work.Spec.Workload.Manifests, requiredMapper[key])
+				requiredWork.Spec.Workload.Manifests = append(requiredWork.Spec.Workload.Manifests, requiredMapper[key])
 				delete(requiredMapper, key)
 				continue
 			}
 		}
 		updatedWorks = append(updatedWorks, manifestWorkBuffer{
-			work:   work,
-			buffer: f.bufferOfManifestWork(work),
+			work:   requiredWork,
+			buffer: f.bufferOfManifestWork(requiredWork),
 		})
 	}
 
@@ -259,6 +266,14 @@ func (f *internalWorkBuilder) initManifestWork(index int) *workapiv1.ManifestWor
 		ObjectMeta: f.generateManifestWorkObjectMeta(index),
 	}
 	f.setManifestWorkOptions(work)
+	f.setAnnotations(work)
+	return work
+}
+
+// init a work with existing name
+func (f *internalWorkBuilder) initManifestWorkWithName(workName string) *workapiv1.ManifestWork {
+	work := f.initManifestWork(0)
+	work.SetName(workName)
 	return work
 }
 
@@ -267,6 +282,10 @@ func (f *internalWorkBuilder) setManifestWorkOptions(work *workapiv1.ManifestWor
 	work.Spec.DeleteOption = f.deletionOption
 	work.Spec.ManifestConfigs = f.manifestConfigOption
 	work.Spec.Executor = f.executorOption
+}
+
+func (f *internalWorkBuilder) setAnnotations(work *workapiv1.ManifestWork) {
+	work.SetAnnotations(f.annotations)
 }
 
 func (f *internalWorkBuilder) bufferOfManifestWork(work *workapiv1.ManifestWork) int {

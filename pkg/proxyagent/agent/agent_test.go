@@ -222,7 +222,7 @@ func TestFilterMPSR(t *testing.T) {
 					},
 				},
 			},
-			mcsMap: map[string]clusterv1beta1.ManagedClusterSet{
+			mcsMap: map[string]clusterv1beta2.ManagedClusterSet{
 				"set-1": {
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "set-1",
