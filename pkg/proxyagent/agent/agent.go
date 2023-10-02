@@ -27,7 +27,7 @@ import (
 	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
 	addonclient "open-cluster-management.io/api/client/addon/clientset/versioned"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
-	clusterv1beta1 "open-cluster-management.io/api/cluster/v1beta1"
+	clusterv1beta2 "open-cluster-management.io/api/cluster/v1beta2"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 	"open-cluster-management.io/cluster-proxy/pkg/common"
 	"open-cluster-management.io/cluster-proxy/pkg/config"
@@ -276,7 +276,7 @@ func GetClusterProxyValueFunc(
 		// servicesToExpose defines the services we want to expose to the hub.
 
 		// List all available managedClusterSets
-		managedClusterSetList := &clusterv1beta1.ManagedClusterSetList{}
+		managedClusterSetList := &clusterv1beta2.ManagedClusterSetList{}
 		err = runtimeClient.List(context.TODO(), managedClusterSetList)
 		if err != nil {
 			return nil, err
@@ -367,8 +367,8 @@ const (
 	AgentCASecretName               = "cluster-proxy-ca"
 )
 
-func managedClusterSetsToFilteredMap(managedClusterSets []clusterv1beta1.ManagedClusterSet, clusterlabels map[string]string) (map[string]clusterv1beta1.ManagedClusterSet, error) {
-	managedClusterSetMap := map[string]clusterv1beta1.ManagedClusterSet{}
+func managedClusterSetsToFilteredMap(managedClusterSets []clusterv1beta2.ManagedClusterSet, clusterlabels map[string]string) (map[string]clusterv1beta2.ManagedClusterSet, error) {
+	managedClusterSetMap := map[string]clusterv1beta2.ManagedClusterSet{}
 	for i := range managedClusterSets {
 		mcs := managedClusterSets[i]
 
@@ -378,7 +378,7 @@ func managedClusterSetsToFilteredMap(managedClusterSets []clusterv1beta1.Managed
 		}
 
 		// only cluseterSet cover current cluster include in the list.
-		selector, err := clusterv1beta1.BuildClusterSelector(&mcs)
+		selector, err := clusterv1beta2.BuildClusterSelector(&mcs)
 		if err != nil {
 			return nil, err
 		}
@@ -391,7 +391,7 @@ func managedClusterSetsToFilteredMap(managedClusterSets []clusterv1beta1.Managed
 	return managedClusterSetMap, nil
 }
 
-func managedProxyServiceResolverToFilterServiceToExpose(serviceResolvers []proxyv1alpha1.ManagedProxyServiceResolver, managedClusterSetMap map[string]clusterv1beta1.ManagedClusterSet, clusterName string) []serviceToExpose {
+func managedProxyServiceResolverToFilterServiceToExpose(serviceResolvers []proxyv1alpha1.ManagedProxyServiceResolver, managedClusterSetMap map[string]clusterv1beta2.ManagedClusterSet, clusterName string) []serviceToExpose {
 	servicesToExpose := []serviceToExpose{}
 	for i := range serviceResolvers {
 		sr := serviceResolvers[i]

@@ -26,6 +26,12 @@ type ManifestWork struct {
 	Status ManifestWorkStatus `json:"status,omitempty"`
 }
 
+const (
+	// ManifestConfigSpecHashAnnotationKey is the annotation key to identify the configurations
+	// used by the manifestwork.
+	ManifestConfigSpecHashAnnotationKey = "open-cluster-management.io/config-spec-hash"
+)
+
 // ManifestWorkSpec represents a desired configuration of manifests to be deployed on the managed cluster.
 type ManifestWorkSpec struct {
 	// Workload represents the manifest workload to be deployed on a managed cluster.
@@ -92,9 +98,9 @@ type ManifestConfigOption struct {
 	FeedbackRules []FeedbackRule `json:"feedbackRules,omitempty"`
 
 	// UpdateStrategy defines the strategy to update this manifest. UpdateStrategy is Update
-	// if it is not set,
-	// optional
-	UpdateStrategy *UpdateStrategy `json:"updateStrategy"`
+	// if it is not set.
+	// +optional
+	UpdateStrategy *UpdateStrategy `json:"updateStrategy,omitempty"`
 }
 
 // ManifestWorkExecutor is the executor that applies the resources to the managed cluster. i.e. the
@@ -446,40 +452,51 @@ type FieldValue struct {
 	// +optional
 	Integer *int64 `json:"integer,omitempty"`
 
-	// String is the string value when when type is string.
+	// String is the string value when type is string.
 	// +optional
 	String *string `json:"string,omitempty"`
 
 	// Boolean is bool value when type is boolean.
 	// +optional
 	Boolean *bool `json:"boolean,omitempty"`
+
+	// JsonRaw is a json string when type is a list or object
+	// +kubebuilder:validation:MaxLength=1024
+	JsonRaw *string `json:"jsonRaw,omitempty"`
 }
 
-// +kubebuilder:validation:Enum=Integer;String;Boolean
+// +kubebuilder:validation:Enum=Integer;String;Boolean;JsonRaw
 type ValueType string
 
 const (
 	Integer ValueType = "Integer"
 	String  ValueType = "String"
 	Boolean ValueType = "Boolean"
+	JsonRaw ValueType = "JsonRaw"
 )
-
-// ManifestConditionType represents the condition type of a single
-// resource manifest deployed on the managed cluster.
-type ManifestConditionType string
 
 const (
 	// ManifestProgressing represents that the resource is being applied on the managed cluster
-	ManifestProgressing ManifestConditionType = "Progressing"
+	ManifestProgressing string = "Progressing"
 	// ManifestApplied represents that the resource object is applied
 	// on the managed cluster.
-	ManifestApplied ManifestConditionType = "Applied"
+	ManifestApplied string = "Applied"
 	// ManifestAvailable represents that the resource object exists
 	// on the managed cluster.
-	ManifestAvailable ManifestConditionType = "Available"
+	ManifestAvailable string = "Available"
 	// ManifestDegraded represents that the current state of resource object does not
 	// match the desired state for a certain period.
-	ManifestDegraded ManifestConditionType = "Degraded"
+	ManifestDegraded string = "Degraded"
+)
+
+const (
+	// ManifestWorkFinalizer is the name of the finalizer added to manifestworks. It is used to ensure
+	// related appliedmanifestwork of a manifestwork are deleted before the manifestwork itself is deleted
+	ManifestWorkFinalizer = "cluster.open-cluster-management.io/manifest-work-cleanup"
+	// AppliedManifestWorkFinalizer is the name of the finalizer added to appliedmanifestwork. It is to
+	// ensure all resource relates to appliedmanifestwork is deleted before appliedmanifestwork itself
+	// is deleted.
+	AppliedManifestWorkFinalizer = "cluster.open-cluster-management.io/applied-manifest-work-cleanup"
 )
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
