@@ -18,7 +18,7 @@ metadata:
 spec:
   params:
   - name: dockerfile
-    value: https://raw.githubusercontent.com/devfile-samples/devfile-sample-go-basic/main/docker/Dockerfile
+    value: cmd/Dockerfile.rhtap
   - name: git-url
     value: '{{repo_url}}'
   - name: output-image
