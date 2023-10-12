@@ -140,10 +140,12 @@ var _ = Describe("Basic install Test",
 				if len(addon.Status.ConfigReferences) == 0 {
 					return fmt.Errorf("no config references in addon status")
 				}
-				if addon.Status.ConfigReferences[0].Name != deployConfigName {
-					return fmt.Errorf("unexpected config references %v", addon.Status.ConfigReferences)
+				for _, cr := range addon.Status.ConfigReferences {
+					if cr.Name == deployConfigName {
+						return nil
+					}
 				}
-				return nil
+				return fmt.Errorf("unexpected config references %v", addon.Status.ConfigReferences)
 			}).WithTimeout(time.Minute).ShouldNot(HaveOccurred())
 
 			By("Ensure the cluster-proxy is configured")
