@@ -15,7 +15,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
 var _ reconcile.Reconciler = &ServiceResolverReconciler{}
@@ -35,15 +34,11 @@ func (c *ServiceResolverReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&proxyv1alpha1.ManagedProxyServiceResolver{}).
 		Watches(
-			&source.Kind{
-				Type: &proxyv1alpha1.ManagedProxyServiceResolver{},
-			},
+			&proxyv1alpha1.ManagedProxyServiceResolver{},
 			&eventhandler.ProxyServiceResolverHandler{},
 		).
 		Watches(
-			&source.Kind{
-				Type: &clusterv1beta2.ManagedClusterSet{},
-			},
+			&clusterv1beta2.ManagedClusterSet{},
 			&eventhandler.ClustersetHandler{
 				Client: mgr.GetClient(),
 			},

@@ -19,22 +19,22 @@ type ClustersetHandler struct {
 	client.Client
 }
 
-func (m ClustersetHandler) Create(event event.CreateEvent, limitingInterface workqueue.RateLimitingInterface) {
+func (m ClustersetHandler) Create(_ context.Context, event event.CreateEvent, limitingInterface workqueue.RateLimitingInterface) {
 	clusterset := event.Object.(*clusterv1beta2.ManagedClusterSet)
 	m.findClusterProxyAddon(clusterset, limitingInterface)
 }
 
-func (m ClustersetHandler) Update(event event.UpdateEvent, limitingInterface workqueue.RateLimitingInterface) {
+func (m ClustersetHandler) Update(_ context.Context, event event.UpdateEvent, limitingInterface workqueue.RateLimitingInterface) {
 	clusterset := event.ObjectNew.(*clusterv1beta2.ManagedClusterSet)
 	m.findClusterProxyAddon(clusterset, limitingInterface)
 }
 
-func (m ClustersetHandler) Delete(event event.DeleteEvent, limitingInterface workqueue.RateLimitingInterface) {
+func (m ClustersetHandler) Delete(_ context.Context, event event.DeleteEvent, limitingInterface workqueue.RateLimitingInterface) {
 	clusterset := event.Object.(*clusterv1beta2.ManagedClusterSet)
 	m.findClusterProxyAddon(clusterset, limitingInterface)
 }
 
-func (m ClustersetHandler) Generic(event event.GenericEvent, limitingInterface workqueue.RateLimitingInterface) {
+func (m ClustersetHandler) Generic(_ context.Context, event event.GenericEvent, limitingInterface workqueue.RateLimitingInterface) {
 	clusterset := event.Object.(*clusterv1beta2.ManagedClusterSet)
 	m.findClusterProxyAddon(clusterset, limitingInterface)
 }
