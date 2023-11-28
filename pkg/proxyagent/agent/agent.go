@@ -135,7 +135,7 @@ func NewAgentAddon(
 				Version:  proxyv1alpha1.GroupVersion.Version,
 				Resource: "managedproxyconfigurations",
 			},
-			addonfactory.AddOnDeploymentConfigGVR,
+			utils.AddOnDeploymentConfigGVR,
 		).
 		WithGetValuesFuncs(
 			GetClusterProxyValueFunc(runtimeClient, nativeClient, signerNamespace, caCertData, v1CSRSupported, enableKubeApiProxy),
