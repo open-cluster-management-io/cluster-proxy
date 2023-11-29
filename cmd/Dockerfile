@@ -1,9 +1,9 @@
 # Build the manager binary
-FROM golang:1.19 as builder
+FROM golang:1.20 as builder
 
 WORKDIR /workspace
 
-ARG APISERVER_NETWORK_PROXY_VERSION=0.0.27
+ARG APISERVER_NETWORK_PROXY_VERSION=0.1.6
 ARG KUBECTL_VERSION=v1.23.1
 ARG ADDON_AGENT_IMAGE_NAME
 
@@ -14,7 +14,7 @@ RUN GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
       && cd apiserver-network-proxy-${APISERVER_NETWORK_PROXY_VERSION} \
       && go build -o /workspace/proxy-server ./cmd/server/ \
       && go build -o /workspace/proxy-agent ./cmd/agent/ \
-      && go build -o /workspace/proxy-test-client ./cmd/client/ \
+      && go build -o /workspace/proxy-test-client ./cmd/test-client/ \
       && go build -o /workspace/proxy-test-server ./cmd/test-server/ \
       && cd /workspace \
       && curl -LO "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl" \

@@ -31,6 +31,12 @@ rules:
       - list
       - watch
   - apiGroups:
+      - addon.open-cluster-management.io
+    resources:
+      - managedclusteraddons/finalizers
+    verbs:
+      - '*'
+  - apiGroups:
       - proxy.open-cluster-management.io
     resources:
       - managedproxyconfigurations
