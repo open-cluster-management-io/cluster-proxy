@@ -1,0 +1,6 @@
+apiVersion: v2
+name: cluster-proxy-agent-only
+description: A Helm chart for Cluster-Proxy OCM Addon (Agent Only)
+type: application
+version: 0.3.0
+appVersion: 1.0.0

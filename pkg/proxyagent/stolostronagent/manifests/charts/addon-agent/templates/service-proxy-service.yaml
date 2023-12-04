@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: {{ .Release.Namespace }}
+  name: cluster-proxy-service-proxy
+spec:
+  ports:
+  - name: service-proxy
+    port: 7443
+  selector:
+    open-cluster-management.io/addon: cluster-proxy

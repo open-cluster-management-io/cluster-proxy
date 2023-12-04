@@ -4,6 +4,7 @@ import (
 	"context"
 	"embed"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strconv"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/stolostron/cluster-lifecycle-api/helpers/imageregistry"
 	csrv1 "k8s.io/api/certificates/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -44,6 +46,9 @@ const (
 	// See more details: https://coredns.io/manual/setups/#recursive-resolver; https://github.com/golang/go/blob/6f445a9db55f65e55c5be29d3c506ecf3be37915/src/net/dnsclient_unix.go#L666
 	// The default value is "svc.cluster.local". We can also set a CustomizedVariables with key "serviceDomain" to overwrite it.
 	serviceDomain = "svc.cluster.local"
+
+	// annotationNodeSelector is key name of nodeSelector annotation synced from mch
+	annotationNodeSelector = "open-cluster-management/nodeSelector"
 )
 
 func NewAgentAddon(
@@ -141,7 +146,14 @@ func NewAgentAddon(
 		)
 
 	if agentInstallAll {
-		agentFactory.WithInstallStrategy(agent.InstallAllStrategy(config.AddonInstallNamespace))
+		agentFactory.WithInstallStrategy(agent.InstallByFilterFunctionStrategy(config.AddonInstallNamespace, func(cluster *clusterv1.ManagedCluster) bool {
+			if cluster.Annotations["import.open-cluster-management.io/klusterlet-deploy-mode"] == "Hosted" &&
+				cluster.Annotations["import.open-cluster-management.io/hosting-cluster-name"] != "" &&
+				cluster.Annotations["addon.open-cluster-management.io/enable-hosted-mode-addons"] == "true" {
+				return false
+			}
+			return true
+		}))
 	}
 
 	return agentFactory.BuildHelmAgentAddon()
@@ -237,7 +249,24 @@ func GetClusterProxyValueFunc(
 			keyDataBase64 = base64.StdEncoding.EncodeToString(agentClientSecret.Data[corev1.TLSPrivateKeyKey])
 		}
 
-		registry, image, tag, err := config.GetParsedAgentImage(proxyConfig.Spec.ProxyAgent.Image)
+		// get image of proxy-agent(cluster-proxy-addon)
+		clusterProxyAddonImage, err := imageregistry.OverrideImageByAnnotation(cluster.GetAnnotations(), proxyConfig.Spec.ProxyAgent.Image)
+		if err != nil {
+			return nil, err
+		}
+
+		// get image of agent-addon(cluster-proxy)
+		var clusterProxyImage string
+		if len(config.AgentImageName) == 0 {
+			clusterProxyImage = clusterProxyAddonImage
+		} else {
+			clusterProxyImage = config.AgentImageName
+		}
+		clusterProxyImage, err = imageregistry.OverrideImageByAnnotation(cluster.GetAnnotations(), clusterProxyImage)
+		if err != nil {
+			return nil, err
+		}
+		registry, image, tag, err := config.ParseImage(clusterProxyImage)
 		if err != nil {
 			return nil, err
 		}
@@ -279,7 +308,13 @@ func GetClusterProxyValueFunc(
 		}
 		agentIdentifiers := strings.Join(aids, "&")
 
-		return map[string]interface{}{
+		// get service-proxy cert and key
+		serviceProxySecretKey, serviceProxySecretCert, err := getServerCertificatesFromSecret(nativeClient, signerNamespace)
+		if err != nil {
+			return nil, err
+		}
+
+		values := map[string]interface{}{
 			"agentDeploymentName":           "cluster-proxy-proxy-agent",
 			"serviceDomain":                 serviceDomain,
 			"includeNamespaceCreation":      true,
@@ -289,7 +324,7 @@ func GetClusterProxyValueFunc(
 			"registry":                      registry,
 			"image":                         image,
 			"tag":                           tag,
-			"proxyAgentImage":               proxyConfig.Spec.ProxyAgent.Image,
+			"proxyAgentImage":               clusterProxyAddonImage,
 			"proxyAgentImagePullSecrets":    proxyConfig.Spec.ProxyAgent.ImagePullSecrets,
 			"replicas":                      proxyConfig.Spec.ProxyAgent.Replicas,
 			"base64EncodedCAData":           base64.StdEncoding.EncodeToString(caCertData),
@@ -301,10 +336,22 @@ func GetClusterProxyValueFunc(
 			"staticProxyAgentSecretCert":    certDataBase64,
 			"staticProxyAgentSecretKey":     keyDataBase64,
 			// support to access not only but also other other services on managed cluster
-			"agentIdentifiers":   agentIdentifiers,
-			"servicesToExpose":   servicesToExpose,
-			"enableKubeApiProxy": enableKubeApiProxy,
-		}, nil
+			"agentIdentifiers":       agentIdentifiers,
+			"servicesToExpose":       servicesToExpose,
+			"enableKubeApiProxy":     enableKubeApiProxy,
+			"serviceProxySecretCert": base64.StdEncoding.EncodeToString(serviceProxySecretCert),
+			"serviceProxySecretKey":  base64.StdEncoding.EncodeToString(serviceProxySecretKey),
+		}
+
+		nodeSelector, err := getNodeSelector(cluster)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get nodeSelector from managedCluster. %v", err)
+		}
+		if len(nodeSelector) != 0 {
+			values["nodeSelector"] = nodeSelector
+		}
+
+		return values, nil
 	}
 }
 
@@ -405,6 +452,21 @@ func removeDupAndSortServices(services []serviceToExpose) []serviceToExpose {
 	return newServices
 }
 
+func getNodeSelector(managedCluster *clusterv1.ManagedCluster) (map[string]string, error) {
+	nodeSelector := map[string]string{}
+
+	if managedCluster.GetName() == "local-cluster" {
+		annotations := managedCluster.GetAnnotations()
+		if nodeSelectorString, ok := annotations[annotationNodeSelector]; ok {
+			if err := json.Unmarshal([]byte(nodeSelectorString), &nodeSelector); err != nil {
+				return nodeSelector, fmt.Errorf("failed to unmarshal nodeSelector annotation of cluster %s, %v", managedCluster.GetName(), err)
+			}
+		}
+	}
+
+	return nodeSelector, nil
+}
+
 func toAgentAddOnChartValues(config addonv1alpha1.AddOnDeploymentConfig) (addonfactory.Values, error) {
 	values := addonfactory.Values{}
 	for _, variable := range config.Spec.CustomizedVariables {
@@ -417,4 +479,23 @@ func toAgentAddOnChartValues(config addonv1alpha1.AddOnDeploymentConfig) (addonf
 	}
 
 	return values, nil
+}
+
+const ServerCertSecretName = "cluster-proxy-service-proxy-server-cert" // this secret is maintained by cluster-proxy-addon certcontroller
+
+func getServerCertificatesFromSecret(nativeClient kubernetes.Interface, secretNamespace string) ([]byte, []byte, error) {
+	secret, err := nativeClient.CoreV1().Secrets(secretNamespace).Get(context.TODO(), ServerCertSecretName, metav1.GetOptions{})
+	if err != nil {
+		return nil, nil, fmt.Errorf("Failed to get secret %s in the namespace %s: %v", ServerCertSecretName, secretNamespace, err)
+
+	}
+	cert, ok := secret.Data["tls.crt"]
+	if !ok {
+		return nil, nil, fmt.Errorf("secret %s does not contain tls.crt", ServerCertSecretName)
+	}
+	key, ok := secret.Data["tls.key"]
+	if !ok {
+		return nil, nil, fmt.Errorf("secret %s does not contain tls.key", ServerCertSecretName)
+	}
+	return key, cert, nil
 }

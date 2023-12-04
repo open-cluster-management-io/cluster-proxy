@@ -1,0 +1,8 @@
+{{ if .Values.includeNamespaceCreation }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Release.Namespace }}
+  annotations:
+    addon.open-cluster-management.io/deletion-orphan: ""
+{{ end }}

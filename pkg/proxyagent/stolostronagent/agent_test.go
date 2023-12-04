@@ -9,6 +9,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"fmt"
 	mathrand "math/rand"
 	"net"
 	"reflect"
@@ -151,6 +152,64 @@ func TestFilterMPSR(t *testing.T) {
 							Type: proxyv1alpha1.ManagedClusterSelectorTypeClusterSet,
 							ManagedClusterSet: &proxyv1alpha1.ManagedClusterSet{
 								Name: "set-2",
+							},
+						},
+						ServiceSelector: proxyv1alpha1.ServiceSelector{
+							Type: proxyv1alpha1.ServiceSelectorTypeServiceRef,
+							ServiceRef: &proxyv1alpha1.ServiceRef{
+								Name:      "service-2",
+								Namespace: "ns-2",
+							},
+						},
+					},
+				},
+			},
+			mcsMap: map[string]clusterv1beta2.ManagedClusterSet{
+				"set-1": {
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "set-1",
+					},
+				},
+			},
+			expected: []serviceToExpose{
+				{
+					Host:         util.GenerateServiceURL("cluster1", "ns-1", "service-1"),
+					ExternalName: "service-1.ns-1",
+				},
+			},
+		},
+		{
+			name: "filter out the resolver match other managed cluster set",
+			resolvers: []proxyv1alpha1.ManagedProxyServiceResolver{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "resolver-1",
+					},
+					Spec: proxyv1alpha1.ManagedProxyServiceResolverSpec{
+						ManagedClusterSelector: proxyv1alpha1.ManagedClusterSelector{
+							Type: proxyv1alpha1.ManagedClusterSelectorTypeClusterSet,
+							ManagedClusterSet: &proxyv1alpha1.ManagedClusterSet{
+								Name: "set-1",
+							},
+						},
+						ServiceSelector: proxyv1alpha1.ServiceSelector{
+							Type: proxyv1alpha1.ServiceSelectorTypeServiceRef,
+							ServiceRef: &proxyv1alpha1.ServiceRef{
+								Name:      "service-1",
+								Namespace: "ns-1",
+							},
+						},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "resolver-2",
+					},
+					Spec: proxyv1alpha1.ManagedProxyServiceResolverSpec{
+						ManagedClusterSelector: proxyv1alpha1.ManagedClusterSelector{
+							Type: "invalid",
+							ManagedClusterSet: &proxyv1alpha1.ManagedClusterSet{
+								Name: "set-1",
 							},
 						},
 						ServiceSelector: proxyv1alpha1.ServiceSelector{
@@ -400,6 +459,63 @@ func TestAgentAddonRegistrationOption(t *testing.T) {
 	}
 }
 
+func TestGetNodeSelector(t *testing.T) {
+	testcases := []struct {
+		name string
+		// input}
+		cluster *clusterv1.ManagedCluster
+		err     error
+		expect  map[string]string
+	}{
+		{
+			name:    "managedCluster is not local-cluster, expect empty nodeSelector",
+			cluster: newCluster("cluster", false),
+			expect:  map[string]string{},
+		},
+		{
+			name:    "managedCluster is local-cluster, but no annotation, expect empty nodeSelector",
+			cluster: newCluster("local-cluster", false),
+			expect:  map[string]string{},
+		},
+		{
+			name: "managedCluster is local-cluster with incorrect annotation, expect err",
+			cluster: newClusterWithAnnotations("local-cluster", false, map[string]string{
+				annotationNodeSelector: "kubernetes.io/os=linux",
+			}),
+			err: fmt.Errorf("incorrect annotation"),
+		},
+		{
+			name: "managedCluster is local-cluster with correct annotation, expect nodeSelector",
+			cluster: newClusterWithAnnotations("local-cluster", false, map[string]string{
+				annotationNodeSelector: `{"kubernetes.io/os":"linux"}`,
+			}),
+			expect: map[string]string{
+				"kubernetes.io/os": "linux",
+			},
+		},
+	}
+
+	for _, testcase := range testcases {
+		t.Run(testcase.name, func(t *testing.T) {
+			actual, err := getNodeSelector(testcase.cluster)
+			if err != nil && testcase.err == nil {
+				t.Errorf("expected no error, but got %v", err)
+			}
+			// compare actual and expected map
+			for k, v := range testcase.expect {
+				if actual[k] != v {
+					t.Errorf("expected %v, but got %v", testcase.expect, actual)
+				}
+			}
+			for k, v := range actual {
+				if testcase.expect[k] != v {
+					t.Errorf("expected %v, but got %v", testcase.expect, actual)
+				}
+			}
+		})
+	}
+}
+
 func TestNewAgentAddon(t *testing.T) {
 	addOnName := "addon"
 	clusterName := "cluster"
@@ -415,6 +531,8 @@ func TestNewAgentAddon(t *testing.T) {
 		clusterName,                 // cluster service
 		addOnName,                   // namespace
 		"cluster-proxy",             // service account
+		"cluster-proxy-service-proxy-server-certificates",
+		"cluster-proxy-service-proxy",
 	}
 
 	expectedManifestNamesWithoutClusterService := []string{
@@ -424,6 +542,8 @@ func TestNewAgentAddon(t *testing.T) {
 		"cluster-proxy-ca",          // ca
 		addOnName,                   // namespace
 		"cluster-proxy",             // service account
+		"cluster-proxy-service-proxy-server-certificates",
+		"cluster-proxy-service-proxy",
 	}
 
 	cases := []struct {
@@ -617,6 +737,29 @@ func TestNewAgentAddon(t *testing.T) {
 			},
 		},
 		{
+			name:    "with addon deployment config using customized variables",
+			cluster: newCluster(clusterName, true),
+			addon: func() *addonv1alpha1.ManagedClusterAddOn {
+				addOn := newAddOn(addOnName, clusterName)
+				addOn.Status.ConfigReferences = []addonv1alpha1.ConfigReference{
+					newManagedProxyConfigReference(managedProxyConfigName),
+					newAddOndDeploymentConfigReference(addOndDeployConfigName, clusterName),
+				}
+				return addOn
+			}(),
+			managedProxyConfigs:     []runtimeclient.Object{newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypePortForward)},
+			addOndDeploymentConfigs: []runtime.Object{newAddOnDeploymentConfigWithCustomizedVariables(addOndDeployConfigName, clusterName, "replicas", "10")},
+			v1CSRSupported:          true,
+			enableKubeApiProxy:      true,
+			verifyManifests: func(t *testing.T, manifests []runtime.Object) {
+				assert.Len(t, manifests, len(expectedManifestNames))
+				assert.ElementsMatch(t, expectedManifestNames, manifestNames(manifests))
+				agentDeploy := getAgentDeployment(manifests)
+				assert.NotNil(t, agentDeploy)
+				assert.Equal(t, int32(10), *agentDeploy.Spec.Replicas)
+			},
+		},
+		{
 			name:    "with addon deployment config using a customized serviceDomain",
 			cluster: newCluster(clusterName, true),
 			addon: func() *addonv1alpha1.ManagedClusterAddOn {
@@ -664,6 +807,18 @@ func TestNewAgentAddon(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			// add service-proxy secret into kubeObjects
+			c.kubeObjs = append(c.kubeObjs, &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "cluster-proxy-service-proxy-server-cert",
+					Namespace: "test",
+				},
+				Data: map[string][]byte{
+					"tls.crt": []byte("testcrt"),
+					"tls.key": []byte("testkey"),
+				},
+			})
+
 			fakeKubeClient := fakekube.NewSimpleClientset(c.kubeObjs...)
 			fakeRuntimeClient := fakeruntime.NewClientBuilder().WithObjects(c.managedProxyConfigs...).Build()
 			fakeAddonClient := fakeaddon.NewSimpleClientset(c.addOndDeploymentConfigs...)
@@ -777,6 +932,18 @@ func newCluster(name string, accepted bool) *clusterv1.ManagedCluster {
 	}
 }
 
+func newClusterWithAnnotations(name string, accepted bool, annotations map[string]string) *clusterv1.ManagedCluster {
+	return &clusterv1.ManagedCluster{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        name,
+			Annotations: annotations,
+		},
+		Spec: clusterv1.ManagedClusterSpec{
+			HubAcceptsClient: accepted,
+		},
+	}
+}
+
 func newAddOn(name, namespace string) *addonv1alpha1.ManagedClusterAddOn {
 	return &addonv1alpha1.ManagedClusterAddOn{
 		ObjectMeta: metav1.ObjectMeta{
@@ -854,6 +1021,27 @@ func newAddOnDeploymentConfig(name, namespace string) *addonv1alpha1.AddOnDeploy
 			NodePlacement: &addonv1alpha1.NodePlacement{
 				Tolerations:  tolerations,
 				NodeSelector: nodeSelector,
+			},
+		},
+	}
+}
+
+func newAddOnDeploymentConfigWithCustomizedVariables(name, namespace, k, v string) *addonv1alpha1.AddOnDeploymentConfig {
+	return &addonv1alpha1.AddOnDeploymentConfig{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: addonv1alpha1.AddOnDeploymentConfigSpec{
+			NodePlacement: &addonv1alpha1.NodePlacement{
+				Tolerations:  tolerations,
+				NodeSelector: nodeSelector,
+			},
+			CustomizedVariables: []addonv1alpha1.CustomizedVariable{
+				{
+					Name:  k,
+					Value: v,
+				},
 			},
 		},
 	}

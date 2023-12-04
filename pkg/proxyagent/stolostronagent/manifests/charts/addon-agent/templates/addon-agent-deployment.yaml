@@ -5,7 +5,7 @@ metadata:
   name: {{ .Values.agentDeploymentName }}
   annotations:
   {{- with .Values.agentDeploymentAnnotations }}
-  {{ toYaml . | indent 8 }}
+  {{ toYaml . | indent 2 }}
   {{- end }}
 spec:
   replicas: {{ .Values.replicas }}
@@ -22,8 +22,9 @@ spec:
     metadata:
       annotations:
       {{- with .Values.agentDeploymentAnnotations }}
-      {{ toYaml . | indent 8 }}
+      {{ toYaml . | indent 2 }}
       {{- end }}
+        target.workload.openshift.io/management: '{"effect": "PreferredDuringScheduling"}'
       labels:
         open-cluster-management.io/addon: cluster-proxy
         proxy.open-cluster-management.io/component-name: proxy-agent
@@ -37,7 +38,7 @@ spec:
       {{- end }}
       containers:
         - name: proxy-agent
-          image: {{ .Values.proxyAgentImage }}
+          image: {{ .Values.proxyAgentImage }} # build by the cluster-proxy-addon repo
           imagePullPolicy: IfNotPresent
           command:
             - /proxy-agent
@@ -58,13 +59,6 @@ spec:
             - name: hub
               mountPath: /etc/tls
               readOnly: true
-          resources:
-            requests:
-              memory: "100Mi"
-              cpu: "200m"
-            limits:
-              memory: "200Mi"
-              cpu: "300m"
         - name: addon-agent
           image: {{ .Values.registry }}/{{ .Values.image }}:{{ .Values.tag }}
           imagePullPolicy: IfNotPresent
@@ -79,18 +73,34 @@ spec:
             - name: hub-kubeconfig
               mountPath: /etc/kubeconfig/
               readOnly: true
-          resources:
-            requests:
-              memory: "50Mi"
-              cpu: "100m"
-            limits:
-              memory: "100Mi"
-              cpu: "200m"
           env:
             - name: POD_NAMESPACE
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+        - name: service-proxy
+          image: {{ .Values.proxyAgentImage }} # build by the cluster-proxy-addon repo
+          imagePullPolicy: IfNotPresent
+          command:
+            - /cluster-proxy
+          args:
+            - service-proxy
+            - --ocpservice-ca=/ocpservice-ca/service-ca.crt
+            - --cert=/server-cert/tls.crt
+            - --key=/server-cert/tls.key
+          livesnessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 2
+            periodSeconds: 10
+          volumeMounts:
+            - name: ocpservice-ca
+              mountPath: /ocpservice-ca
+              readOnly: true
+            - name: service-proxy-server-cert
+              mountPath: /server-cert
+              readOnly: true
       volumes:
         - name: ca
           secret:
@@ -101,6 +111,13 @@ spec:
         - name: hub-kubeconfig
           secret:
             secretName: cluster-proxy-hub-kubeconfig
+        - name: ocpservice-ca
+          configMap:
+            name: openshift-service-ca.crt
+            optional: true # In non-ocp clusters, the configmap is not present, so we make it optional
+        - name: service-proxy-server-cert
+          secret:
+            secretName: cluster-proxy-service-proxy-server-certificates
       imagePullSecrets:
       {{- range .Values.proxyAgentImagePullSecrets }}
       - name: {{ . }}

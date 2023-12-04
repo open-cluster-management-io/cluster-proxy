@@ -1,0 +1,11 @@
+{{- range .Values.servicesToExpose }}
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: {{ $.Release.Namespace }}
+  name: {{ .Host }}
+spec:
+  type: ExternalName
+  externalName: {{ .ExternalName }}.{{ $.Values.serviceDomain }}
+---
+{{- end }}

@@ -42,7 +42,7 @@ import (
 	clusterv1beta2 "open-cluster-management.io/api/cluster/v1beta2"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 	"open-cluster-management.io/cluster-proxy/pkg/config"
-	"open-cluster-management.io/cluster-proxy/pkg/proxyagent/agent"
+	agent "open-cluster-management.io/cluster-proxy/pkg/proxyagent/stolostronagent"
 	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/controllers"
 	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/operator/authentication/selfsigned"
 	ctrl "sigs.k8s.io/controller-runtime"
