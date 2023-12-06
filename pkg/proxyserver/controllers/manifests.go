@@ -126,6 +126,15 @@ func newProxyServerDeployment(config *proxyv1alpha1.ManagedProxyConfiguration) *
 								"--cluster-cert=/etc/agent-pki/tls.crt",
 								"--cluster-key=/etc/agent-pki/tls.key",
 							}, config.Spec.ProxyServer.AdditionalArgs...),
+							SecurityContext: &corev1.SecurityContext{
+								Capabilities: &corev1.Capabilities{
+									Drop: []corev1.Capability{"ALL"},
+								},
+								Privileged:               pointer.Bool(false),
+								RunAsNonRoot:             pointer.Bool(true),
+								ReadOnlyRootFilesystem:   pointer.Bool(true),
+								AllowPrivilegeEscalation: pointer.Bool(false),
+							},
 							VolumeMounts: []corev1.VolumeMount{
 								{
 									Name:      "proxy-server-ca-certs",
