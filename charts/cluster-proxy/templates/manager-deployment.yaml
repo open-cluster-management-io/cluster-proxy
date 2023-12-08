@@ -24,3 +24,11 @@ spec:
             - --leader-elect=true
             - --signer-secret-namespace={{ .Release.Namespace }}
             - --agent-install-all=true
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
+            privileged: false
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true

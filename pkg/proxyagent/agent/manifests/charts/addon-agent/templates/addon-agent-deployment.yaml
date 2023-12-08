@@ -51,6 +51,14 @@ spec:
             {{- range .Values.additionalProxyAgentArgs }}
             - {{ . }}
             {{- end }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
+            privileged: false
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
           volumeMounts:
             - name: ca
               mountPath: /etc/ca
@@ -75,6 +83,14 @@ spec:
             {{- range .Values.addonAgentArgs }}
             - {{ . }}
             {{- end }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            privileged: false
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
           volumeMounts:
             - name: hub-kubeconfig
               mountPath: /etc/kubeconfig/
