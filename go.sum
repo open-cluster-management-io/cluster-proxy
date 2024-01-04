@@ -391,10 +391,10 @@ k8s.io/kube-openapi v0.0.0-20230501164219-8b0f38b5fd1f h1:2kWPakN3i/k81b0gvD5C5F
 k8s.io/kube-openapi v0.0.0-20230501164219-8b0f38b5fd1f/go.mod h1:byini6yhqGC14c3ebc/QwanvYwhuMWF6yz2F8uwW8eg=
 k8s.io/utils v0.0.0-20230209194617-a36077c30491 h1:r0BAOLElQnnFhE/ApUsg3iHdVYYPBjNSSOMowRZxxsY=
 k8s.io/utils v0.0.0-20230209194617-a36077c30491/go.mod h1:OLgZIPagt7ERELqWJFomSt595RzquPNLL48iOWgYOg0=
-open-cluster-management.io/addon-framework v0.8.0 h1:i1OReMHuZIoAw2Q04SLjkieU25DnxYilzVZzBNyROwU=
-open-cluster-management.io/addon-framework v0.8.0/go.mod h1:20DP06VXhJ9RE1PetAMEQyeFCP7+nhs92pCAkqbWUOg=
-open-cluster-management.io/api v0.12.0 h1:sNkj4k2XyWA/GLsTiFg82bLIZ7JDZKkLLLyZjJUlJMs=
-open-cluster-management.io/api v0.12.0/go.mod h1:/CZhelEH+30/pX7vXGSZOzLMX0zvjthYOkT/5ZTzVTQ=
+open-cluster-management.io/addon-framework v0.8.1-0.20240102072130-44852ea0722f h1:R5IbFdM4g+kDyONZ1/q67/czRwgDkq9Q7ETZ3RhGaAg=
+open-cluster-management.io/addon-framework v0.8.1-0.20240102072130-44852ea0722f/go.mod h1:aj97pgpGJ0/LpQzBVtU2oDFqqIiZLOPnsjLKG/sVkFw=
+open-cluster-management.io/api v0.12.1-0.20231124093603-63d09c6ed591 h1:l+1R2TxhuXXGA1cDe8qERx+an/e58aIcqi74RAwVUGg=
+open-cluster-management.io/api v0.12.1-0.20231124093603-63d09c6ed591/go.mod h1:/CZhelEH+30/pX7vXGSZOzLMX0zvjthYOkT/5ZTzVTQ=
 sigs.k8s.io/apiserver-network-proxy v0.1.6 h1:mioIpBKJxrBzYZEXZoACPSlh8jLL6cHgxc8u5S/IG5s=
 sigs.k8s.io/apiserver-network-proxy v0.1.6/go.mod h1:0QogIFkEEkRakwcRQBngpOwtR9oKF/LTO9F3er5pfio=
 sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.1.6 h1:qSYFayz6Wmiy4UI8L/ApIm+4dLlLY0v1OX6AMP2g/2Y=
