@@ -134,9 +134,9 @@ func NewAgentAddon(
 		).
 		WithGetValuesFuncs(
 			GetClusterProxyValueFunc(runtimeClient, nativeClient, signerNamespace, caCertData, v1CSRSupported, enableKubeApiProxy),
-			addonfactory.GetAddOnDeloymentConfigValues(
-				addonfactory.NewAddOnDeloymentConfigGetter(addonClient),
-				toAgentAddOnChartValues,
+			addonfactory.GetAddOnDeploymentConfigValues(
+				utils.NewAddOnDeploymentConfigGetter(addonClient),
+				toAgentAddOnChartValues(caCertData),
 			),
 		)
 
@@ -166,7 +166,7 @@ func GetClusterProxyValueFunc(
 		}
 
 		// only handle there is only one managed proxy configuration for one addon
-		// TODO may consider to handle mutiple managed proxy configurations for one addon
+		// TODO may consider to handle multiple managed proxy configurations for one addon
 		if len(managedProxyConfigurations) != 1 {
 			return nil, fmt.Errorf("unexpected managed proxy configurations: %v", managedProxyConfigurations)
 		}
@@ -300,7 +300,7 @@ func GetClusterProxyValueFunc(
 			"includeStaticProxyAgentSecret": !v1CSRSupported,
 			"staticProxyAgentSecretCert":    certDataBase64,
 			"staticProxyAgentSecretKey":     keyDataBase64,
-			// support to access not only but also other other services on managed cluster
+			// support to access not only but also other services on managed cluster
 			"agentIdentifiers":   agentIdentifiers,
 			"servicesToExpose":   servicesToExpose,
 			"enableKubeApiProxy": enableKubeApiProxy,
@@ -405,16 +405,38 @@ func removeDupAndSortServices(services []serviceToExpose) []serviceToExpose {
 	return newServices
 }
 
-func toAgentAddOnChartValues(config addonv1alpha1.AddOnDeploymentConfig) (addonfactory.Values, error) {
-	values := addonfactory.Values{}
-	for _, variable := range config.Spec.CustomizedVariables {
-		values[variable.Name] = variable.Value
-	}
+func toAgentAddOnChartValues(caCertData []byte) func(config addonv1alpha1.AddOnDeploymentConfig) (addonfactory.Values, error) {
+	return func(config addonv1alpha1.AddOnDeploymentConfig) (addonfactory.Values, error) {
+		values := addonfactory.Values{}
+		for _, variable := range config.Spec.CustomizedVariables {
+			values[variable.Name] = variable.Value
+		}
 
-	if config.Spec.NodePlacement != nil {
-		values["nodeSelector"] = config.Spec.NodePlacement.NodeSelector
-		values["tolerations"] = config.Spec.NodePlacement.Tolerations
-	}
+		if config.Spec.NodePlacement != nil {
+			values["nodeSelector"] = config.Spec.NodePlacement.NodeSelector
+			values["tolerations"] = config.Spec.NodePlacement.Tolerations
+		}
 
-	return values, nil
+		proxyConfig := config.Spec.ProxyConfig
+		values["proxyConfig"] = map[string]string{
+			"HTTP_PROXY":  proxyConfig.HTTPProxy,
+			"HTTPS_PROXY": proxyConfig.HTTPSProxy,
+			"NO_PROXY":    proxyConfig.NoProxy,
+		}
+
+		if proxyConfig.HTTPSProxy != "" && len(proxyConfig.CABundle) != 0 {
+			rawProxyCaCert, err := base64.StdEncoding.DecodeString(string(proxyConfig.CABundle))
+			if err != nil {
+				return nil, fmt.Errorf("faield to decdoe proxy env ca. %v", err)
+			}
+
+			caCert, err := common.MergeCertificateData(rawProxyCaCert, caCertData)
+			if err != nil {
+				return nil, fmt.Errorf("faield to merge proxy env ca. %v", err)
+			}
+
+			values["base64EncodedCAData"] = base64.StdEncoding.EncodeToString(caCert)
+		}
+		return values, nil
+	}
 }
