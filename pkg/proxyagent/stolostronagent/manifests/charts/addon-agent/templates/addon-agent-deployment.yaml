@@ -60,6 +60,21 @@ spec:
             privileged: false
             runAsNonRoot: true
             readOnlyRootFilesystem: true
+          env:
+            {{- if .Values.proxyConfig.HTTP_PROXY }}
+            - name: HTTP_PROXY
+              value: {{ .Values.proxyConfig.HTTP_PROXY }}
+            {{- end }}
+            {{- if .Values.proxyConfig.HTTPS_PROXY }}
+            - name: HTTPS_PROXY
+              value: {{ .Values.proxyConfig.HTTPS_PROXY }}
+            - name: ROOT_CA_CERT
+              value: "/etc/ca/ca.crt"
+            {{- end }}
+            {{- if .Values.proxyConfig.NO_PROXY }}
+            - name: NO_PROXY
+              value: {{ .Values.proxyConfig.NO_PROXY }}
+            {{- end }}
           volumeMounts:
             - name: ca
               mountPath: /etc/ca
