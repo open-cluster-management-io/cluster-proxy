@@ -486,13 +486,8 @@ func toAgentAddOnChartValues(caCertData []byte) func(config addonv1alpha1.AddOnD
 			"NO_PROXY":    proxyConfig.NoProxy,
 		}
 
-		if proxyConfig.HTTPSProxy != "" && len(proxyConfig.CABundle) != 0 {
-			rawProxyCaCert, err := base64.StdEncoding.DecodeString(string(proxyConfig.CABundle))
-			if err != nil {
-				return nil, fmt.Errorf("faield to decdoe proxy env ca. %v", err)
-			}
-
-			caCert, err := common.MergeCertificateData(rawProxyCaCert, caCertData)
+		if strings.HasPrefix(proxyConfig.HTTPSProxy, "https") && len(proxyConfig.CABundle) != 0 {
+			caCert, err := common.MergeCertificateData(proxyConfig.CABundle, caCertData)
 			if err != nil {
 				return nil, fmt.Errorf("faield to merge proxy env ca. %v", err)
 			}

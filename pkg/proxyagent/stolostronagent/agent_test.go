@@ -8,6 +8,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/base64"
 	"encoding/pem"
 	"fmt"
 	mathrand "math/rand"
@@ -741,7 +742,7 @@ func TestNewAgentAddon(t *testing.T) {
 						envCount = len(container.Env)
 					}
 				}
-				assert.Equal(t, 0, envCount)
+				assert.Equal(t, 1, envCount)
 				caSecret := getCASecret(manifests)
 				assert.NotNil(t, caSecret)
 				caCrt := string(caSecret.Data["ca.crt"])
@@ -751,7 +752,7 @@ func TestNewAgentAddon(t *testing.T) {
 			},
 		},
 		{
-			name:    "with addon deployment config including proxy config",
+			name:    "with addon deployment config including https proxy config",
 			cluster: newCluster(clusterName, true),
 			addon: func() *addonv1alpha1.ManagedClusterAddOn {
 				addOn := newAddOn(addOnName, clusterName)
@@ -762,7 +763,7 @@ func TestNewAgentAddon(t *testing.T) {
 				return addOn
 			}(),
 			managedProxyConfigs:     []runtimeclient.Object{newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypePortForward)},
-			addOndDeploymentConfigs: []runtime.Object{newAddOnDeploymentConfigWithProxy(addOndDeployConfigName, clusterName)},
+			addOndDeploymentConfigs: []runtime.Object{newAddOnDeploymentConfigWithHttpsProxy(addOndDeployConfigName, clusterName)},
 			v1CSRSupported:          true,
 			enableKubeApiProxy:      true,
 			verifyManifests: func(t *testing.T, manifests []runtime.Object) {
@@ -782,6 +783,40 @@ func TestNewAgentAddon(t *testing.T) {
 				caCrt := string(caSecret.Data["ca.crt"])
 				count := strings.Count(caCrt, "-----BEGIN CERTIFICATE-----")
 				assert.Equal(t, 2, count)
+			},
+		},
+		{
+			name:    "with addon deployment config including http proxy config",
+			cluster: newCluster(clusterName, true),
+			addon: func() *addonv1alpha1.ManagedClusterAddOn {
+				addOn := newAddOn(addOnName, clusterName)
+				addOn.Status.ConfigReferences = []addonv1alpha1.ConfigReference{
+					newManagedProxyConfigReference(managedProxyConfigName),
+					newAddOndDeploymentConfigReference(addOndDeployConfigName, clusterName),
+				}
+				return addOn
+			}(),
+			managedProxyConfigs:     []runtimeclient.Object{newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypePortForward)},
+			addOndDeploymentConfigs: []runtime.Object{newAddOnDeploymentConfigWithHttpProxy(addOndDeployConfigName, clusterName)},
+			v1CSRSupported:          true,
+			enableKubeApiProxy:      true,
+			verifyManifests: func(t *testing.T, manifests []runtime.Object) {
+				assert.Len(t, manifests, len(expectedManifestNames))
+				assert.ElementsMatch(t, expectedManifestNames, manifestNames(manifests))
+				agentDeploy := getAgentDeployment(manifests)
+				assert.NotNil(t, agentDeploy)
+				envCount := 0
+				for _, container := range agentDeploy.Spec.Template.Spec.Containers {
+					if container.Name == "proxy-agent" {
+						envCount = len(container.Env)
+					}
+				}
+				assert.Equal(t, 4, envCount)
+				caSecret := getCASecret(manifests)
+				assert.NotNil(t, caSecret)
+				caCrt := string(caSecret.Data["ca.crt"])
+				count := strings.Count(caCrt, "-----BEGIN CERTIFICATE-----")
+				assert.Equal(t, 1, count)
 			},
 		},
 		{
@@ -1118,7 +1153,32 @@ func newAddOnDeploymentConfigWithCustomizedServiceDomain(name, namespace, servic
 
 var fakeCA = "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUM2VENDQWRFQ0ZHSG5lTUpBQ1NjR2lRSnA2K1RYa0NKRVBTVitNQTBHQ1NxR1NJYjNEUUVCQ3dVQU1ERXgKRmpBVUJnTlZCQW9NRFU5d1pXNVRhR2xtZENCQlEwMHhGekFWQmdOVkJBTU1EbmQzZHk1eVpXUm9ZWFF1WTI5dApNQjRYRFRJek1URXhNakV5TURZME4xb1hEVEkwTVRFeE1URXlNRFkwTjFvd01URVdNQlFHQTFVRUNnd05UM0JsCmJsTm9hV1owSUVGRFRURVhNQlVHQTFVRUF3d09kM2QzTG5KbFpHaGhkQzVqYjIwd2dnRWlNQTBHQ1NxR1NJYjMKRFFFQkFRVUFBNElCRHdBd2dnRUtBb0lCQVFEUXZMbHFjYXpYZmxXNXgzcVFDSE52ZjNqTFNCY0QrY3pCczFoMApUV0p2TWEvWVd2T2MrK3VNWXg2OW1RaXRCWEFaMEsyUVpQa1BYK2lEc244Mk9mNklYTUpUSVpmZk1Wb3g4UmtqCkNlQ00vdlNaMzExVGlwa0NkaGVTbnp0WElhek1hN0ZZS3BVT2htYTF3L2RReFcvcnIwandwRG9TMFUvN0xhWGwKNHF2bUF4Wk1iSHVWaFk2S0RZSGJ2MEdKYWdqekJtVkpieTZlMFg3MkozL05ZME1KT2plYklrOTEydjBXZ1pUKwo3UWU0a29scVY1MkQvaUhYV0xFUzhXMWQrMFZUbnlRaFAzY3RvNWp3TFZyWnQ2NDFZL0lRc2ZNQ0w1bGdhVTF0Cm9UMlcvQ3F1amw5aCt0UCt2SG1rNk5JZXk2RUNIdm1MV0xLbU5nblp2M0d0bVdnZEFnTUJBQUV3RFFZSktvWkkKaHZjTkFRRUxCUUFEZ2dFQkFKSjBnd0UxSUR4SlNzaUd1TGxDMlVGV2J3U0RHMUVEK3VlQWYvRDRlV0VSWFZDUAo4aVdZZC9RckdsakYxNGxvZllHb280Vk5PL28xQWJQS2gveXB4UW16REdrVE1NaGg2WFg1bExob3RZWHZERlM2CmlkQXk5TFpiWDFUQnV5UEcwNmorbkI4eEtEY3F4aFNLYTlNb0trck9XcmtGbnFZS2syQzIyZGRvZVlZdlRjR2cKK2JmZ3RSWFJRUFdQRmt2NDR5MGlMZVh0S0VMbHBQMkMyQW5JQkU4b2hzY0JiYnloVmptem5YS1dFSTg3T0xmUgoxNDJBOWoydlVVQW80T0o5d1JCei8raDFXUXkyL3prclVUMW90MFdienY1cy91YmlUQkRpSjlQQ0k4YkZmZXplCnpDbCthbEE5aUFJdGt4OVdZS2pzaDFuVHEzTnJwVWM0MXBJWlFBQT0KLS0tLS1FTkQgQ0VSVElGSUNBVEUtLS0tLQo="
 
-func newAddOnDeploymentConfigWithProxy(name, namespace string) *addonv1alpha1.AddOnDeploymentConfig {
+func newAddOnDeploymentConfigWithHttpProxy(name, namespace string) *addonv1alpha1.AddOnDeploymentConfig {
+	rawProxyCaCert, _ := base64.StdEncoding.DecodeString(fakeCA)
+
+	return &addonv1alpha1.AddOnDeploymentConfig{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: addonv1alpha1.AddOnDeploymentConfigSpec{
+			NodePlacement: &addonv1alpha1.NodePlacement{
+				Tolerations:  tolerations,
+				NodeSelector: nodeSelector,
+			},
+			ProxyConfig: addonv1alpha1.ProxyConfig{
+				HTTPProxy:  "http://192.168.1.1",
+				HTTPSProxy: "http://192.168.1.1",
+				CABundle:   rawProxyCaCert,
+				NoProxy:    "localhost",
+			},
+		},
+	}
+}
+
+func newAddOnDeploymentConfigWithHttpsProxy(name, namespace string) *addonv1alpha1.AddOnDeploymentConfig {
+	rawProxyCaCert, _ := base64.StdEncoding.DecodeString(fakeCA)
+
 	return &addonv1alpha1.AddOnDeploymentConfig{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -1132,7 +1192,7 @@ func newAddOnDeploymentConfigWithProxy(name, namespace string) *addonv1alpha1.Ad
 			ProxyConfig: addonv1alpha1.ProxyConfig{
 				HTTPProxy:  "http://192.168.1.1",
 				HTTPSProxy: "https://192.168.1.1",
-				CABundle:   []byte(fakeCA),
+				CABundle:   rawProxyCaCert,
 				NoProxy:    "localhost",
 			},
 		},
