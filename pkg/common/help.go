@@ -4,8 +4,9 @@ import (
 	"bytes"
 	"crypto/x509"
 	"encoding/pem"
-	certutil "k8s.io/client-go/util/cert"
 	"reflect"
+
+	certutil "k8s.io/client-go/util/cert"
 )
 
 func MergeCertificateData(caBundles ...[]byte) ([]byte, error) {
