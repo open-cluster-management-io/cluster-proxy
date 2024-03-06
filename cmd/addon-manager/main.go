@@ -32,7 +32,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/klog/v2"
-	"k8s.io/klog/v2/klogr"
+	"k8s.io/klog/v2/textlogger"
 	"open-cluster-management.io/addon-framework/pkg/addonmanager"
 	addonutil "open-cluster-management.io/addon-framework/pkg/utils"
 	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
@@ -73,7 +73,7 @@ func main() {
 	var agentInstallAll bool
 	var enableKubeApiProxy bool
 
-	logger := klogr.New()
+	logger := textlogger.NewLogger(textlogger.NewConfig())
 	klog.SetOutput(os.Stdout)
 	klog.InitFlags(flag.CommandLine)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":58080", "The address the metric endpoint binds to.")
