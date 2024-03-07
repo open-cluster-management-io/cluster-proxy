@@ -11,20 +11,15 @@ env:
   GITHUB_REF: ${{ github.ref }}
   CHART_NAME: 'cluster-proxy'
 
-defaults:
-  run:
-    working-directory: go/src/open-cluster-management.io/cluster-proxy
-
 jobs:
   env:
     name: prepare release env
     runs-on: ubuntu-latest
     steps:
       - name: checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           fetch-depth: 1
-          path: go/src/open-cluster-management.io/cluster-proxy
       - name: get release version
         run: |
           echo "RELEASE_VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
@@ -48,10 +43,9 @@ jobs:
         arch: [ amd64, arm64 ]
     steps:
       - name: checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           fetch-depth: 1
-          path: go/src/open-cluster-management.io/cluster-proxy
       - name: install Go
         uses: actions/setup-go@v2
         with:
@@ -75,10 +69,9 @@ jobs:
     needs: [ env, images ]
     steps:
       - name: checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           fetch-depth: 1
-          path: go/src/open-cluster-management.io/cluster-proxy
       - name: create
         run: |
           echo ${{ secrets.DOCKER_PASSWORD }} | docker login quay.io --username ${{ secrets.DOCKER_USER }} --password-stdin
@@ -100,10 +93,9 @@ jobs:
     needs: [ env, image-manifest ]
     steps:
       - name: checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           fetch-depth: 1
-          path: go/src/open-cluster-management.io/cluster-proxy
       - name: setup helm
         uses: azure/setup-helm@v1
       - name: chart package
@@ -112,12 +104,20 @@ jobs:
           pushd release
           helm package ../charts/${{ env.CHART_NAME }}/
           popd
+      - name: generate changelog
+        run: |
+          echo "# Cluster Proxy ${{ needs.env.outputs.RELEASE_VERSION }}" > /home/runner/work/changelog.txt
       - name: publish release
-        uses: ncipollo/release-action@v1
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag: ${{ env.RELEASE_VERSION }}
-          artifacts: "go/src/open-cluster-management.io/cluster-proxy/release/*.tgz"
-          token: ${{ secrets.GITHUB_TOKEN }}
+          body_path: /home/runner/work/changelog.txt
+          files: |
+            release/*.tgz
+          draft: true
+          prerelease: false
+          generate_release_notes: true
       - name: submit charts to OCM chart repo
         uses: actions/github-script@v6
         with:
