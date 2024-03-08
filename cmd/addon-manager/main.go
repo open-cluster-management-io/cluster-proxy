@@ -36,9 +36,7 @@ import (
 	"open-cluster-management.io/addon-framework/pkg/addonmanager"
 	addonutil "open-cluster-management.io/addon-framework/pkg/utils"
 	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
-	"open-cluster-management.io/api/client/addon/clientset/versioned"
 	addonclient "open-cluster-management.io/api/client/addon/clientset/versioned"
-	"open-cluster-management.io/api/client/addon/informers/externalversions"
 	clusterv1beta2 "open-cluster-management.io/api/cluster/v1beta2"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 	"open-cluster-management.io/cluster-proxy/pkg/config"
@@ -113,12 +111,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	client, err := versioned.NewForConfig(mgr.GetConfig())
-	if err != nil {
-		setupLog.Error(err, "unable to set up addon client")
-		os.Exit(1)
-	}
-
 	nativeClient, err := kubernetes.NewForConfig(mgr.GetConfig())
 	if err != nil {
 		setupLog.Error(err, "unable to set up kubernetes native client")
@@ -146,7 +138,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	informerFactory := externalversions.NewSharedInformerFactory(client, 0)
 	nativeInformer := informers.NewSharedInformerFactoryWithOptions(nativeClient, 0)
 
 	// loading self-signer
@@ -211,7 +202,6 @@ func main() {
 
 	ctx, cancel := context.WithCancel(ctrl.SetupSignalHandler())
 	defer cancel()
-	go informerFactory.Start(ctx.Done())
 	go nativeInformer.Start(ctx.Done())
 	go func() {
 		if err := addonManager.Start(ctx); err != nil {
