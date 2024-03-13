@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"crypto/sha256"
 	"embed"
 	"encoding/base64"
 	"fmt"
@@ -73,6 +74,8 @@ func NewAgentAddon(
 		},
 	}
 	// Register the custom signer CSR option if V1 csr is supported
+	// caculate a hash value of signer ca data and add it to the organizationUnits of the subject
+	signerHash := sha256.Sum256(signer.CAData())
 	if v1CSRSupported {
 		regConfigs = append(regConfigs, addonv1alpha1.RegistrationConfig{
 			SignerName: ProxyAgentSignerName,
@@ -80,6 +83,9 @@ func NewAgentAddon(
 				User: common.SubjectUserClusterProxyAgent,
 				Groups: []string{
 					common.SubjectGroupClusterProxy,
+				},
+				OrganizationUnits: []string{
+					fmt.Sprintf("signer-%x", base64.StdEncoding.EncodeToString(signerHash[:])),
 				},
 			},
 		})
