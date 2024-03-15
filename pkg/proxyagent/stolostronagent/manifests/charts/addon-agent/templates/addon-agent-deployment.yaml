@@ -157,3 +157,7 @@ spec:
         - name: service-proxy-server-cert
           secret:
             secretName: cluster-proxy-service-proxy-server-certificates
+      imagePullSecrets:
+      {{- range .Values.proxyAgentImagePullSecrets }}
+      - name: {{ . }}
+      {{- end }}
