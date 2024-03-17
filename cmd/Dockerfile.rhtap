@@ -5,6 +5,9 @@ FROM brew.registry.redhat.io/rh-osbs/openshift-golang-builder:rhel_8_1.19 as bui
 WORKDIR /workspace
 COPY . .
 
+# Only added for rhtap Dockerfile to solve build failure
+RUN go mod vendor
+
 # Build addons
 RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -a -o agent cmd/addon-agent/main.go
 RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -a -o manager cmd/addon-manager/main.go
