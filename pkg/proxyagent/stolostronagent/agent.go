@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"crypto/sha256"
 	"embed"
 	"encoding/base64"
 	"encoding/json"
@@ -33,6 +34,7 @@ import (
 	"open-cluster-management.io/cluster-proxy/pkg/config"
 	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/operator/authentication/selfsigned"
 	"open-cluster-management.io/cluster-proxy/pkg/util"
+	clustersdkv1beta2 "open-cluster-management.io/sdk-go/pkg/apis/cluster/v1beta2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -77,6 +79,8 @@ func NewAgentAddon(
 		},
 	}
 	// Register the custom signer CSR option if V1 csr is supported
+	// caculate a hash value of signer ca data and add it to the organizationUnits of the subject
+	signerHash := sha256.Sum256(signer.CAData())
 	if v1CSRSupported {
 		regConfigs = append(regConfigs, addonv1alpha1.RegistrationConfig{
 			SignerName: ProxyAgentSignerName,
@@ -84,6 +88,9 @@ func NewAgentAddon(
 				User: common.SubjectUserClusterProxyAgent,
 				Groups: []string{
 					common.SubjectGroupClusterProxy,
+				},
+				OrganizationUnits: []string{
+					fmt.Sprintf("signer-%x", base64.StdEncoding.EncodeToString(signerHash[:])),
 				},
 			},
 		})
@@ -386,7 +393,7 @@ func managedClusterSetsToFilteredMap(managedClusterSets []clusterv1beta2.Managed
 		}
 
 		// only cluseterSet cover current cluster include in the list.
-		selector, err := clusterv1beta2.BuildClusterSelector(&mcs)
+		selector, err := clustersdkv1beta2.BuildClusterSelector(&mcs)
 		if err != nil {
 			return nil, err
 		}
