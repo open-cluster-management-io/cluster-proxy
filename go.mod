@@ -7,7 +7,6 @@ require (
 	github.com/onsi/gomega v1.31.1
 	github.com/openshift/library-go v0.0.0-20240304201338-a2ff756d8fc2
 	github.com/pkg/errors v0.9.1
-	github.com/prometheus/client_golang v1.19.0
 	github.com/stretchr/testify v1.9.0
 	google.golang.org/grpc v1.62.0
 	k8s.io/api v0.29.2
@@ -18,7 +17,6 @@ require (
 	open-cluster-management.io/addon-framework v0.9.0
 	open-cluster-management.io/api v0.13.0
 	open-cluster-management.io/sdk-go v0.13.0
-	sigs.k8s.io/apiserver-network-proxy v0.29.0
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.29.0
 	sigs.k8s.io/controller-runtime v0.17.2
 )
@@ -66,6 +64,7 @@ require (
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/mxk/go-flowrate v0.0.0-20140419014527-cca7078d478f // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
+	github.com/prometheus/client_golang v1.19.0 // indirect
 	github.com/prometheus/client_model v0.5.0 // indirect
 	github.com/prometheus/common v0.48.0 // indirect
 	github.com/prometheus/procfs v0.12.0 // indirect
