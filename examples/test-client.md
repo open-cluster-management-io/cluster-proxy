@@ -1,3 +1,4 @@
+```go
 package main
 
 import (
@@ -80,3 +81,4 @@ func main() {
 
 	fmt.Printf("%v\n", ns)
 }
+```
