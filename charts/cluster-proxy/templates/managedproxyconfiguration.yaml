@@ -17,7 +17,7 @@ spec:
       type: Hostname
       hostname:
         value: {{ .Values.proxyServer.entrypointAddress }}
-      {{- else if .Values.proxyServer.entrypointLoadBalancer }}
+      {{- else if .Values.entrypointLoadBalancer }}
       type: LoadBalancerService
       loadBalancerService: {}
       {{- else  }}

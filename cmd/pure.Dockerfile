@@ -1,6 +1,6 @@
 # Build the manager binary
 # This dockerfile only used in middle stream build, without downloading and building APISERVER_NETWORK_PROXY_VERSION
-FROM registry.ci.openshift.org/stolostron/builder:go1.21-linux AS builder
+FROM registry.ci.openshift.org/stolostron/builder:go1.19-linux AS builder
 
 WORKDIR /workspace
 COPY . .

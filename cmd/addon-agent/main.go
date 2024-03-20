@@ -12,7 +12,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
-	"k8s.io/klog/v2/textlogger"
+	"k8s.io/klog/v2/klogr"
 	"open-cluster-management.io/addon-framework/pkg/lease"
 	"open-cluster-management.io/cluster-proxy/pkg/common"
 	"open-cluster-management.io/cluster-proxy/pkg/util"
@@ -31,7 +31,7 @@ const envKeyPodNamespace = "POD_NAMESPACE"
 
 func main() {
 
-	logger := textlogger.NewLogger(textlogger.NewConfig())
+	logger := klogr.New()
 	klog.SetOutput(os.Stdout)
 	klog.InitFlags(flag.CommandLine)
 	flag.StringVar(&hubKubeconfig, "hub-kubeconfig", "",

@@ -10,10 +10,10 @@ import (
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	clusterv1beta2 "open-cluster-management.io/api/cluster/v1beta2"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
+	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/operator/eventhandler"
 	"open-cluster-management.io/cluster-proxy/pkg/util"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
@@ -35,35 +35,13 @@ func (c *ServiceResolverReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(&proxyv1alpha1.ManagedProxyServiceResolver{}).
 		Watches(
 			&proxyv1alpha1.ManagedProxyServiceResolver{},
-			handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, object client.Object) []reconcile.Request {
-				return []reconcile.Request{
-					{NamespacedName: types.NamespacedName{Name: object.GetName()}},
-				}
-			}),
+			&eventhandler.ProxyServiceResolverHandler{},
 		).
 		Watches(
 			&clusterv1beta2.ManagedClusterSet{},
-			handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, object client.Object) []reconcile.Request {
-				var reqs []reconcile.Request
-				// Check whether the clusterset is related with any managedproxyserviceresolver.
-				mpsrList := &proxyv1alpha1.ManagedProxyServiceResolverList{}
-				err := mgr.GetClient().List(context.TODO(), mpsrList, &client.ListOptions{})
-				if err != nil {
-					return reqs
-				}
-				for _, mpsr := range mpsrList.Items {
-					if !util.IsServiceResolverLegal(&mpsr) {
-						continue
-					}
-					if mpsr.Spec.ManagedClusterSelector.ManagedClusterSet.Name == object.GetName() {
-						req := reconcile.Request{}
-						req.Name = mpsr.Name
-						reqs = append(reqs, req)
-						break
-					}
-				}
-				return reqs
-			}),
+			&eventhandler.ClustersetHandler{
+				Client: mgr.GetClient(),
+			},
 		).
 		Complete(c)
 }

@@ -13,6 +13,11 @@ spec:
     matchLabels:
       open-cluster-management.io/addon: cluster-proxy
       proxy.open-cluster-management.io/component-name: proxy-agent
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
   template:
     metadata:
       annotations:

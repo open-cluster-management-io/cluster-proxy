@@ -1,20 +1,21 @@
 # Build the manager binary
-FROM golang:1.21 as builder
+FROM golang:1.20 as builder
 
 WORKDIR /workspace
 
-ARG APISERVER_NETWORK_PROXY_VERSION=0.29.0
+ARG APISERVER_NETWORK_PROXY_VERSION=0.1.6
 ARG KUBECTL_VERSION=v1.23.1
 ARG ADDON_AGENT_IMAGE_NAME
 
 # Build Apiserver-network-proxy binaries
-RUN wget https://github.com/kubernetes-sigs/apiserver-network-proxy/archive/refs/tags/v${APISERVER_NETWORK_PROXY_VERSION}.tar.gz \
+RUN GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
+      wget https://github.com/kubernetes-sigs/apiserver-network-proxy/archive/refs/tags/v${APISERVER_NETWORK_PROXY_VERSION}.tar.gz \
       && tar xzvf v${APISERVER_NETWORK_PROXY_VERSION}.tar.gz \
       && cd apiserver-network-proxy-${APISERVER_NETWORK_PROXY_VERSION} \
-      && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /workspace/proxy-server ./cmd/server/ \
-      && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /workspace/proxy-agent ./cmd/agent/ \
-      && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /workspace/proxy-test-client ./cmd/test-client/ \
-      && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /workspace/proxy-test-server ./cmd/test-server/ \
+      && go build -o /workspace/proxy-server ./cmd/server/ \
+      && go build -o /workspace/proxy-agent ./cmd/agent/ \
+      && go build -o /workspace/proxy-test-client ./cmd/test-client/ \
+      && go build -o /workspace/proxy-test-server ./cmd/test-server/ \
       && cd /workspace \
       && curl -LO "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl" \
       && chmod a+x kubectl

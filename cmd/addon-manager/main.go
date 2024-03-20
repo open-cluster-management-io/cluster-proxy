@@ -32,11 +32,13 @@ import (
 	"k8s.io/client-go/kubernetes"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/klog/v2"
-	"k8s.io/klog/v2/textlogger"
+	"k8s.io/klog/v2/klogr"
 	"open-cluster-management.io/addon-framework/pkg/addonmanager"
 	addonutil "open-cluster-management.io/addon-framework/pkg/utils"
 	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
+	"open-cluster-management.io/api/client/addon/clientset/versioned"
 	addonclient "open-cluster-management.io/api/client/addon/clientset/versioned"
+	"open-cluster-management.io/api/client/addon/informers/externalversions"
 	clusterv1beta2 "open-cluster-management.io/api/cluster/v1beta2"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 	"open-cluster-management.io/cluster-proxy/pkg/config"
@@ -45,7 +47,6 @@ import (
 	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/operator/authentication/selfsigned"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
-	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -71,7 +72,7 @@ func main() {
 	var agentInstallAll bool
 	var enableKubeApiProxy bool
 
-	logger := textlogger.NewLogger(textlogger.NewConfig())
+	logger := klogr.New()
 	klog.SetOutput(os.Stdout)
 	klog.InitFlags(flag.CommandLine)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":58080", "The address the metric endpoint binds to.")
@@ -101,13 +102,20 @@ func main() {
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
-		Metrics:                metricsserver.Options{BindAddress: metricsAddr},
+		MetricsBindAddress:     metricsAddr,
+		Port:                   9443,
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "cluster-proxy-addon-manager",
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
+		os.Exit(1)
+	}
+
+	client, err := versioned.NewForConfig(mgr.GetConfig())
+	if err != nil {
+		setupLog.Error(err, "unable to set up addon client")
 		os.Exit(1)
 	}
 
@@ -138,6 +146,7 @@ func main() {
 		os.Exit(1)
 	}
 
+	informerFactory := externalversions.NewSharedInformerFactory(client, 0)
 	nativeInformer := informers.NewSharedInformerFactoryWithOptions(nativeClient, 0)
 
 	// loading self-signer
@@ -202,6 +211,7 @@ func main() {
 
 	ctx, cancel := context.WithCancel(ctrl.SetupSignalHandler())
 	defer cancel()
+	go informerFactory.Start(ctx.Done())
 	go nativeInformer.Start(ctx.Done())
 	go func() {
 		if err := addonManager.Start(ctx); err != nil {

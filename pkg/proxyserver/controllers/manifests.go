@@ -7,7 +7,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/ptr"
+	"k8s.io/utils/pointer"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 	"open-cluster-management.io/cluster-proxy/pkg/common"
 )
@@ -20,7 +20,7 @@ func newOwnerReference(config *proxyv1alpha1.ManagedProxyConfiguration) metav1.O
 		Kind:               "ManagedProxyConfiguration",
 		Name:               config.Name,
 		UID:                config.UID,
-		BlockOwnerDeletion: ptr.To(true),
+		BlockOwnerDeletion: pointer.Bool(true),
 	}
 }
 
@@ -112,7 +112,7 @@ func newProxyServerDeployment(config *proxyv1alpha1.ManagedProxyConfiguration) *
 						{
 							Name:            common.ComponentNameProxyServer,
 							Image:           config.Spec.ProxyServer.Image,
-							ImagePullPolicy: corev1.PullAlways,
+							ImagePullPolicy: corev1.PullIfNotPresent,
 							Command: []string{
 								"/proxy-server",
 							},
@@ -130,10 +130,10 @@ func newProxyServerDeployment(config *proxyv1alpha1.ManagedProxyConfiguration) *
 								Capabilities: &corev1.Capabilities{
 									Drop: []corev1.Capability{"ALL"},
 								},
-								Privileged:               ptr.To(false),
-								RunAsNonRoot:             ptr.To(true),
-								ReadOnlyRootFilesystem:   ptr.To(true),
-								AllowPrivilegeEscalation: ptr.To(false),
+								Privileged:               pointer.Bool(false),
+								RunAsNonRoot:             pointer.Bool(true),
+								ReadOnlyRootFilesystem:   pointer.Bool(true),
+								AllowPrivilegeEscalation: pointer.Bool(false),
 							},
 							VolumeMounts: []corev1.VolumeMount{
 								{

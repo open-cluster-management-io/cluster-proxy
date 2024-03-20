@@ -541,11 +541,11 @@ func getAnnotation(list []proxyv1alpha1.AnnotationVar) map[string]string {
 	annotation := make(map[string]string, len(list))
 	for _, v := range list {
 		if errs := validation.IsQualifiedName(v.Key); len(errs) == 0 {
-			klog.Warningf("Annotation key %s validate failed: %s, skip it!", v.Key, strings.Join(errs, ";"))
+			klog.Warningf("Annotation key %s validate failed: %s, skip it!", strings.Join(errs, ";"))
 			continue
 		}
 		if errs := validation.IsValidLabelValue(v.Value); len(errs) > 0 {
-			klog.Warningf("Annotation value %s validate failed: %s, skip it!", v.Key, strings.Join(errs, ";"))
+			klog.Warningf("Annotation value %s validate failed: %s, skip it!", strings.Join(errs, ";"))
 			continue
 		}
 		annotation[v.Key] = v.Value

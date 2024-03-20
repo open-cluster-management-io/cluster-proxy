@@ -9,8 +9,11 @@ on:
 
 env:
   # Common versions
-  GO_VERSION: '1.21'
+  GO_VERSION: '1.20'
   GO_REQUIRED_MIN_VERSION: ''
+defaults:
+  run:
+    working-directory: go/src/open-cluster-management.io/cluster-proxy
 
 jobs:
   images:
@@ -21,9 +24,10 @@ jobs:
         arch: [ amd64, arm64 ]
     steps:
       - name: checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v2
         with:
           fetch-depth: 1
+          path: go/src/open-cluster-management.io/cluster-proxy
       - name: install Go
         uses: actions/setup-go@v2
         with:
@@ -47,9 +51,10 @@ jobs:
     needs: [ images ]
     steps:
       - name: checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v2
         with:
           fetch-depth: 1
+          path: go/src/open-cluster-management.io/cluster-proxy
       - name: create
         run: |
           echo ${{ secrets.DOCKER_PASSWORD }} | docker login quay.io --username ${{ secrets.DOCKER_USER }} --password-stdin

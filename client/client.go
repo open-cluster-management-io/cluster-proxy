@@ -8,9 +8,9 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/rest"
 	clusterv1client "open-cluster-management.io/api/client/cluster/clientset/versioned"
+	clusterv1beta2 "open-cluster-management.io/api/cluster/v1beta2"
 	"open-cluster-management.io/cluster-proxy/pkg/generated/clientset/versioned"
 	"open-cluster-management.io/cluster-proxy/pkg/util"
-	clustersdkv1beta2 "open-cluster-management.io/sdk-go/pkg/apis/cluster/v1beta2"
 )
 
 func GetProxyHost(ctx context.Context, kubeconfig *rest.Config, clusterName string, namespace string, serviceName string) (string, error) {
@@ -40,7 +40,7 @@ func GetProxyHost(ctx context.Context, kubeconfig *rest.Config, clusterName stri
 		if err != nil {
 			return "", err
 		}
-		selector, err := clustersdkv1beta2.BuildClusterSelector(set)
+		selector, err := clusterv1beta2.BuildClusterSelector(set)
 		if err != nil {
 			return "", err
 		}
