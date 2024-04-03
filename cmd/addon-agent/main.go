@@ -14,9 +14,11 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/klog/v2/textlogger"
 	"open-cluster-management.io/addon-framework/pkg/lease"
+	addonutils "open-cluster-management.io/addon-framework/pkg/utils"
 	"open-cluster-management.io/cluster-proxy/pkg/common"
 	"open-cluster-management.io/cluster-proxy/pkg/util"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/healthz"
 )
 
 var (
@@ -84,29 +86,53 @@ func main() {
 		}
 	}
 
-	ln, err := net.Listen("tcp", net.JoinHostPort("0.0.0.0", "8888"))
+	// If the certificates is changed, we need to restart the agent to load the new certificates.
+	cc, err := addonutils.NewConfigChecker("certificates check", "/etc/tls/tls.crt", "/etc/tls/tls.key")
 	if err != nil {
-		klog.Fatalf("failed listening: %v", err)
+		klog.Fatalf("failed create certificates checker: %v", err)
 	}
-	go func() {
-		klog.Infof("Starting local health check server")
-		err := http.Serve(ln, http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+
+	go serveHealthProbes(ctx.Done(), ":8888", map[string]healthz.Checker{
+		"certificates": cc.Check,
+		"port forward proxy readiness": func(_ *http.Request) error {
 			if !readiness.Load().(bool) {
-				rw.WriteHeader(http.StatusInternalServerError)
-				if _, err = rw.Write([]byte("not yet ready")); err != nil {
-					klog.Errorf("failed to write 'not yet ready': %v", err)
-				}
-				klog.Infof("not yet ready")
-				return
+				return fmt.Errorf("not ready")
 			}
-			if _, err = rw.Write([]byte("ok")); err != nil {
-				klog.Errorf("failed to write 'ok': %v", err)
-			}
-		}))
-		klog.Errorf("health check server aborted: %v", err)
-	}()
+			return nil
+		},
+	})
 
 	klog.Infof("Starting lease updater")
 	leaseUpdater.Start(ctx)
 	<-ctx.Done()
+}
+
+// serveHealthProbes starts a server to check healthz and readyz probes
+func serveHealthProbes(stop <-chan struct{}, address string, healthCheckers map[string]healthz.Checker) {
+	mux := http.NewServeMux()
+	mux.Handle("/healthz", http.StripPrefix("/healthz", &healthz.Handler{Checks: healthCheckers}))
+
+	server := http.Server{
+		Handler: mux,
+	}
+
+	ln, err := net.Listen("tcp", address)
+	if err != nil {
+		klog.Errorf("error listening on %s: %v", address, err)
+		return
+	}
+
+	klog.Infof("heath probes server is running...")
+	// Run server
+	go func() {
+		if err := server.Serve(ln); err != nil && err != http.ErrServerClosed {
+			klog.Fatal(err)
+		}
+	}()
+
+	// Shutdown the server when stop is closed
+	<-stop
+	if err := server.Shutdown(context.Background()); err != nil {
+		klog.Fatal(err)
+	}
 }
