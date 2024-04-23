@@ -62,7 +62,7 @@ jobs:
       - name: unit
         run: make test
       - name: report coverage
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v4.2.0
         with:
           files: ./cover.out
           flags: unit
