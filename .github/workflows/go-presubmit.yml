@@ -15,6 +15,7 @@ env:
   # Common versions
   GO_VERSION: '1.21'
   GO_REQUIRED_MIN_VERSION: ''
+  CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
 jobs:
   build:
@@ -62,8 +63,9 @@ jobs:
       - name: unit
         run: make test
       - name: report coverage
-        uses: codecov/codecov-action@v4.2.0
+        uses: codecov/codecov-action@v4
         with:
+          token: ${{ secrets.CODECOV_TOKEN }}
           files: ./cover.out
           flags: unit
           name: unit
