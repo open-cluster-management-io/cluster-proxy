@@ -15,7 +15,6 @@ env:
   # Common versions
   GO_VERSION: '1.21'
   GO_REQUIRED_MIN_VERSION: ''
-  CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
 jobs:
   build:
