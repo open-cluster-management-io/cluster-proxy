@@ -54,7 +54,6 @@ func NewAgentAddon(
 	v1CSRSupported bool,
 	runtimeClient client.Client,
 	nativeClient kubernetes.Interface,
-	agentInstallAll bool,
 	enableKubeApiProxy bool,
 	addonClient addonclient.Interface) (agent.AgentAddon, error) {
 	caCertData, caKeyData, err := signer.CA().Config.GetPEMBytes()
@@ -146,10 +145,6 @@ func NewAgentAddon(
 				toAgentAddOnChartValues(caCertData),
 			),
 		)
-
-	if agentInstallAll {
-		agentFactory.WithInstallStrategy(agent.InstallAllStrategy(config.AddonInstallNamespace))
-	}
 
 	return agentFactory.BuildHelmAgentAddon()
 }
