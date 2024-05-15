@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/x509"
 	"encoding/pem"
+	"fmt"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -11,7 +12,6 @@ import (
 
 	certificatesv1 "k8s.io/api/certificates/v1"
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
@@ -32,17 +32,14 @@ var _ = Describe("Certificate rotation Test",
 		It("Agent certificate's signer should be custom signer",
 			func() {
 				Eventually(
-					func() (bool, error) {
+					func() error {
 						By("ManagedClusterAddon should be present firstly")
 						addon := &addonapiv1alpha1.ManagedClusterAddOn{}
 						if err := f.HubRuntimeClient().Get(context.TODO(), types.NamespacedName{
 							Namespace: f.TestClusterName(),
 							Name:      common.AddonName,
 						}, addon); err != nil {
-							if apierrors.IsNotFound(err) {
-								return false, nil
-							}
-							return false, err
+							return err
 						}
 						By("A csr with custom signer should be issued")
 						csrList := &certificatesv1.CertificateSigningRequestList{}
@@ -50,8 +47,12 @@ var _ = Describe("Certificate rotation Test",
 							addonapiv1alpha1.AddonLabelKey:   common.AddonName,
 							clusterapiv1.ClusterNameLabelKey: f.TestClusterName(),
 						})
-						Expect(err).NotTo(HaveOccurred())
-						Expect(len(csrList.Items) >= 1).Should(BeTrue())
+						if err != nil {
+							return err
+						}
+						if len(csrList.Items) == 0 {
+							return fmt.Errorf("no csr created")
+						}
 						exists := false
 						for _, csr := range csrList.Items {
 							if csr.Spec.SignerName == agent.ProxyAgentSignerName {
@@ -63,20 +64,17 @@ var _ = Describe("Certificate rotation Test",
 						By("Agent secret should be created (after CSR approval)")
 						agentSecret := &corev1.Secret{}
 						err = f.HubRuntimeClient().Get(context.TODO(), types.NamespacedName{
-							Namespace: addon.Spec.InstallNamespace,
+							Namespace: addon.Status.Namespace,
 							Name:      agent.AgentSecretName,
 						}, agentSecret)
 						if err != nil {
-							if apierrors.IsNotFound(err) {
-								return false, nil
-							}
-							return false, err
+							return err
 						}
-						return true, nil
+						return nil
 					}).
 					WithTimeout(time.Minute).
 					WithPolling(time.Second * 10).
-					Should(BeTrue())
+					Should(Succeed())
 			})
 
 		It("Certificate SAN customizing should work",

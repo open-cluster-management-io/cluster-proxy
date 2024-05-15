@@ -19,3 +19,7 @@ proxyServer:
   entrypointLoadBalancer: false
   entrypointAddress: ""
   port: 8091
+
+installByPlacement:
+  placementName: ""
+  placementNamespace: ""
