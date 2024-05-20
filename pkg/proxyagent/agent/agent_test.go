@@ -393,7 +393,7 @@ func TestAgentAddonRegistrationOption(t *testing.T) {
 }
 
 func TestNewAgentAddon(t *testing.T) {
-	addOnName := "addon"
+	addOnName := "open-cluster-management-cluster-proxy"
 	clusterName := "cluster"
 
 	managedProxyConfigName := "cluster-proxy"
@@ -731,6 +731,32 @@ func TestNewAgentAddon(t *testing.T) {
 				caCrt := string(caSecret.Data["ca.crt"])
 				count := strings.Count(caCrt, "-----BEGIN CERTIFICATE-----")
 				assert.Equal(t, 1, count)
+			},
+		},
+		{
+			name:    "with addon deployment config including install namespace",
+			cluster: newCluster(clusterName, true),
+			addon: func() *addonv1alpha1.ManagedClusterAddOn {
+				addOn := newAddOn(addOnName, clusterName)
+				addOn.Status.ConfigReferences = []addonv1alpha1.ConfigReference{
+					newManagedProxyConfigReference(managedProxyConfigName),
+					newAddOndDeploymentConfigReference(addOndDeployConfigName, clusterName),
+				}
+				return addOn
+			}(),
+			managedProxyConfigs: []runtimeclient.Object{newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypePortForward)},
+			addOndDeploymentConfigs: []runtime.Object{
+				func() *addonv1alpha1.AddOnDeploymentConfig {
+					config := newAddOnDeploymentConfig(addOndDeployConfigName, clusterName)
+					config.Spec.AgentInstallNamespace = "addon-test"
+					return config
+				}()},
+			v1CSRSupported:     true,
+			enableKubeApiProxy: true,
+			verifyManifests: func(t *testing.T, manifests []runtime.Object) {
+				assert.Len(t, manifests, len(expectedManifestNames))
+				expectedManifestNames[5] = "addon-test"
+				assert.ElementsMatch(t, expectedManifestNames, manifestNames(manifests))
 			},
 		},
 	}

@@ -145,11 +145,24 @@ func NewAgentAddon(
 				toAgentAddOnChartValues(caCertData),
 			),
 		).
-		WithAgentInstallNamespace(utils.AgentInstallNamespaceFromDeploymentConfigFunc(
-			utils.NewAddOnDeploymentConfigGetter(addonClient),
-		))
+		WithAgentInstallNamespace(agentInstallNamespaceFunc(utils.NewAddOnDeploymentConfigGetter(addonClient)))
 
 	return agentFactory.BuildHelmAgentAddon()
+}
+
+// agentInstallNamespaceFunc returns namespace from AddonDeploymentConfig, and config.DefaultAddonInstallNamespace if
+// AddonDeploymentConfig is not set.
+func agentInstallNamespaceFunc(getter utils.AddOnDeploymentConfigGetter) func(*addonv1alpha1.ManagedClusterAddOn) (string, error) {
+	return func(addon *addonv1alpha1.ManagedClusterAddOn) (string, error) {
+		ns, err := utils.AgentInstallNamespaceFromDeploymentConfigFunc(getter)(addon)
+		if err != nil {
+			return config.DefaultAddonInstallNamespace, err
+		}
+		if len(ns) == 0 {
+			return config.DefaultAddonInstallNamespace, nil
+		}
+		return ns, nil
+	}
 }
 
 func GetClusterProxyValueFunc(

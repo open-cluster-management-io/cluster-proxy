@@ -92,6 +92,8 @@ func main() {
 		"Configure the install strategy of agent on managed clusters. "+
 			"Enabling this will automatically install agent on all managed cluster.")
 	flag.BoolVar(&enableKubeApiProxy, "enable-kube-api-proxy", true, "Enable proxy to agent kube-apiserver")
+	flag.StringVar(&config.DefaultAddonInstallNamespace, "agent-install-namespace", config.DefaultAddonInstallNamespace,
+		"The default namespace to install the addon agents.")
 
 	flag.Parse()
 
