@@ -2,6 +2,8 @@ apiVersion: addon.open-cluster-management.io/v1alpha1
 kind: ClusterManagementAddOn
 metadata:
   name: cluster-proxy
+  annotations:
+    "addon.open-cluster-management.io/lifecycle": "addon-manager"
 spec:
   addOnMeta:
     displayName: cluster-proxy
@@ -13,3 +15,17 @@ spec:
       name: cluster-proxy
   - group: addon.open-cluster-management.io
     resource: addondeploymentconfigs
+    defaultConfig:
+      name: cluster-proxy-agent-deploy-config
+      namespace: {{ .Release.Namespace }}
+  {{- if .Values.installByPlacement.placementName }}
+  installStrategy:
+    type: Placements
+    placements:
+      - name: {{ .Values.installByPlacement.placementName }}
+        {{- if .Values.installByPlacement.placementNamespace }}
+        namespace: {{ .Values.installByPlacement.placementNamespace  }}
+        {{- else }}
+        namespace: {{ .Release.Namespace }}
+        {{- end }}
+  {{- end }}

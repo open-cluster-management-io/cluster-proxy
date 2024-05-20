@@ -113,7 +113,7 @@ jobs:
           helm install \
              -n open-cluster-management-addon --create-namespace \
              cluster-proxy charts/cluster-proxy/ \
-             --set tag=latest
+             --set tag=latest --set installByPlacement.placementName=default
       - name: Build&Run e2e test
         run: |
           kubectl wait --for=condition=ProxyServerDeployed=true managedproxyconfiguration cluster-proxy --timeout=60s
