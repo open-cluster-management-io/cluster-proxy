@@ -15,7 +15,7 @@ import (
 // Can be override via "--agent-image-name" on the hub addon manager.
 var AgentImageName string
 
-const DefaultAddonInstallNamespace = "open-cluster-management-cluster-proxy"
+var DefaultAddonInstallNamespace = "open-cluster-management-cluster-proxy"
 
 func GetParsedAgentImage(defaultAgentImageName string) (string, string, string, error) {
 	if len(AgentImageName) == 0 {

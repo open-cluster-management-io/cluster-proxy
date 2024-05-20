@@ -1,7 +1,0 @@
-apiVersion: addon.open-cluster-management.io/v1alpha1
-kind: AddOnDeploymentConfig
-metadata:
-  name: cluster-proxy-agent-deploy-config
-  namespace: {{ .Release.Namespace }}
-spec:
-  agentInstallNamespace: {{ .Values.spokeAddonNamespace }}
