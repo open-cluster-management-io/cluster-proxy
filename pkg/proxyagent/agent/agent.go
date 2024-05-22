@@ -54,7 +54,6 @@ func NewAgentAddon(
 	v1CSRSupported bool,
 	runtimeClient client.Client,
 	nativeClient kubernetes.Interface,
-	agentInstallAll bool,
 	enableKubeApiProxy bool,
 	addonClient addonclient.Interface) (agent.AgentAddon, error) {
 	caCertData, caKeyData, err := signer.CA().Config.GetPEMBytes()
@@ -145,13 +144,25 @@ func NewAgentAddon(
 				utils.NewAddOnDeploymentConfigGetter(addonClient),
 				toAgentAddOnChartValues(caCertData),
 			),
-		)
-
-	if agentInstallAll {
-		agentFactory.WithInstallStrategy(agent.InstallAllStrategy(config.AddonInstallNamespace))
-	}
+		).
+		WithAgentInstallNamespace(agentInstallNamespaceFunc(utils.NewAddOnDeploymentConfigGetter(addonClient)))
 
 	return agentFactory.BuildHelmAgentAddon()
+}
+
+// agentInstallNamespaceFunc returns namespace from AddonDeploymentConfig, and config.DefaultAddonInstallNamespace if
+// AddonDeploymentConfig is not set.
+func agentInstallNamespaceFunc(getter utils.AddOnDeploymentConfigGetter) func(*addonv1alpha1.ManagedClusterAddOn) (string, error) {
+	return func(addon *addonv1alpha1.ManagedClusterAddOn) (string, error) {
+		ns, err := utils.AgentInstallNamespaceFromDeploymentConfigFunc(getter)(addon)
+		if err != nil {
+			return config.DefaultAddonInstallNamespace, err
+		}
+		if len(ns) == 0 {
+			return config.DefaultAddonInstallNamespace, nil
+		}
+		return ns, nil
+	}
 }
 
 func GetClusterProxyValueFunc(
@@ -167,8 +178,8 @@ func GetClusterProxyValueFunc(
 
 		managedProxyConfigurations := []string{}
 		for _, configReference := range addon.Status.ConfigReferences {
-			if config.IsManagedProxyConfiguration(configReference.ConfigGroupResource) {
-				managedProxyConfigurations = append(managedProxyConfigurations, configReference.Name)
+			if config.IsManagedProxyConfiguration(configReference.ConfigGroupResource) && configReference.DesiredConfig != nil {
+				managedProxyConfigurations = append(managedProxyConfigurations, configReference.DesiredConfig.Name)
 			}
 		}
 
@@ -276,9 +287,15 @@ func GetClusterProxyValueFunc(
 
 		var aids []string
 		// add default kube-apiserver agentIdentifiers
+
+		// get agent namespace from addon status
+		namespace := config.DefaultAddonInstallNamespace
+		if len(addon.Status.Namespace) > 0 {
+			namespace = addon.Status.Namespace
+		}
 		if enableKubeApiProxy {
 			aids = append(aids, fmt.Sprintf("host=%s", cluster.Name))
-			aids = append(aids, fmt.Sprintf("host=%s.%s", cluster.Name, config.AddonInstallNamespace))
+			aids = append(aids, fmt.Sprintf("host=%s.%s", cluster.Name, namespace))
 		}
 		// add servicesToExpose into aids
 		for _, s := range servicesToExpose {

@@ -10,6 +10,8 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	clusterv1beta1 "open-cluster-management.io/api/cluster/v1beta1"
+	clusterv1beta2 "open-cluster-management.io/api/cluster/v1beta2"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -26,6 +28,8 @@ type Framework interface {
 
 	HubNativeClient() kubernetes.Interface
 	HubRuntimeClient() client.Client
+
+	DeployClusterSetAndBinding(ctx context.Context, clusterset, namespace string) error
 }
 
 var _ Framework = &framework{}
@@ -67,6 +71,33 @@ func (f *framework) HubRuntimeClient() client.Client {
 	return runtimeClient
 }
 
+func (f *framework) DeployClusterSetAndBinding(ctx context.Context, clusterset, namespace string) error {
+	err := f.HubRuntimeClient().Create(ctx, &clusterv1beta2.ManagedClusterSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: clusterset,
+		},
+	})
+
+	if err != nil && !apierrors.IsAlreadyExists(err) {
+		return err
+	}
+
+	err = f.HubRuntimeClient().Create(ctx, &clusterv1beta2.ManagedClusterSetBinding{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      clusterset,
+			Namespace: namespace,
+		},
+		Spec: clusterv1beta2.ManagedClusterSetBindingSpec{
+			ClusterSet: clusterset,
+		},
+	})
+	if err != nil && !apierrors.IsAlreadyExists(err) {
+		return err
+	}
+
+	return nil
+}
+
 func (f *framework) TestClusterName() string {
 	return f.ctx.TestCluster
 }
@@ -93,6 +124,26 @@ func (f *framework) BeforeEach() {
 			},
 		}
 		Expect(c.Create(context.TODO(), proxyConfiguration)).NotTo(HaveOccurred())
+	}
+	Expect(err).NotTo(HaveOccurred())
+
+	err = f.DeployClusterSetAndBinding(context.TODO(), "default", "open-cluster-management-addon")
+	Expect(err).NotTo(HaveOccurred())
+
+	// create a placement
+	placement := &clusterv1beta1.Placement{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "default",
+			Namespace: "open-cluster-management-addon",
+		},
+		Spec: clusterv1beta1.PlacementSpec{
+			ClusterSets: []string{"default"},
+		},
+	}
+
+	err = c.Create(context.TODO(), placement)
+	if apierrors.IsAlreadyExists(err) {
+		return
 	}
 	Expect(err).NotTo(HaveOccurred())
 }

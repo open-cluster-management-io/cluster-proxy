@@ -35,7 +35,6 @@ import (
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
 	clusterv1beta2 "open-cluster-management.io/api/cluster/v1beta2"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
-	"open-cluster-management.io/cluster-proxy/pkg/config"
 	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/operator/authentication/selfsigned"
 	"open-cluster-management.io/cluster-proxy/pkg/util"
 	runtimeclient "sigs.k8s.io/controller-runtime/pkg/client"
@@ -313,24 +312,20 @@ func TestRemoveDupAndSortservicesToExpose(t *testing.T) {
 
 func TestAgentAddonRegistrationOption(t *testing.T) {
 	cases := []struct {
-		name                     string
-		signerName               string
-		v1CSRSupported           bool
-		agentInstallAll          bool
-		cluster                  *clusterv1.ManagedCluster
-		addon                    *addonv1alpha1.ManagedClusterAddOn
-		expextedCSRConfigs       int
-		expectedCSRApprove       bool
-		expectedSignedCSR        bool
-		expectedInstallNamespace string
+		name               string
+		signerName         string
+		v1CSRSupported     bool
+		cluster            *clusterv1.ManagedCluster
+		addon              *addonv1alpha1.ManagedClusterAddOn
+		expextedCSRConfigs int
+		expectedCSRApprove bool
+		expectedSignedCSR  bool
 	}{
 		{
-			name:                     "install all",
-			agentInstallAll:          true,
-			cluster:                  newCluster("cluster", false),
-			addon:                    newAddOn("addon", "cluster"),
-			expextedCSRConfigs:       1,
-			expectedInstallNamespace: config.AddonInstallNamespace,
+			name:               "install all",
+			cluster:            newCluster("cluster", false),
+			addon:              newAddOn("addon", "cluster"),
+			expextedCSRConfigs: 1,
 		},
 		{
 			name:               "csr v1 supported",
@@ -366,7 +361,6 @@ func TestAgentAddonRegistrationOption(t *testing.T) {
 				c.v1CSRSupported,
 				nil,
 				fakeKubeClient,
-				c.agentInstallAll,
 				true,
 				nil,
 			)
@@ -394,16 +388,12 @@ func TestAgentAddonRegistrationOption(t *testing.T) {
 
 			cert := options.Registration.CSRSign(newCSR(c.signerName))
 			assert.Equal(t, c.expectedSignedCSR, (len(cert) != 0))
-
-			if c.expectedInstallNamespace != "" {
-				assert.Equal(t, c.expectedInstallNamespace, options.InstallStrategy.InstallNamespace)
-			}
 		})
 	}
 }
 
 func TestNewAgentAddon(t *testing.T) {
-	addOnName := "addon"
+	addOnName := "open-cluster-management-cluster-proxy"
 	clusterName := "cluster"
 
 	managedProxyConfigName := "cluster-proxy"
@@ -743,6 +733,32 @@ func TestNewAgentAddon(t *testing.T) {
 				assert.Equal(t, 1, count)
 			},
 		},
+		{
+			name:    "with addon deployment config including install namespace",
+			cluster: newCluster(clusterName, true),
+			addon: func() *addonv1alpha1.ManagedClusterAddOn {
+				addOn := newAddOn(addOnName, clusterName)
+				addOn.Status.ConfigReferences = []addonv1alpha1.ConfigReference{
+					newManagedProxyConfigReference(managedProxyConfigName),
+					newAddOndDeploymentConfigReference(addOndDeployConfigName, clusterName),
+				}
+				return addOn
+			}(),
+			managedProxyConfigs: []runtimeclient.Object{newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypePortForward)},
+			addOndDeploymentConfigs: []runtime.Object{
+				func() *addonv1alpha1.AddOnDeploymentConfig {
+					config := newAddOnDeploymentConfig(addOndDeployConfigName, clusterName)
+					config.Spec.AgentInstallNamespace = "addon-test"
+					return config
+				}()},
+			v1CSRSupported:     true,
+			enableKubeApiProxy: true,
+			verifyManifests: func(t *testing.T, manifests []runtime.Object) {
+				assert.Len(t, manifests, len(expectedManifestNames))
+				expectedManifestNames[5] = "addon-test"
+				assert.ElementsMatch(t, expectedManifestNames, manifestNames(manifests))
+			},
+		},
 	}
 
 	for _, c := range cases {
@@ -757,13 +773,12 @@ func TestNewAgentAddon(t *testing.T) {
 				c.v1CSRSupported,
 				fakeRuntimeClient,
 				fakeKubeClient,
-				false,
 				c.enableKubeApiProxy,
 				fakeAddonClient,
 			)
 			assert.NoError(t, err)
 
-			manifests, err := agentAddOn.Manifests(c.cluster, c.addon)
+			manifests, err := agentAddOn.Manifests(c.cluster, c.addon.DeepCopy())
 			if c.expectedErrorMsg != "" {
 				assert.ErrorContains(t, err, c.expectedErrorMsg)
 				return
@@ -878,8 +893,11 @@ func newManagedProxyConfigReference(name string) addonv1alpha1.ConfigReference {
 			Group:    "proxy.open-cluster-management.io",
 			Resource: "managedproxyconfigurations",
 		},
-		ConfigReferent: addonv1alpha1.ConfigReferent{
-			Name: name,
+		DesiredConfig: &addonv1alpha1.ConfigSpecHash{
+			ConfigReferent: addonv1alpha1.ConfigReferent{
+				Name: name,
+			},
+			SpecHash: "dummy",
 		},
 	}
 }
@@ -893,6 +911,13 @@ func newAddOndDeploymentConfigReference(name, namespace string) addonv1alpha1.Co
 		ConfigReferent: addonv1alpha1.ConfigReferent{
 			Name:      name,
 			Namespace: namespace,
+		},
+		DesiredConfig: &addonv1alpha1.ConfigSpecHash{
+			ConfigReferent: addonv1alpha1.ConfigReferent{
+				Name:      name,
+				Namespace: namespace,
+			},
+			SpecHash: "dummy",
 		},
 	}
 }

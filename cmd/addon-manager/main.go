@@ -86,13 +86,14 @@ func main() {
 	flag.StringVar(&config.AgentImageName, "agent-image-name",
 		config.AgentImageName,
 		"The name of the addon agent's image")
-	flag.StringVar(&config.AddonInstallNamespace, "agent-install-namespace", config.DefaultAddonInstallNamespace,
-		"The target namespace to install the addon agents.")
+	// This is deprecated.
 	flag.BoolVar(
 		&agentInstallAll, "agent-install-all", false,
 		"Configure the install strategy of agent on managed clusters. "+
 			"Enabling this will automatically install agent on all managed cluster.")
 	flag.BoolVar(&enableKubeApiProxy, "enable-kube-api-proxy", true, "Enable proxy to agent kube-apiserver")
+	flag.StringVar(&config.DefaultAddonInstallNamespace, "agent-install-namespace", config.DefaultAddonInstallNamespace,
+		"The default namespace to install the addon agents.")
 
 	flag.Parse()
 
@@ -186,7 +187,6 @@ func main() {
 		supportsV1CSR,
 		mgr.GetClient(),
 		nativeClient,
-		agentInstallAll,
 		enableKubeApiProxy,
 		addonClient,
 	)

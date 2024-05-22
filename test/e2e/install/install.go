@@ -97,6 +97,7 @@ var _ = Describe("Basic install Test",
 							NodeSelector: nodeSelector,
 							Tolerations:  tolerations,
 						},
+						AgentInstallNamespace: config.DefaultAddonInstallNamespace,
 					},
 				})
 			}).WithTimeout(time.Minute).ShouldNot(HaveOccurred())
@@ -152,7 +153,7 @@ var _ = Describe("Basic install Test",
 			Eventually(func() error {
 				deploy := &appsv1.Deployment{}
 				if err := c.Get(context.TODO(), types.NamespacedName{
-					Namespace: config.AddonInstallNamespace,
+					Namespace: config.DefaultAddonInstallNamespace,
 					Name:      "cluster-proxy-proxy-agent",
 				}, deploy); err != nil {
 					return err
@@ -216,7 +217,7 @@ var _ = Describe("Basic install Test",
 
 				proxyAgentDeploy := &appsv1.Deployment{}
 				err = c.Get(context.TODO(), types.NamespacedName{
-					Namespace: config.AddonInstallNamespace,
+					Namespace: config.DefaultAddonInstallNamespace,
 					Name:      proxyConfiguration.Name + "-" + common.ComponentNameProxyAgent,
 				}, proxyAgentDeploy)
 				if err != nil {
@@ -237,7 +238,7 @@ func waitAgentReady(proxyConfiguration *proxyv1alpha1.ManagedProxyConfiguration,
 	Eventually(
 		func() int {
 			podList, err := client.CoreV1().
-				Pods(config.AddonInstallNamespace).
+				Pods(config.DefaultAddonInstallNamespace).
 				List(context.TODO(), metav1.ListOptions{
 					LabelSelector: common.LabelKeyComponentName + "=" + common.ComponentNameProxyAgent,
 				})
