@@ -204,6 +204,7 @@ func main() {
 	defer cancel()
 	go nativeInformer.Start(ctx.Done())
 	go func() {
+		<-mgr.Elected()
 		if err := addonManager.Start(ctx); err != nil {
 			setupLog.Error(err, "unable to start addon manager")
 			os.Exit(1)
