@@ -23,7 +23,6 @@ spec:
           args:
             - --leader-elect=true
             - --signer-secret-namespace={{ .Release.Namespace }}
-            - --agent-install-all=true
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
