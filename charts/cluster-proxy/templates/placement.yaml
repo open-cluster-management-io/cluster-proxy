@@ -1,0 +1,10 @@
+{{- if not .Values.installByPlacement.placementName }}
+apiVersion: cluster.open-cluster-management.io/v1beta1
+kind: Placement
+metadata:
+  name:  cluster-proxy-placement
+  namespace:  {{ .Release.Namespace }}
+spec:
+  clusterSets:
+    - global
+{{- end }}
