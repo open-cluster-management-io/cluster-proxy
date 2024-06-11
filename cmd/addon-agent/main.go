@@ -91,6 +91,7 @@ func main() {
 	if err != nil {
 		klog.Fatalf("failed create certificates checker: %v", err)
 	}
+	cc.SetReload(true)
 
 	go serveHealthProbes(ctx.Done(), ":8888", map[string]healthz.Checker{
 		"certificates": cc.Check,
