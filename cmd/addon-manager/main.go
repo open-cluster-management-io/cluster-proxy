@@ -57,9 +57,9 @@ var (
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
-	utilruntime.Must(addonv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(addonv1alpha1.Install(scheme))
 	utilruntime.Must(proxyv1alpha1.AddToScheme(scheme))
-	utilruntime.Must(clusterv1beta2.AddToScheme(scheme))
+	utilruntime.Must(clusterv1beta2.Install(scheme))
 	//+kubebuilder:scaffold:scheme
 }
 
@@ -68,7 +68,6 @@ func main() {
 	var enableLeaderElection bool
 	var probeAddr string
 	var signerSecretNamespace, signerSecretName string
-	var agentInstallAll bool
 	var enableKubeApiProxy bool
 
 	logger := textlogger.NewLogger(textlogger.NewConfig())
@@ -86,11 +85,6 @@ func main() {
 	flag.StringVar(&config.AgentImageName, "agent-image-name",
 		config.AgentImageName,
 		"The name of the addon agent's image")
-	// This is deprecated.
-	flag.BoolVar(
-		&agentInstallAll, "agent-install-all", false,
-		"Configure the install strategy of agent on managed clusters. "+
-			"Enabling this will automatically install agent on all managed cluster.")
 	flag.BoolVar(&enableKubeApiProxy, "enable-kube-api-proxy", true, "Enable proxy to agent kube-apiserver")
 	flag.StringVar(&config.DefaultAddonInstallNamespace, "agent-install-namespace", config.DefaultAddonInstallNamespace,
 		"The default namespace to install the addon agents.")
