@@ -55,6 +55,14 @@ spec:
             privileged: false
             runAsNonRoot: true
             readOnlyRootFilesystem: true
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              scheme: HTTP
+              port: 8888
+            initialDelaySeconds: 10
+            failureThreshold: 1
+            periodSeconds: 10
           env:
             {{- if .Values.proxyConfig.HTTP_PROXY }}
             - name: HTTP_PROXY
@@ -95,14 +103,6 @@ spec:
             privileged: false
             runAsNonRoot: true
             readOnlyRootFilesystem: true
-          livenessProbe:
-            httpGet:
-              path: /healthz
-              scheme: HTTP
-              port: 8888
-            initialDelaySeconds: 10
-            failureThreshold: 3
-            periodSeconds: 10
           volumeMounts:
             - name: hub-kubeconfig
               mountPath: /etc/kubeconfig/
