@@ -28,3 +28,5 @@ cluster-proxy-*.tgz
 /testbin
 
 join.sh
+
+vendor/*
