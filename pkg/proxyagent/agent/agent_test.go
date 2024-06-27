@@ -465,6 +465,8 @@ func TestNewAgentAddon(t *testing.T) {
 		clusterName,                 // cluster service
 		addOnName,                   // namespace
 		"cluster-proxy",             // service account
+		"cluster-proxy-service-proxy-server-certificates",
+		"cluster-proxy-service-proxy",
 	}
 
 	expectedManifestNamesWithoutClusterService := []string{
@@ -474,6 +476,8 @@ func TestNewAgentAddon(t *testing.T) {
 		"cluster-proxy-ca",          // ca
 		addOnName,                   // namespace
 		"cluster-proxy",             // service account
+		"cluster-proxy-service-proxy-server-certificates",
+		"cluster-proxy-service-proxy",
 	}
 
 	cases := []struct {
@@ -878,6 +882,18 @@ func TestNewAgentAddon(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			// add service-proxy secret into kubeObjects
+			c.kubeObjs = append(c.kubeObjs, &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "cluster-proxy-service-proxy-server-cert",
+					Namespace: "test",
+				},
+				Data: map[string][]byte{
+					"tls.crt": []byte("testcrt"),
+					"tls.key": []byte("testkey"),
+				},
+			})
+
 			fakeKubeClient := fakekube.NewSimpleClientset(c.kubeObjs...)
 			var fakeRuntimeClient runtimeclient.Client
 			if c.managedProxyConfig == nil {

@@ -142,6 +142,7 @@ func NewAgentAddon(
 		).
 		WithGetValuesFuncs(
 			GetClusterProxyValueFunc(runtimeClient, nativeClient, signerNamespace, caCertData, v1CSRSupported, enableKubeApiProxy),
+			GetClusterProxyValueStolostronFunc(runtimeClient, nativeClient, signerNamespace),
 			addonfactory.GetAddOnDeploymentConfigValues(
 				utils.NewAddOnDeploymentConfigGetter(addonClient),
 				toAgentAddOnChartValues(caCertData),
