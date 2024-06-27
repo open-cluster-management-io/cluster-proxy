@@ -178,6 +178,64 @@ func TestFilterMPSR(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "filter out the resolver match other managed cluster set",
+			resolvers: []proxyv1alpha1.ManagedProxyServiceResolver{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "resolver-1",
+					},
+					Spec: proxyv1alpha1.ManagedProxyServiceResolverSpec{
+						ManagedClusterSelector: proxyv1alpha1.ManagedClusterSelector{
+							Type: proxyv1alpha1.ManagedClusterSelectorTypeClusterSet,
+							ManagedClusterSet: &proxyv1alpha1.ManagedClusterSet{
+								Name: "set-1",
+							},
+						},
+						ServiceSelector: proxyv1alpha1.ServiceSelector{
+							Type: proxyv1alpha1.ServiceSelectorTypeServiceRef,
+							ServiceRef: &proxyv1alpha1.ServiceRef{
+								Name:      "service-1",
+								Namespace: "ns-1",
+							},
+						},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "resolver-2",
+					},
+					Spec: proxyv1alpha1.ManagedProxyServiceResolverSpec{
+						ManagedClusterSelector: proxyv1alpha1.ManagedClusterSelector{
+							Type: "invalid",
+							ManagedClusterSet: &proxyv1alpha1.ManagedClusterSet{
+								Name: "set-1",
+							},
+						},
+						ServiceSelector: proxyv1alpha1.ServiceSelector{
+							Type: proxyv1alpha1.ServiceSelectorTypeServiceRef,
+							ServiceRef: &proxyv1alpha1.ServiceRef{
+								Name:      "service-2",
+								Namespace: "ns-2",
+							},
+						},
+					},
+				},
+			},
+			mcsMap: map[string]clusterv1beta2.ManagedClusterSet{
+				"set-1": {
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "set-1",
+					},
+				},
+			},
+			expected: []serviceToExpose{
+				{
+					Host:         util.GenerateServiceURL("cluster1", "ns-1", "service-1"),
+					ExternalName: "service-1.ns-1",
+				},
+			},
+		},
 	}
 
 	for _, testcase := range testcases {
