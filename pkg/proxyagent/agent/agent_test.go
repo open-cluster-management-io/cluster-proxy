@@ -811,8 +811,67 @@ func TestNewAgentAddon(t *testing.T) {
 			enableKubeApiProxy: true,
 			verifyManifests: func(t *testing.T, manifests []runtime.Object) {
 				assert.Len(t, manifests, len(expectedManifestNames))
-				expectedManifestNames[5] = "addon-test"
+				newexpectedManifestNames := []string{}
+				newexpectedManifestNames = append(newexpectedManifestNames, expectedManifestNames...)
+				newexpectedManifestNames[5] = "addon-test"
+				assert.ElementsMatch(t, newexpectedManifestNames, manifestNames(manifests))
+			},
+		},
+		{
+			name:    "with addon deployment config using customized variables",
+			cluster: newCluster(clusterName, true),
+			addon: func() *addonv1alpha1.ManagedClusterAddOn {
+				addOn := newAddOn(addOnName, clusterName)
+				addOn.Status.ConfigReferences = []addonv1alpha1.ConfigReference{
+					newManagedProxyConfigReference(managedProxyConfigName),
+					newAddOndDeploymentConfigReference(addOndDeployConfigName, clusterName),
+				}
+				return addOn
+			}(),
+			managedProxyConfig: newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypePortForward),
+			addOndDeploymentConfigs: []runtime.Object{
+				func() *addonv1alpha1.AddOnDeploymentConfig {
+					config := newAddOnDeploymentConfig(addOndDeployConfigName, clusterName)
+					config.Spec.CustomizedVariables = []addonv1alpha1.CustomizedVariable{
+						{
+							Name:  "replicas",
+							Value: "10",
+						},
+					}
+					return config
+				}(),
+			},
+			v1CSRSupported:     true,
+			enableKubeApiProxy: true,
+			verifyManifests: func(t *testing.T, manifests []runtime.Object) {
+				assert.Len(t, manifests, len(expectedManifestNames))
 				assert.ElementsMatch(t, expectedManifestNames, manifestNames(manifests))
+				agentDeploy := getAgentDeployment(manifests)
+				assert.NotNil(t, agentDeploy)
+				assert.Equal(t, int32(10), *agentDeploy.Spec.Replicas)
+			},
+		},
+		{
+			name:    "with addon deployment config using a customized serviceDomain",
+			cluster: newCluster(clusterName, true),
+			addon: func() *addonv1alpha1.ManagedClusterAddOn {
+				addOn := newAddOn(addOnName, clusterName)
+				addOn.Status.ConfigReferences = []addonv1alpha1.ConfigReference{
+					newManagedProxyConfigReference(managedProxyConfigName),
+					newAddOndDeploymentConfigReference(addOndDeployConfigName, clusterName),
+				}
+				return addOn
+			}(),
+			managedProxyConfig:      newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypePortForward),
+			addOndDeploymentConfigs: []runtime.Object{newAddOnDeploymentConfigWithCustomizedServiceDomain(addOndDeployConfigName, clusterName, "svc.test.com")},
+			v1CSRSupported:          true,
+			enableKubeApiProxy:      true,
+			verifyManifests: func(t *testing.T, manifests []runtime.Object) {
+				assert.Len(t, manifests, len(expectedManifestNames))
+				assert.ElementsMatch(t, expectedManifestNames, manifestNames(manifests))
+				externalNameService := getKubeAPIServerExternalNameService(manifests)
+				assert.NotNil(t, externalNameService)
+				assert.Equal(t, "kubernetes.default.svc.test.com", externalNameService.Spec.ExternalName)
 			},
 		},
 	}
