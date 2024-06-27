@@ -422,7 +422,7 @@ func TestNewAgentAddon(t *testing.T) {
 		name                    string
 		cluster                 *clusterv1.ManagedCluster
 		addon                   *addonv1alpha1.ManagedClusterAddOn
-		managedProxyConfigs     []runtimeclient.Object
+		managedProxyConfig      runtimeclient.Object
 		addOndDeploymentConfigs []runtime.Object
 		kubeObjs                []runtime.Object
 		v1CSRSupported          bool
@@ -433,11 +433,10 @@ func TestNewAgentAddon(t *testing.T) {
 		{
 			name:                    "without default config",
 			addon:                   newAddOn(addOnName, clusterName),
-			managedProxyConfigs:     []runtimeclient.Object{},
 			addOndDeploymentConfigs: []runtime.Object{},
 			kubeObjs:                []runtime.Object{},
 			enableKubeApiProxy:      true,
-			expectedErrorMsg:        "unexpected managed proxy configurations: []",
+			expectedErrorMsg:        "managedproxyconfigurations.proxy.open-cluster-management.io \"cluster-proxy\" not found",
 			verifyManifests:         func(t *testing.T, manifests []runtime.Object) {},
 		},
 		{
@@ -447,11 +446,10 @@ func TestNewAgentAddon(t *testing.T) {
 				addOn.Status.ConfigReferences = []addonv1alpha1.ConfigReference{newManagedProxyConfigReference("none")}
 				return addOn
 			}(),
-			managedProxyConfigs:     []runtimeclient.Object{},
 			addOndDeploymentConfigs: []runtime.Object{},
 			kubeObjs:                []runtime.Object{},
 			enableKubeApiProxy:      true,
-			expectedErrorMsg:        "managedproxyconfigurations.proxy.open-cluster-management.io \"none\" not found",
+			expectedErrorMsg:        "managedproxyconfigurations.proxy.open-cluster-management.io \"cluster-proxy\" not found",
 			verifyManifests:         func(t *testing.T, manifests []runtime.Object) {},
 		},
 		{
@@ -461,7 +459,7 @@ func TestNewAgentAddon(t *testing.T) {
 				addOn.Status.ConfigReferences = []addonv1alpha1.ConfigReference{newManagedProxyConfigReference(managedProxyConfigName)}
 				return addOn
 			}(),
-			managedProxyConfigs:     []runtimeclient.Object{newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypeLoadBalancerService)},
+			managedProxyConfig:      newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypeLoadBalancerService),
 			addOndDeploymentConfigs: []runtime.Object{},
 			kubeObjs:                []runtime.Object{},
 			enableKubeApiProxy:      true,
@@ -475,7 +473,7 @@ func TestNewAgentAddon(t *testing.T) {
 				addOn.Status.ConfigReferences = []addonv1alpha1.ConfigReference{newManagedProxyConfigReference(managedProxyConfigName)}
 				return addOn
 			}(),
-			managedProxyConfigs:     []runtimeclient.Object{newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypeLoadBalancerService)},
+			managedProxyConfig:      newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypeLoadBalancerService),
 			addOndDeploymentConfigs: []runtime.Object{},
 			kubeObjs:                []runtime.Object{newLoadBalancerService("")},
 			enableKubeApiProxy:      true,
@@ -490,7 +488,7 @@ func TestNewAgentAddon(t *testing.T) {
 				addOn.Status.ConfigReferences = []addonv1alpha1.ConfigReference{newManagedProxyConfigReference(managedProxyConfigName)}
 				return addOn
 			}(),
-			managedProxyConfigs:     []runtimeclient.Object{newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypeLoadBalancerService)},
+			managedProxyConfig:      newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypeLoadBalancerService),
 			addOndDeploymentConfigs: []runtime.Object{},
 			kubeObjs:                []runtime.Object{newLoadBalancerService("1.2.3.4")},
 			v1CSRSupported:          true,
@@ -511,7 +509,7 @@ func TestNewAgentAddon(t *testing.T) {
 				addOn.Status.ConfigReferences = []addonv1alpha1.ConfigReference{newManagedProxyConfigReference(managedProxyConfigName)}
 				return addOn
 			}(),
-			managedProxyConfigs:     []runtimeclient.Object{newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypeLoadBalancerService)},
+			managedProxyConfig:      newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypeLoadBalancerService),
 			addOndDeploymentConfigs: []runtime.Object{},
 			kubeObjs:                []runtime.Object{newLoadBalancerService("1.2.3.4"), newAgentClientSecret()},
 			enableKubeApiProxy:      true,
@@ -529,7 +527,7 @@ func TestNewAgentAddon(t *testing.T) {
 				addOn.Status.ConfigReferences = []addonv1alpha1.ConfigReference{newManagedProxyConfigReference(managedProxyConfigName)}
 				return addOn
 			}(),
-			managedProxyConfigs:     []runtimeclient.Object{newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypeHostname)},
+			managedProxyConfig:      newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypeHostname),
 			addOndDeploymentConfigs: []runtime.Object{},
 			kubeObjs:                []runtime.Object{},
 			v1CSRSupported:          true,
@@ -550,7 +548,7 @@ func TestNewAgentAddon(t *testing.T) {
 				addOn.Status.ConfigReferences = []addonv1alpha1.ConfigReference{newManagedProxyConfigReference(managedProxyConfigName)}
 				return addOn
 			}(),
-			managedProxyConfigs:     []runtimeclient.Object{setProxyAgentReplicas(newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypeHostname), 2)},
+			managedProxyConfig:      setProxyAgentReplicas(newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypeHostname), 2),
 			addOndDeploymentConfigs: []runtime.Object{},
 			kubeObjs:                []runtime.Object{},
 			v1CSRSupported:          true,
@@ -571,7 +569,7 @@ func TestNewAgentAddon(t *testing.T) {
 				addOn.Status.ConfigReferences = []addonv1alpha1.ConfigReference{newManagedProxyConfigReference(managedProxyConfigName)}
 				return addOn
 			}(),
-			managedProxyConfigs:     []runtimeclient.Object{newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypePortForward)},
+			managedProxyConfig:      newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypePortForward),
 			addOndDeploymentConfigs: []runtime.Object{},
 			kubeObjs:                []runtime.Object{},
 			v1CSRSupported:          true,
@@ -595,7 +593,7 @@ func TestNewAgentAddon(t *testing.T) {
 				}
 				return addOn
 			}(),
-			managedProxyConfigs:     []runtimeclient.Object{newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypePortForward)},
+			managedProxyConfig:      newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypePortForward),
 			addOndDeploymentConfigs: []runtime.Object{newAddOnDeploymentConfig(addOndDeployConfigName, clusterName)},
 			v1CSRSupported:          true,
 			enableKubeApiProxy:      true,
@@ -632,7 +630,7 @@ func TestNewAgentAddon(t *testing.T) {
 				}
 				return addOn
 			}(),
-			managedProxyConfigs:     []runtimeclient.Object{newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypePortForward)},
+			managedProxyConfig:      newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypePortForward),
 			addOndDeploymentConfigs: []runtime.Object{newAddOnDeploymentConfigWithCustomizedServiceDomain(addOndDeployConfigName, clusterName, "svc.test.com")},
 			v1CSRSupported:          true,
 			enableKubeApiProxy:      true,
@@ -655,7 +653,7 @@ func TestNewAgentAddon(t *testing.T) {
 				}
 				return addOn
 			}(),
-			managedProxyConfigs:     []runtimeclient.Object{newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypePortForward)},
+			managedProxyConfig:      newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypePortForward),
 			addOndDeploymentConfigs: []runtime.Object{newAddOnDeploymentConfigWithCustomizedServiceDomain(addOndDeployConfigName, clusterName, "svc.test.com")},
 			v1CSRSupported:          true,
 			enableKubeApiProxy:      false,
@@ -676,7 +674,7 @@ func TestNewAgentAddon(t *testing.T) {
 				}
 				return addOn
 			}(),
-			managedProxyConfigs:     []runtimeclient.Object{newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypePortForward)},
+			managedProxyConfig:      newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypePortForward),
 			addOndDeploymentConfigs: []runtime.Object{newAddOnDeploymentConfigWithHttpsProxy(addOndDeployConfigName, clusterName)},
 			v1CSRSupported:          true,
 			enableKubeApiProxy:      true,
@@ -710,7 +708,7 @@ func TestNewAgentAddon(t *testing.T) {
 				}
 				return addOn
 			}(),
-			managedProxyConfigs:     []runtimeclient.Object{newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypePortForward)},
+			managedProxyConfig:      newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypePortForward),
 			addOndDeploymentConfigs: []runtime.Object{newAddOnDeploymentConfigWithHttpProxy(addOndDeployConfigName, clusterName)},
 			v1CSRSupported:          true,
 			enableKubeApiProxy:      true,
@@ -744,7 +742,7 @@ func TestNewAgentAddon(t *testing.T) {
 				}
 				return addOn
 			}(),
-			managedProxyConfigs: []runtimeclient.Object{newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypePortForward)},
+			managedProxyConfig: newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypePortForward),
 			addOndDeploymentConfigs: []runtime.Object{
 				func() *addonv1alpha1.AddOnDeploymentConfig {
 					config := newAddOnDeploymentConfig(addOndDeployConfigName, clusterName)
@@ -764,7 +762,12 @@ func TestNewAgentAddon(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			fakeKubeClient := fakekube.NewSimpleClientset(c.kubeObjs...)
-			fakeRuntimeClient := fakeruntime.NewClientBuilder().WithObjects(c.managedProxyConfigs...).Build()
+			var fakeRuntimeClient runtimeclient.Client
+			if c.managedProxyConfig == nil {
+				fakeRuntimeClient = fakeruntime.NewClientBuilder().Build()
+			} else {
+				fakeRuntimeClient = fakeruntime.NewClientBuilder().WithObjects(c.managedProxyConfig).Build()
+			}
 			fakeAddonClient := fakeaddon.NewSimpleClientset(c.addOndDeploymentConfigs...)
 
 			agentAddOn, err := NewAgentAddon(

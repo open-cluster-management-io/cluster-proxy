@@ -40,6 +40,8 @@ import (
 var FS embed.FS
 
 const (
+	ManagedClusterConfigurationName = "cluster-proxy"
+
 	ProxyAgentSignerName = "open-cluster-management.io/proxy-agent-signer"
 
 	// serviceDomain must added because go dns client won't recursivly search CNAME.
@@ -175,23 +177,9 @@ func GetClusterProxyValueFunc(
 ) addonfactory.GetValuesFunc {
 	return func(cluster *clusterv1.ManagedCluster,
 		addon *addonv1alpha1.ManagedClusterAddOn) (addonfactory.Values, error) {
-
-		managedProxyConfigurations := []string{}
-		for _, configReference := range addon.Status.ConfigReferences {
-			if config.IsManagedProxyConfiguration(configReference.ConfigGroupResource) && configReference.DesiredConfig != nil {
-				managedProxyConfigurations = append(managedProxyConfigurations, configReference.DesiredConfig.Name)
-			}
-		}
-
-		// only handle there is only one managed proxy configuration for one addon
-		// TODO may consider to handle multiple managed proxy configurations for one addon
-		if len(managedProxyConfigurations) != 1 {
-			return nil, fmt.Errorf("unexpected managed proxy configurations: %v", managedProxyConfigurations)
-		}
-
 		proxyConfig := &proxyv1alpha1.ManagedProxyConfiguration{}
 		if err := runtimeClient.Get(context.TODO(), types.NamespacedName{
-			Name: managedProxyConfigurations[0],
+			Name: ManagedClusterConfigurationName,
 		}, proxyConfig); err != nil {
 			return nil, err
 		}
