@@ -1,10 +1,10 @@
 # Build the manager binary
-FROM golang:1.21 as builder
+FROM golang:1.22 as builder
 
 WORKDIR /workspace
 
-ARG APISERVER_NETWORK_PROXY_VERSION=0.29.0
-ARG KUBECTL_VERSION=v1.23.1
+ARG APISERVER_NETWORK_PROXY_VERSION=0.30.2
+ARG KUBECTL_VERSION=v1.30.2
 ARG ADDON_AGENT_IMAGE_NAME
 
 # Build Apiserver-network-proxy binaries
