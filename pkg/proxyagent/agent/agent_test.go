@@ -699,7 +699,7 @@ func TestNewAgentAddon(t *testing.T) {
 			verifyManifests: func(t *testing.T, manifests []runtime.Object) {
 				assert.Len(t, manifests, len(expectedManifestNames))
 				assert.ElementsMatch(t, expectedManifestNames, manifestNames(manifests))
-				externalNameService := getKubeAPIServerExternalNameService(manifests)
+				externalNameService := getKubeAPIServerExternalNameService(manifests, clusterName)
 				assert.NotNil(t, externalNameService)
 				assert.Equal(t, "kubernetes.default.svc.test.com", externalNameService.Spec.ExternalName)
 			},
@@ -873,7 +873,7 @@ func TestNewAgentAddon(t *testing.T) {
 			verifyManifests: func(t *testing.T, manifests []runtime.Object) {
 				assert.Len(t, manifests, len(expectedManifestNames))
 				assert.ElementsMatch(t, expectedManifestNames, manifestNames(manifests))
-				externalNameService := getKubeAPIServerExternalNameService(manifests)
+				externalNameService := getKubeAPIServerExternalNameService(manifests, clusterName)
 				assert.NotNil(t, externalNameService)
 				assert.Equal(t, "kubernetes.default.svc.test.com", externalNameService.Spec.ExternalName)
 			},
@@ -920,7 +920,6 @@ func TestNewAgentAddon(t *testing.T) {
 				return
 			}
 			assert.NoError(t, err)
-
 			c.verifyManifests(t, manifests)
 		})
 	}
@@ -1218,11 +1217,14 @@ func getAgentDeployment(manifests []runtime.Object) *appsv1.Deployment {
 	return nil
 }
 
-func getKubeAPIServerExternalNameService(manifests []runtime.Object) *corev1.Service {
+func getKubeAPIServerExternalNameService(manifests []runtime.Object, clusterName string) *corev1.Service {
 	for _, manifest := range manifests {
 		switch obj := manifest.(type) {
 		case *corev1.Service:
-			return obj
+			// As the cluster-service.yaml shows, the service name is cluster name.
+			if obj.Name == clusterName {
+				return obj
+			}
 		}
 	}
 

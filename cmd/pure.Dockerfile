@@ -16,7 +16,7 @@ ENV USER_UID=10001
 WORKDIR /
 COPY --from=builder /workspace/agent /workspace/manager ./
 
-RUN microdnf update && \
+RUN microdnf update -y && \
     microdnf clean all
 
 USER ${USER_UID}
