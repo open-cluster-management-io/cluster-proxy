@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/stolostron/cluster-lifecycle-api/constants"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
 )
@@ -22,22 +23,27 @@ func TestGetNodeSelector(t *testing.T) {
 			expect:  map[string]string{},
 		},
 		{
-			name:    "managedCluster is local-cluster, but no annotation, expect empty nodeSelector",
-			cluster: newCluster("local-cluster", false),
-			expect:  map[string]string{},
+			name: "managedCluster is local-cluster, but no annotation, expect empty nodeSelector",
+			cluster: newClusterWithLabelsAnnotations("cluster", false,
+				map[string]string{constants.SelfManagedClusterLabelKey: "true"}, nil),
+			expect: map[string]string{},
 		},
 		{
 			name: "managedCluster is local-cluster with incorrect annotation, expect err",
-			cluster: newClusterWithAnnotations("local-cluster", false, map[string]string{
-				annotationNodeSelector: "kubernetes.io/os=linux",
-			}),
+			cluster: newClusterWithLabelsAnnotations("cluster", false,
+				map[string]string{constants.SelfManagedClusterLabelKey: "true"},
+				map[string]string{
+					annotationNodeSelector: "kubernetes.io/os=linux",
+				}),
 			err: fmt.Errorf("incorrect annotation"),
 		},
 		{
 			name: "managedCluster is local-cluster with correct annotation, expect nodeSelector",
-			cluster: newClusterWithAnnotations("local-cluster", false, map[string]string{
-				annotationNodeSelector: `{"kubernetes.io/os":"linux"}`,
-			}),
+			cluster: newClusterWithLabelsAnnotations("local-cluster", false,
+				map[string]string{constants.SelfManagedClusterLabelKey: "true"},
+				map[string]string{
+					annotationNodeSelector: `{"kubernetes.io/os":"linux"}`,
+				}),
 			expect: map[string]string{
 				"kubernetes.io/os": "linux",
 			},
@@ -65,10 +71,11 @@ func TestGetNodeSelector(t *testing.T) {
 	}
 }
 
-func newClusterWithAnnotations(name string, accepted bool, annotations map[string]string) *clusterv1.ManagedCluster {
+func newClusterWithLabelsAnnotations(name string, accepted bool, labels map[string]string, annotations map[string]string) *clusterv1.ManagedCluster {
 	return &clusterv1.ManagedCluster{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        name,
+			Labels:      labels,
 			Annotations: annotations,
 		},
 		Spec: clusterv1.ManagedClusterSpec{

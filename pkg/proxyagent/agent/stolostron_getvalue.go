@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/stolostron/cluster-lifecycle-api/helpers/imageregistry"
+	"github.com/stolostron/cluster-lifecycle-api/helpers/localcluster"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
@@ -89,8 +90,7 @@ func GetClusterProxyValueStolostronFunc(
 
 func getNodeSelector(managedCluster *clusterv1.ManagedCluster) (map[string]string, error) {
 	nodeSelector := map[string]string{}
-
-	if managedCluster.GetName() == "local-cluster" {
+	if localcluster.IsClusterSelfManaged(managedCluster) {
 		annotations := managedCluster.GetAnnotations()
 		if nodeSelectorString, ok := annotations[annotationNodeSelector]; ok {
 			if err := json.Unmarshal([]byte(nodeSelectorString), &nodeSelector); err != nil {
