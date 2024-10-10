@@ -5,7 +5,7 @@ go 1.22.0
 require (
 	github.com/onsi/ginkgo/v2 v2.17.1
 	github.com/onsi/gomega v1.32.0
-	github.com/openshift/library-go v0.0.0-20240304201338-a2ff756d8fc2
+	github.com/openshift/library-go v0.0.0-20240621150525-4bb4238aef81
 	github.com/pkg/errors v0.9.1
 	github.com/stolostron/cluster-lifecycle-api v0.0.0-20240813023109-42b5c115d0a3
 	github.com/stretchr/testify v1.9.0
@@ -15,9 +15,9 @@ require (
 	k8s.io/client-go v0.30.2
 	k8s.io/klog/v2 v2.120.1
 	k8s.io/utils v0.0.0-20240310230437-4693a0247e57
-	open-cluster-management.io/addon-framework v0.10.0
-	open-cluster-management.io/api v0.14.1-0.20240627145512-bd6f2229b53c
-	open-cluster-management.io/sdk-go v0.13.1-0.20240416062924-20307e6fe090
+	open-cluster-management.io/addon-framework v0.10.1-0.20241009100235-11aa520f541f
+	open-cluster-management.io/api v0.14.1-0.20241008081048-f6c658202790
+	open-cluster-management.io/sdk-go v0.14.1-0.20240628095929-9ffb1b19e566
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.30.2
 	sigs.k8s.io/controller-runtime v0.18.4
 )
@@ -94,8 +94,8 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	helm.sh/helm/v3 v3.14.2 // indirect
-	k8s.io/apiextensions-apiserver v0.30.1 // indirect
-	k8s.io/apiserver v0.30.1 // indirect
+	k8s.io/apiextensions-apiserver v0.30.2 // indirect
+	k8s.io/apiserver v0.30.2 // indirect
 	k8s.io/component-base v0.30.2 // indirect
 	k8s.io/kube-openapi v0.0.0-20240228011516-70dd3763d340 // indirect
 	sigs.k8s.io/json v0.0.0-20221116044647-bc3834ca7abd // indirect
