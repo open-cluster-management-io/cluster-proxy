@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"open-cluster-management.io/addon-framework/pkg/certrotation"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 	"open-cluster-management.io/cluster-proxy/pkg/common"
 	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/operator/authentication/selfsigned"
+	"open-cluster-management.io/sdk-go/pkg/certrotation"
 
 	"github.com/openshift/library-go/pkg/crypto"
 	"github.com/openshift/library-go/pkg/operator/events"

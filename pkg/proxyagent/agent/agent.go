@@ -147,6 +147,7 @@ func NewAgentAddon(
 				toAgentAddOnChartValues(caCertData),
 			),
 		).
+		WithConfigCheckEnabledOption().
 		WithAgentInstallNamespace(agentInstallNamespaceFunc(utils.NewAddOnDeploymentConfigGetter(addonClient)))
 
 	return agentFactory.BuildHelmAgentAddon()
