@@ -1,4 +1,3 @@
-
 # Image URL to use all building/pushing image targets
 IMG ?= controller:latest
 IMAGE_REGISTRY_NAME ?= quay.io/open-cluster-management
@@ -112,9 +111,11 @@ client-gen:
  	--versions=open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1
 
 images:
+	git_commit=$$(git rev-parse --short HEAD) && \
 	docker build \
 		-f cmd/Dockerfile \
 		--build-arg ADDON_AGENT_IMAGE_NAME=$(IMAGE_REGISTRY_NAME)/$(IMAGE_NAME):$(IMAGE_TAG) \
+		--build-arg GIT_COMMIT=$$git_commit \
 		-t $(IMAGE_REGISTRY_NAME)/$(IMAGE_NAME):$(IMAGE_TAG) .
 
 ENVTEST_ASSETS_DIR=$(shell pwd)/testbin

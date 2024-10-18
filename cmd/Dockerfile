@@ -6,6 +6,7 @@ WORKDIR /workspace
 ARG APISERVER_NETWORK_PROXY_VERSION=0.30.2
 ARG KUBECTL_VERSION=v1.30.2
 ARG ADDON_AGENT_IMAGE_NAME
+ARG GIT_COMMIT
 
 # Build Apiserver-network-proxy binaries
 RUN wget https://github.com/kubernetes-sigs/apiserver-network-proxy/archive/refs/tags/v${APISERVER_NETWORK_PROXY_VERSION}.tar.gz \
@@ -33,7 +34,8 @@ COPY pkg pkg/
 # Build addons
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o agent cmd/addon-agent/main.go
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a \
-        -ldflags="-X 'open-cluster-management.io/cluster-proxy/pkg/config.AgentImageName=${ADDON_AGENT_IMAGE_NAME}'" \
+        -ldflags="-X 'open-cluster-management.io/cluster-proxy/pkg/config.AgentImageName=${ADDON_AGENT_IMAGE_NAME}' \
+                  -X 'main.gitCommit=${GIT_COMMIT}'" \
         -o manager cmd/addon-manager/main.go
 
 # Use distroless as minimal base image to package the manager binary

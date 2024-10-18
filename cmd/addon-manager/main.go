@@ -19,6 +19,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"os"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -48,6 +49,8 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	//+kubebuilder:scaffold:imports
 )
+
+var gitCommit string
 
 var (
 	scheme   = runtime.NewScheme()
@@ -90,6 +93,8 @@ func main() {
 		"The default namespace to install the addon agents.")
 
 	flag.Parse()
+
+	fmt.Printf("Starting addon-manager. Git commit: %s\n", gitCommit)
 
 	// pipe controller-runtime logs to klog
 	ctrl.SetLogger(logger)
