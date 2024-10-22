@@ -250,6 +250,12 @@ func GetClusterProxyValueFunc(
 			return nil, err
 		}
 
+		// get agent namespace from addon status
+		namespace := config.DefaultAddonInstallNamespace
+		if len(addon.Status.Namespace) > 0 {
+			namespace = addon.Status.Namespace
+		}
+
 		// Get agentIndentifiers and servicesToExpose.
 		// agetnIdentifiers is used in `--agent-identifiers` flag in addon-agent-deployment.yaml.
 		// servicesToExpose defines the services we want to expose to the hub.
@@ -273,16 +279,18 @@ func GetClusterProxyValueFunc(
 			return nil, err
 		}
 
-		servicesToExpose := removeDupAndSortServices(managedProxyServiceResolverToFilterServiceToExpose(serviceResolverList.Items, managedClusterSetMap, cluster.Name))
+		// add service-proxy service into aids
+		// in downstream, we have a service-proxy container bind with service-proxy service, all traffic from the hub first go here and then redirect to another service
+		// so in downstream, we add this special service as one of the agentIdentifiers
+		servicesToExpose := removeDupAndSortServices(append(managedProxyServiceResolverToFilterServiceToExpose(serviceResolverList.Items, managedClusterSetMap, cluster.Name),
+			serviceToExpose{
+				Host:         util.GenerateServiceURL(cluster.Name, namespace, "cluster-proxy-service-proxy"),
+				ExternalName: fmt.Sprintf("%s.%s", "cluster-proxy-service-proxy", namespace),
+			}))
 
 		var aids []string
-		// add default kube-apiserver agentIdentifiers
 
-		// get agent namespace from addon status
-		namespace := config.DefaultAddonInstallNamespace
-		if len(addon.Status.Namespace) > 0 {
-			namespace = addon.Status.Namespace
-		}
+		// add default kube-apiserver agentIdentifiers
 		if enableKubeApiProxy {
 			aids = append(aids, fmt.Sprintf("host=%s", cluster.Name))
 			aids = append(aids, fmt.Sprintf("host=%s.%s", cluster.Name, namespace))
