@@ -118,25 +118,3 @@ jobs:
           draft: true
           prerelease: false
           generate_release_notes: true
-      - name: submit charts to OCM chart repo
-        uses: actions/github-script@v6
-        with:
-          github-token: ${{ secrets.OCM_BOT_PAT }}
-          script: |
-            try {
-              const result = await github.rest.actions.createWorkflowDispatch({
-                owner:          'open-cluster-management-io',
-                repo:           'helm-charts',
-                workflow_id:    'download-chart.yml',
-                ref: 'main',
-                inputs: {
-                  repo:         "${{ github.repository }}",
-                  version:      "${{ needs.env.outputs.TRIMED_RELEASE_VERSION }}",
-                  "chart-name": "${{ env.CHART_NAME }}",
-                },
-              })
-              console.log(result);
-            } catch(error) {
-              console.error(error);
-              core.setFailed(error);
-            }
