@@ -60,7 +60,7 @@ spec:
               scheme: HTTP
               port: 8888
             initialDelaySeconds: 10
-            failureThreshold: 1
+            failureThreshold: 3
             periodSeconds: 10
           env:
             {{- if .Values.proxyConfig.HTTP_PROXY }}
