@@ -1,10 +1,10 @@
-
 # Image URL to use all building/pushing image targets
 IMG ?= controller:latest
 IMAGE_REGISTRY_NAME ?= quay.io/open-cluster-management
 IMAGE_NAME = cluster-proxy
 IMAGE_TAG ?= latest
 E2E_TEST_CLUSTER_NAME ?= loopback
+CONTAINER_ENGINE ?= docker
 # Produce CRDs that work back to Kubernetes 1.11 (no version conversion)
 CRD_OPTIONS ?= "crd:crdVersions={v1},allowDangerousTypes=true,generateEmbeddedObjectMeta=true"
 
@@ -72,10 +72,10 @@ build: generate fmt vet
 	go build -o bin/addon-agent cmd/addon-agent/main.go
 
 docker-build: test ## Build docker image with the manager.
-	docker build -t ${IMG} .
+	$(CONTAINER_ENGINE) build -t ${IMG} .
 
 docker-push: ## Push docker image with the manager.
-	docker push ${IMG}
+	$(CONTAINER_ENGINE) push ${IMG}
 
 ##@ Deployment
 
@@ -112,7 +112,7 @@ client-gen:
  	--versions=open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1
 
 images:
-	docker build \
+	$(CONTAINER_ENGINE) build \
 		-f cmd/Dockerfile \
 		--build-arg ADDON_AGENT_IMAGE_NAME=$(IMAGE_REGISTRY_NAME)/$(IMAGE_NAME):$(IMAGE_TAG) \
 		-t $(IMAGE_REGISTRY_NAME)/$(IMAGE_NAME):$(IMAGE_TAG) .
@@ -133,7 +133,7 @@ test-integration: manifests generate fmt vet
 		go test ./test/integration/... -coverprofile cover.out
 
 e2e-job-image:
-	docker build \
+	$(CONTAINER_ENGINE) build \
 		-f test/e2e/job/Dockerfile \
 		-t $(IMAGE_REGISTRY_NAME)/$(IMAGE_NAME)-e2e-job:$(IMAGE_TAG) .
 
