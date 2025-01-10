@@ -13,8 +13,8 @@ on:
 
 env:
   # Common versions
-  GO_VERSION: '1.22'
-  GO_REQUIRED_MIN_VERSION: ''
+  GO_VERSION: "1.22"
+  GO_REQUIRED_MIN_VERSION: ""
 
 jobs:
   build:
@@ -99,8 +99,8 @@ jobs:
       - name: Create k8s Kind Cluster
         uses: helm/kind-action@v1.2.0
       - name: Prepare OCM testing environment
-        run: | # fixed the OCM to the latest version
-          clusteradm init --bundle-version="latest" --output-join-command-file join.sh --wait
+        run: |
+          clusteradm init --output-join-command-file join.sh --wait
           sh -c "$(cat join.sh) loopback --force-internal-endpoint-lookup"
           clusteradm accept --clusters loopback --wait 30
           kubectl wait --for=condition=ManagedClusterConditionAvailable managedcluster/loopback
