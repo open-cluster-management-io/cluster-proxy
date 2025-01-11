@@ -4,7 +4,7 @@ IMAGE_REGISTRY_NAME ?= quay.io/open-cluster-management
 IMAGE_NAME = cluster-proxy
 IMAGE_TAG ?= latest
 E2E_TEST_CLUSTER_NAME ?= loopback
-CONTAINER_ENGINE ?= docker
+CONTAINER_ENGINE ?= podman
 # Produce CRDs that work back to Kubernetes 1.11 (no version conversion)
 CRD_OPTIONS ?= "crd:crdVersions={v1},allowDangerousTypes=true,generateEmbeddedObjectMeta=true"
 
@@ -118,7 +118,15 @@ images:
 		-t $(IMAGE_REGISTRY_NAME)/$(IMAGE_NAME):$(IMAGE_TAG) .
 
 pure-image:
-	docker build \
+	$(CONTAINER_ENGINE) build \
+		-f cmd/pure.Dockerfile \
+		--build-arg ADDON_AGENT_IMAGE_NAME=$(IMAGE_REGISTRY_NAME)/$(IMAGE_NAME):$(IMAGE_TAG) \
+		-t $(IMAGE_REGISTRY_NAME)/$(IMAGE_NAME):$(IMAGE_TAG) .
+
+pure-image-amd64:
+	$(CONTAINER_ENGINE) buildx build \
+		--platform linux/amd64 \
+		--load \
 		-f cmd/pure.Dockerfile \
 		--build-arg ADDON_AGENT_IMAGE_NAME=$(IMAGE_REGISTRY_NAME)/$(IMAGE_NAME):$(IMAGE_TAG) \
 		-t $(IMAGE_REGISTRY_NAME)/$(IMAGE_NAME):$(IMAGE_TAG) .
