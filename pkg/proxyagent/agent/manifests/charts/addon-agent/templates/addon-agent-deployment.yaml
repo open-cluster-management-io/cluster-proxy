@@ -24,6 +24,10 @@ spec:
         open-cluster-management.io/addon: cluster-proxy
         proxy.open-cluster-management.io/component-name: proxy-agent
     spec:
+      hostAliases:
+      - ip: "127.0.0.1"
+        hostnames:
+        - {{ .Values.serviceProxyHost }}
       serviceAccount: cluster-proxy
       {{- if .Values.tolerations }}
       tolerations: {{ toYaml .Values.tolerations | nindent 8 }}
