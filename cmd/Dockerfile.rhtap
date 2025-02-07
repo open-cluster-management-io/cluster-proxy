@@ -5,9 +5,6 @@ FROM brew.registry.redhat.io/rh-osbs/openshift-golang-builder:rhel_9_1.22 as bui
 WORKDIR /workspace
 COPY . .
 
-# Only added for rhtap Dockerfile to solve build failure
-RUN go mod vendor
-
 # Build addons
 RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -a -o agent cmd/addon-agent/main.go
 RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -a -o manager cmd/addon-manager/main.go
@@ -16,10 +13,16 @@ RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -a -o manager cmd/addon-manag
 FROM registry.access.redhat.com/ubi9/ubi-minimal:latest
 ENV USER_UID=10001
 
+LABEL \
+    name="cluster-proxy" \
+    com.redhat.component="cluster-proxy" \
+    description="A pluggable addon for OCM that enables proxy tunnels between hub and managed clusters using apiserver-network-proxy" \
+    io.k8s.description="Cluster Proxy automates the installation of apiserver-network-proxy on both hub cluster and managed clusters, establishing reverse proxy tunnels to enable cross-VPC service access" \
+    summary="OCM addon that provides secure proxy tunnels between hub and managed clusters" \
+    io.k8s.display-name="Red Hat Advanced Cluster Management Cluster Proxy" \
+    io.openshift.tags="mce acm ocm cluster-proxy"
+
 WORKDIR /
 COPY --from=builder /workspace/agent /workspace/manager ./
-
-RUN microdnf update -y && \
-    microdnf clean all
 
 USER ${USER_UID}
