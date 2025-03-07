@@ -1,4 +1,4 @@
-package main
+package agent
 
 import (
 	"context"
@@ -9,6 +9,8 @@ import (
 	"os"
 	"sync/atomic"
 
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
@@ -21,35 +23,59 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 )
 
-var (
-	hubKubeconfig          string
-	clusterName            string
-	proxyServerNamespace   string
-	enablePortForwardProxy bool
-)
-
 // envKeyPodNamespace represents the environment variable key for the addon agent namespace.
 const envKeyPodNamespace = "POD_NAMESPACE"
 
-func main() {
+func NewAgent() *cobra.Command {
+	agentOpts := NewAgentOptions()
 
+	cmd := &cobra.Command{
+		Use:   "agent",
+		Short: "Start the managed service account addon agent",
+		Run: func(cmd *cobra.Command, args []string) {
+			if err := agentOpts.Run(); err != nil {
+				klog.Fatal(err)
+			}
+		},
+	}
+
+	flags := cmd.Flags()
+	agentOpts.AddFlags(flags)
+
+	return cmd
+}
+
+type AgentOptions struct {
+	HubKubeconfig          string
+	ClusterName            string
+	ProxyServerNamespace   string
+	EnablePortForwardProxy bool
+}
+
+func NewAgentOptions() *AgentOptions {
+	return &AgentOptions{}
+}
+
+func (o *AgentOptions) AddFlags(flags *pflag.FlagSet) {
+	flag.StringVar(&o.HubKubeconfig, "hub-kubeconfig", "",
+		"The kubeconfig to talk to hub cluster")
+	flag.StringVar(&o.ClusterName, "cluster-name", "",
+		"The name of the managed cluster")
+	flag.StringVar(&o.ProxyServerNamespace, "proxy-server-namespace", "open-cluster-management-addon",
+		"The namespace where proxy-server pod lives")
+	flag.BoolVar(&o.EnablePortForwardProxy, "enable-port-forward-proxy", false,
+		"If true, running a local server forwarding tunnel shakes to proxy-server pods")
+}
+
+func (o *AgentOptions) Run() error {
 	logger := textlogger.NewLogger(textlogger.NewConfig())
 	klog.SetOutput(os.Stdout)
 	klog.InitFlags(flag.CommandLine)
-	flag.StringVar(&hubKubeconfig, "hub-kubeconfig", "",
-		"The kubeconfig to talk to hub cluster")
-	flag.StringVar(&clusterName, "cluster-name", "",
-		"The name of the managed cluster")
-	flag.StringVar(&proxyServerNamespace, "proxy-server-namespace", "open-cluster-management-addon",
-		"The namespace where proxy-server pod lives")
-	flag.BoolVar(&enablePortForwardProxy, "enable-port-forward-proxy", false,
-		"If true, running a local server forwarding tunnel shakes to proxy-server pods")
-	flag.Parse()
 
 	// pipe controller-runtime logs to klog
 	ctrl.SetLogger(logger)
 
-	cfg, err := clientcmd.BuildConfigFromFlags("", hubKubeconfig)
+	cfg, err := clientcmd.BuildConfigFromFlags("", o.HubKubeconfig)
 	if err != nil {
 		panic(err)
 	}
@@ -64,19 +90,19 @@ func main() {
 		panic(fmt.Sprintf("Pod namespace is empty, please set the ENV for %s", envKeyPodNamespace))
 	}
 	leaseUpdater := lease.NewLeaseUpdater(spokeClient, common.AddonName, addonAgentNamespace).
-		WithHubLeaseConfig(cfg, clusterName)
+		WithHubLeaseConfig(cfg, o.ClusterName)
 
 	ctx := context.Background()
 
 	readiness := &atomic.Value{}
 	readiness.Store(true)
-	if enablePortForwardProxy {
+	if o.EnablePortForwardProxy {
 		readiness.Store(false)
 		klog.Infof("Running local port-forward proxy")
 		rr := util.NewRoundRobinLocalProxy(
 			cfg,
 			readiness,
-			proxyServerNamespace,
+			o.ProxyServerNamespace,
 			common.LabelKeyComponentName+"="+common.ComponentNameProxyServer,
 			8091,
 		)
@@ -106,6 +132,8 @@ func main() {
 	klog.Infof("Starting lease updater")
 	leaseUpdater.Start(ctx)
 	<-ctx.Done()
+
+	return nil
 }
 
 // serveHealthProbes starts a server to check healthz and readyz probes
