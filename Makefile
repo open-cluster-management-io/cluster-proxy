@@ -56,6 +56,9 @@ fmt: ## Run go fmt against code.
 vet: ## Run go vet against code.
 	go vet ./...
 
+clean: # Remove the binaries
+	rm -rf ./bin/
+
 golint:
 	go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.54.1
 	golangci-lint run --timeout=3m ./...
@@ -68,8 +71,7 @@ test: manifests generate fmt vet ## Run tests.
 ##@ Build
 
 build: generate fmt vet
-	go build -o bin/addon-manager cmd/addon-manager/main.go
-	go build -o bin/addon-agent cmd/addon-agent/main.go
+	go build -a -o bin/clusterproxy cmd/main.go
 
 docker-build: test ## Build docker image with the manager.
 	$(CONTAINER_ENGINE) build -t ${IMG} .

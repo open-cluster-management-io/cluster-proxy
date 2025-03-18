@@ -1,5 +1,5 @@
 # Build the manager binary
-FROM golang:1.22 as builder
+FROM golang:1.23 AS builder
 
 WORKDIR /workspace
 
@@ -31,10 +31,9 @@ COPY cmd/ cmd/
 COPY pkg pkg/
 
 # Build addons
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o agent cmd/addon-agent/main.go
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a \
         -ldflags="-X 'open-cluster-management.io/cluster-proxy/pkg/config.AgentImageName=${ADDON_AGENT_IMAGE_NAME}'" \
-        -o manager cmd/addon-manager/main.go
+        -o clusterproxy cmd/main.go
 
 # Use distroless as minimal base image to package the manager binary
 # Refer to https://github.com/GoogleContainerTools/distroless for more details
@@ -43,5 +42,5 @@ FROM alpine:3.13
 WORKDIR /
 RUN apk add libc6-compat
 COPY --from=builder /workspace/kubectl /workspace/proxy-server /workspace/proxy-agent /workspace/proxy-test-client /workspace/proxy-test-server ./
-COPY --from=builder /workspace/agent /workspace/manager ./
+COPY --from=builder /workspace/clusterproxy ./
 USER 65532:65532
