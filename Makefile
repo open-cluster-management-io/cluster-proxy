@@ -60,7 +60,7 @@ golint:
 	go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 	golangci-lint run --timeout=3m ./...
 
-verify: fmt vet golint
+verify: fmt vet golint ## Run golint against code.
 
 test: manifests generate fmt vet ## Run tests.
 	go test ./pkg/... -coverprofile cover.out
