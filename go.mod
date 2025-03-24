@@ -1,6 +1,6 @@
 module open-cluster-management.io/cluster-proxy
 
-go 1.22.0
+go 1.23.6
 
 require (
 	github.com/onsi/ginkgo/v2 v2.17.1
