@@ -57,7 +57,7 @@ vet: ## Run go vet against code.
 	go vet ./...
 
 golint:
-	go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.54.1
+	go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
 	golangci-lint run --timeout=3m ./...
 
 verify: fmt vet golint
