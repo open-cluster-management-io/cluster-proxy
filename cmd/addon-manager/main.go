@@ -1,12 +1,9 @@
 /*
 Copyright 2021.
-
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
-
     http://www.apache.org/licenses/LICENSE-2.0
-
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -14,18 +11,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package main
+package manager
 
 import (
 	"context"
 	"flag"
 	"os"
-
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/informers"
@@ -56,74 +54,97 @@ var (
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-
 	utilruntime.Must(addonv1alpha1.Install(scheme))
 	utilruntime.Must(proxyv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(clusterv1beta2.Install(scheme))
 	//+kubebuilder:scaffold:scheme
 }
 
-func main() {
-	var metricsAddr string
-	var enableLeaderElection bool
-	var probeAddr string
-	var signerSecretNamespace, signerSecretName string
-	var enableKubeApiProxy bool
+func NewManager() *cobra.Command {
+	managerOpts := NewProxyManagerOptions()
 
-	logger := textlogger.NewLogger(textlogger.NewConfig())
-	klog.SetOutput(os.Stdout)
-	klog.InitFlags(flag.CommandLine)
-	flag.StringVar(&metricsAddr, "metrics-bind-address", ":58080", "The address the metric endpoint binds to.")
-	flag.StringVar(&probeAddr, "health-probe-bind-address", ":58081", "The address the probe endpoint binds to.")
-	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
+	cmd := &cobra.Command{
+		Use:   "manager",
+		Short: "Start the managed service account addon manager",
+		Run: func(cmd *cobra.Command, args []string) {
+			if err := managerOpts.Run(); err != nil {
+				klog.Fatal(err)
+			}
+		},
+	}
+
+	flags := cmd.Flags()
+	managerOpts.AddFlags(flags)
+
+	return cmd
+}
+
+type ProxyManagerOptions struct {
+	MetricsAddr           string
+	EnableLeaderElection  bool
+	ProbeAddr             string
+	SignerSecretNamespace string
+	SignerSecretName      string
+	EnableKubeAPIProxy    bool
+}
+
+func NewProxyManagerOptions() *ProxyManagerOptions {
+	return &ProxyManagerOptions{}
+}
+
+func (o *ProxyManagerOptions) AddFlags(flags *pflag.FlagSet) {
+	flag.StringVar(&o.MetricsAddr, "metrics-bind-address", ":58080", "The address the metric endpoint binds to.")
+	flag.StringVar(&o.ProbeAddr, "health-probe-bind-address", ":58081", "The address the probe endpoint binds to.")
+	flag.BoolVar(&o.EnableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
-	flag.StringVar(&signerSecretNamespace, "signer-secret-namespace", "default",
+	flag.StringVar(&o.SignerSecretNamespace, "signer-secret-namespace", "default",
 		"The namespace of the secret to store the signer CA")
-	flag.StringVar(&signerSecretName, "signer-secret-name", "cluster-proxy-signer",
+	flag.StringVar(&o.SignerSecretName, "signer-secret-name", "cluster-proxy-signer",
 		"The name of the secret to store the signer CA")
+	flag.BoolVar(&o.EnableKubeAPIProxy, "enable-kube-api-proxy", true, "Enable proxy to agent kube-apiserver")
+
 	flag.StringVar(&config.AgentImageName, "agent-image-name",
 		config.AgentImageName,
 		"The name of the addon agent's image")
-	flag.BoolVar(&enableKubeApiProxy, "enable-kube-api-proxy", true, "Enable proxy to agent kube-apiserver")
 	flag.StringVar(&config.DefaultAddonInstallNamespace, "agent-install-namespace", config.DefaultAddonInstallNamespace,
 		"The default namespace to install the addon agents.")
+}
 
-	flag.Parse()
+func (o *ProxyManagerOptions) Run() error {
+	logger := textlogger.NewLogger(textlogger.NewConfig())
+	klog.SetOutput(os.Stdout)
+	klog.InitFlags(flag.CommandLine)
 
 	// pipe controller-runtime logs to klog
 	ctrl.SetLogger(logger)
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
-		Metrics:                metricsserver.Options{BindAddress: metricsAddr},
-		HealthProbeBindAddress: probeAddr,
-		LeaderElection:         enableLeaderElection,
+		Metrics:                metricsserver.Options{BindAddress: o.MetricsAddr},
+		HealthProbeBindAddress: o.ProbeAddr,
+		LeaderElection:         o.EnableLeaderElection,
 		LeaderElectionID:       "cluster-proxy-addon-manager",
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
 		os.Exit(1)
 	}
-
 	nativeClient, err := kubernetes.NewForConfig(mgr.GetConfig())
 	if err != nil {
 		setupLog.Error(err, "unable to set up kubernetes native client")
 		os.Exit(1)
 	}
-
 	addonClient, err := addonclient.NewForConfig(mgr.GetConfig())
 	if err != nil {
 		setupLog.Error(err, "unable to set up ocm addon client")
 		os.Exit(1)
 	}
-
 	supportsV1CSR, supportsV1beta1CSR, err := addonutil.IsCSRSupported(nativeClient)
 	if err != nil {
 		setupLog.Error(err, "unable to detect available CSR API versions")
 		os.Exit(1)
 	}
-
 	if supportsV1CSR {
 		setupLog.Info("V1 CSR API found")
 	} else if supportsV1beta1CSR {
@@ -132,17 +153,15 @@ func main() {
 		setupLog.Error(err, "No supported CSR api found")
 		os.Exit(1)
 	}
-
 	nativeInformer := informers.NewSharedInformerFactoryWithOptions(nativeClient, 0)
 
 	// loading self-signer
 	selfSigner, err := selfsigned.NewSelfSignerFromSecretOrGenerate(
-		nativeClient, signerSecretNamespace, signerSecretName)
+		nativeClient, o.SignerSecretNamespace, o.SignerSecretName)
 	if err != nil {
 		setupLog.Error(err, "failed loading self-signer")
 		os.Exit(1)
 	}
-
 	if err := controllers.RegisterClusterManagementAddonReconciler(
 		mgr,
 		selfSigner,
@@ -153,12 +172,10 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "ClusterManagementAddonReconciler")
 		os.Exit(1)
 	}
-
 	if err := controllers.RegisterServiceResolverReconciler(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ServiceResolverReconciler")
 		os.Exit(1)
 	}
-
 	//+kubebuilder:scaffold:builder
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to set up health check")
@@ -168,7 +185,6 @@ func main() {
 		setupLog.Error(err, "unable to set up ready check")
 		os.Exit(1)
 	}
-
 	addonManager, err := addonmanager.New(mgr.GetConfig())
 	if err != nil {
 		setupLog.Error(err, "unable to set up ready check")
@@ -177,23 +193,21 @@ func main() {
 
 	clusterProxyAddon, err := agent.NewAgentAddon(
 		selfSigner,
-		signerSecretNamespace,
+		o.SignerSecretNamespace,
 		supportsV1CSR,
 		mgr.GetClient(),
 		nativeClient,
-		enableKubeApiProxy,
+		o.EnableKubeAPIProxy,
 		addonClient,
 	)
 	if err != nil {
 		setupLog.Error(err, "unable to instantiate cluster-proxy addon")
 		os.Exit(1)
 	}
-
 	if err := addonManager.AddAgent(clusterProxyAddon); err != nil {
 		setupLog.Error(err, "unable to register cluster-proxy addon")
 		os.Exit(1)
 	}
-
 	ctx, cancel := context.WithCancel(ctrl.SetupSignalHandler())
 	defer cancel()
 	go nativeInformer.Start(ctx.Done())
@@ -209,4 +223,6 @@ func main() {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
+
+	return nil
 }

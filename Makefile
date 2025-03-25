@@ -50,6 +50,9 @@ manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and Cust
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./pkg/apis/..."
 
+clean: # Remove the binaries
+	rm -rf ./bin/
+
 fmt: ## Run go fmt against code.
 	go fmt ./...
 
@@ -70,9 +73,10 @@ test: manifests generate fmt vet ## Run tests.
 build: generate fmt vet
 	go build -o bin/addon-manager cmd/addon-manager/main.go
 	go build -o bin/addon-agent cmd/addon-agent/main.go
+	go build -a -o bin/clusterproxy cmd/addon-all/main.go
 
 docker-build: test ## Build docker image with the manager.
-	$(CONTAINER_ENGINE) build -t ${IMG} .
+	$(CONTAINER_ENGINE) build -t ${IMG} -f ./cmd/Dockerfile .
 
 docker-push: ## Push docker image with the manager.
 	$(CONTAINER_ENGINE) push ${IMG}
