@@ -279,14 +279,7 @@ func GetClusterProxyValueFunc(
 			return nil, err
 		}
 
-		// add service-proxy service into aids
-		// in downstream, we have a service-proxy container bind with service-proxy service, all traffic from the hub first go here and then redirect to another service
-		// so in downstream, we add this special service as one of the agentIdentifiers
-		servicesToExpose := removeDupAndSortServices(append(managedProxyServiceResolverToFilterServiceToExpose(serviceResolverList.Items, managedClusterSetMap, cluster.Name),
-			serviceToExpose{
-				Host:         util.GenerateServiceURL(cluster.Name, namespace, "cluster-proxy-service-proxy"),
-				ExternalName: fmt.Sprintf("%s.%s", "cluster-proxy-service-proxy", namespace),
-			}))
+		servicesToExpose := removeDupAndSortServices(managedProxyServiceResolverToFilterServiceToExpose(serviceResolverList.Items, managedClusterSetMap, cluster.Name))
 
 		var aids []string
 

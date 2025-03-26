@@ -466,8 +466,6 @@ func TestNewAgentAddon(t *testing.T) {
 		addOnName,                   // namespace
 		"cluster-proxy",             // service account
 		"cluster-proxy-service-proxy-server-certificates",
-		"cluster-proxy-service-proxy",
-		"cluster-proxy-9c251cd6feaadb02d46d20355b359a77390e1a4c590a67c63", // service-proxy only downstream
 	}
 
 	expectedManifestNamesWithoutClusterService := []string{
@@ -478,8 +476,6 @@ func TestNewAgentAddon(t *testing.T) {
 		addOnName,                   // namespace
 		"cluster-proxy",             // service account
 		"cluster-proxy-service-proxy-server-certificates",
-		"cluster-proxy-service-proxy",
-		"cluster-proxy-9c251cd6feaadb02d46d20355b359a77390e1a4c590a67c63", // service-proxy only downstream
 	}
 
 	cases := []struct {
