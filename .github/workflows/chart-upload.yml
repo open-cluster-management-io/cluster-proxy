@@ -9,10 +9,10 @@ on:
 
 env:
   # Common versions
-  GO_VERSION: '1.22'
-  GO_REQUIRED_MIN_VERSION: ''
+  GO_VERSION: "1.24"
+  GO_REQUIRED_MIN_VERSION: ""
   GITHUB_REF: ${{ github.ref }}
-  CHART_NAME: 'cluster-proxy'
+  CHART_NAME: "cluster-proxy"
 
 jobs:
   env:
@@ -40,7 +40,7 @@ jobs:
   upload:
     name: upload
     runs-on: ubuntu-latest
-    needs: [ env ]
+    needs: [env]
     permissions:
       contents: write
     steps:
