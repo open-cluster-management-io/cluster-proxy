@@ -1,0 +1,69 @@
+{
+    "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+    "baseBranches": [
+        "main",
+        "/^backplane-.*/"
+    ],
+    "packageRules": [
+        {
+            "matchManagers": [
+                "dockerfile"
+            ],
+            "enabled": false
+        },
+        {
+            "matchBaseBranches": [
+                "backplane-2.9",
+                "backplane-2.0",
+                "backplane-2.1",
+                "backplane-2.2",
+                "backplane-2.3",
+                "backplane-2.4"
+            ],
+            "enabled": false
+        },
+        {
+            "matchBaseBranches": [
+                "main"
+            ],
+            "matchManagers": [
+                "gomod"
+            ],
+            "enabled": false
+        },
+        {
+            "matchBaseBranches": [
+                "main"
+            ],
+            "matchManagers": [
+                "tekton"
+            ],
+            "enabled": true,
+            "addLabels": [
+                "lgtm"
+            ]
+        },
+        {
+            "matchBaseBranches": [
+                "backplane-2.8",
+                "backplane-2.7",
+                "backplane-2.6",
+                "backplane-2.5"
+            ],
+            "matchManagers": [
+                "gomod",
+                "tekton"
+            ],
+            "enabled": true,
+            "addLabels": [
+                "lgtm"
+            ]
+        }
+    ],
+    "rebaseWhen": "behind-base-branch",
+    "recreateWhen": "never",
+    "addLabels": [
+        "ok-to-test"
+    ],
+    "schedule": "at any time"
+}
