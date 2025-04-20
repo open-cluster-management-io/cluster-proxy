@@ -438,7 +438,7 @@ func TestAgentAddonRegistrationOption(t *testing.T) {
 			err = options.Registration.PermissionConfig(c.cluster, c.addon)
 			assert.NoError(t, err)
 			actions := fakeKubeClient.Actions()
-			assert.Len(t, actions, 4)
+			assert.Len(t, actions, 8)
 			role := actions[1].(clienttesting.CreateAction).GetObject().(*rbacv1.Role)
 			assert.Equal(t, "cluster-proxy-addon-agent", role.Name)
 			rolebinding := actions[3].(clienttesting.CreateAction).GetObject().(*rbacv1.RoleBinding)
@@ -466,6 +466,8 @@ func TestNewAgentAddon(t *testing.T) {
 		addOnName,                   // namespace
 		"cluster-proxy",             // service account
 		"cluster-proxy-service-proxy-server-certificates",
+		"cluster-proxy-addon-agent-impersonator", // clusterrole for impersonation
+		"cluster-proxy-addon-agent-impersonator", // clusterrolebinding for impersonation
 	}
 
 	expectedManifestNamesWithoutClusterService := []string{
@@ -476,6 +478,8 @@ func TestNewAgentAddon(t *testing.T) {
 		addOnName,                   // namespace
 		"cluster-proxy",             // service account
 		"cluster-proxy-service-proxy-server-certificates",
+		"cluster-proxy-addon-agent-impersonator", // clusterrole for impersonation
+		"cluster-proxy-addon-agent-impersonator", // clusterrolebinding for impersonation
 	}
 
 	cases := []struct {

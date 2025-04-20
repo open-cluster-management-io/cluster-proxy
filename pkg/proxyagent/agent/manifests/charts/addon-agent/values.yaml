@@ -45,3 +45,5 @@ proxyConfig:
   HTTP_PROXY: null
   HTTPS_PROXY: null
   NO_PROXY: null
+
+impersonatePermissionEnabled: "true"

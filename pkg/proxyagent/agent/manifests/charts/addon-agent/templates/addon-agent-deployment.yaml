@@ -129,6 +129,7 @@ spec:
             - --ocpservice-ca=/ocpservice-ca/service-ca.crt
             - --cert=/server-cert/tls.crt
             - --key=/server-cert/tls.key
+            - --hub-kubeconfig=/etc/kubeconfig/kubeconfig
           livesnessProbe:
             httpGet:
               path: /healthz
@@ -144,6 +145,12 @@ spec:
             runAsNonRoot: true
             readOnlyRootFilesystem: true
           volumeMounts:
+            - name: hub-kubeconfig
+              mountPath: /etc/kubeconfig/
+              readOnly: true
+            - name: hub
+              mountPath: /etc/tls
+              readOnly: true
             - name: ocpservice-ca
               mountPath: /ocpservice-ca
               readOnly: true

@@ -129,6 +129,34 @@ func NewAgentAddon(
 						},
 					},
 				}).
+				WithStaticClusterRole(&rbacv1.ClusterRole{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "cluster-proxy-addon-agent-tokenreview",
+					},
+					Rules: []rbacv1.PolicyRule{
+						{
+							APIGroups: []string{"authentication.k8s.io"},
+							Verbs:     []string{"create"},
+							Resources: []string{"tokenreviews"},
+						},
+					},
+				}).
+				WithStaticClusterRoleBinding(&rbacv1.ClusterRoleBinding{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "cluster-proxy-addon-agent-tokenreview",
+					},
+					RoleRef: rbacv1.RoleRef{
+						Kind: "ClusterRole",
+						Name: "cluster-proxy-addon-agent-tokenreview",
+					},
+					Subjects: []rbacv1.Subject{
+						{
+							Kind:     rbacv1.GroupKind,
+							Name:     common.SubjectGroupClusterProxy,
+							APIGroup: rbacv1.GroupName,
+						},
+					},
+				}).
 				Build(),
 			CSRSign: CustomSignerWithExpiry(ProxyAgentSignerName, caKeyData, caCertData, time.Hour*24*180),
 		}).
