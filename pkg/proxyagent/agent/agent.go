@@ -145,6 +145,7 @@ func NewAgentAddon(
 			addonfactory.GetAddOnDeploymentConfigValues(
 				utils.NewAddOnDeploymentConfigGetter(addonClient),
 				toAgentAddOnChartValues(caCertData),
+				addonfactory.ToAddOnResourceRequirementsValues,
 			),
 		).
 		WithConfigCheckEnabledOption().
