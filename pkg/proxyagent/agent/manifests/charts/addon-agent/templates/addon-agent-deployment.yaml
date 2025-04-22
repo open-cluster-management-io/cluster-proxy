@@ -37,6 +37,14 @@ spec:
       {{- end }}
       containers:
         - name: proxy-agent
+          {{- $reverseResourceRequirements := reverse .Values.global.resourceRequirements }}
+          {{- range $item := $reverseResourceRequirements }}
+            {{- if regexMatch $item.containerIDRegex "deployments:cluster-proxy-proxy-agent:proxy-agent" }}
+          resources:
+              {{- toYaml $item.resources | nindent 12 }}
+              {{- break -}}
+            {{- end -}}
+          {{- end }}
           image: {{ .Values.proxyAgentImage }}
           imagePullPolicy: IfNotPresent
           command:
@@ -90,6 +98,14 @@ spec:
               mountPath: /etc/tls
               readOnly: true
         - name: addon-agent
+          {{- $reverseResourceRequirements := reverse .Values.global.resourceRequirements }}
+          {{- range $item := $reverseResourceRequirements }}
+            {{- if regexMatch $item.containerIDRegex "deployments:cluster-proxy-proxy-agent:addon-agent" }}
+          resources:
+              {{- toYaml $item.resources | nindent 12 }}
+              {{- break -}}
+            {{- end -}}
+          {{- end }}
           image: {{ .Values.registry }}/{{ .Values.image }}:{{ .Values.tag }}
           imagePullPolicy: IfNotPresent
           command:
@@ -120,6 +136,14 @@ spec:
                 fieldRef:
                   fieldPath: metadata.namespace
         - name: service-proxy
+          {{- $reverseResourceRequirements := reverse .Values.global.resourceRequirements }}
+          {{- range $item := $reverseResourceRequirements }}
+            {{- if regexMatch $item.containerIDRegex "deployments:cluster-proxy-proxy-agent:service-proxy" }}
+          resources:
+              {{- toYaml $item.resources | nindent 12 }}
+              {{- break -}}
+            {{- end -}}
+          {{- end }}
           image: {{ .Values.proxyAgentImage }} # build by the cluster-proxy-addon repo
           imagePullPolicy: IfNotPresent
           command:

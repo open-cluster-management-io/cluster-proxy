@@ -21,6 +21,7 @@ import (
 	csrv1 "k8s.io/api/certificates/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	fakekube "k8s.io/client-go/kubernetes/fake"
@@ -880,6 +881,56 @@ func TestNewAgentAddon(t *testing.T) {
 				assert.Equal(t, "kubernetes.default.svc.test.com", externalNameService.Spec.ExternalName)
 			},
 		},
+		{
+			name:    "with addon deployment config using resources requirement",
+			cluster: newCluster(clusterName, true),
+			addon: func() *addonv1alpha1.ManagedClusterAddOn {
+				addOn := newAddOn(addOnName, clusterName)
+				addOn.Status.ConfigReferences = []addonv1alpha1.ConfigReference{
+					newManagedProxyConfigReference(managedProxyConfigName),
+					newAddOndDeploymentConfigReference(addOndDeployConfigName, clusterName),
+				}
+				return addOn
+			}(),
+			managedProxyConfig: newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypePortForward),
+			addOndDeploymentConfigs: []runtime.Object{
+				newAddOnDeploymentConfigWithResourcesRequirement(
+					addOndDeployConfigName,
+					clusterName,
+					"deployments:cluster-proxy-proxy-agent:proxy-agent",
+					corev1.ResourceRequirements{
+						Limits: corev1.ResourceList{
+							corev1.ResourceCPU:    resource.MustParse("150m"),
+							corev1.ResourceMemory: resource.MustParse("250Mi"),
+						},
+						Requests: corev1.ResourceList{
+							corev1.ResourceCPU:    resource.MustParse("150m"),
+							corev1.ResourceMemory: resource.MustParse("250Mi"),
+						},
+					},
+				),
+			},
+			v1CSRSupported:     true,
+			enableKubeApiProxy: true,
+			verifyManifests: func(t *testing.T, manifests []runtime.Object) {
+				assert.Len(t, manifests, len(expectedManifestNames))
+				assert.ElementsMatch(t, expectedManifestNames, manifestNames(manifests))
+
+				// Get the agent deployment and verify resource requirements
+				agentDeploy := getAgentDeployment(manifests)
+				assert.NotNil(t, agentDeploy)
+
+				// Check if the container has the expected resource requirements
+				for _, container := range agentDeploy.Spec.Template.Spec.Containers {
+					if container.Name == "proxy-agent" {
+						assert.Equal(t, resource.MustParse("150m"), container.Resources.Limits[corev1.ResourceCPU])
+						assert.Equal(t, resource.MustParse("250Mi"), container.Resources.Limits[corev1.ResourceMemory])
+						assert.Equal(t, resource.MustParse("150m"), container.Resources.Requests[corev1.ResourceCPU])
+						assert.Equal(t, resource.MustParse("250Mi"), container.Resources.Requests[corev1.ResourceMemory])
+					}
+				}
+			},
+		},
 	}
 
 	for _, c := range cases {
@@ -1165,6 +1216,25 @@ func newAddOnDeploymentConfigWithHttpProxy(name, namespace string) *addonv1alpha
 				HTTPSProxy: "http://192.168.1.1",
 				CABundle:   rawProxyCaCert,
 				NoProxy:    "localhost",
+			},
+		},
+	}
+}
+
+func newAddOnDeploymentConfigWithResourcesRequirement(name, namespace, containerID string,
+	resources corev1.ResourceRequirements) *addonv1alpha1.AddOnDeploymentConfig {
+
+	return &addonv1alpha1.AddOnDeploymentConfig{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: addonv1alpha1.AddOnDeploymentConfigSpec{
+			ResourceRequirements: []addonv1alpha1.ContainerResourceRequirements{
+				{
+					ContainerID: containerID,
+					Resources:   resources,
+				},
 			},
 		},
 	}

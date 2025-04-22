@@ -47,3 +47,6 @@ proxyConfig:
   NO_PROXY: null
 
 impersonatePermissionEnabled: "true"
+
+global:
+  resourceRequirements: []
