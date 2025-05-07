@@ -17,7 +17,6 @@
                 "/^backplane-2\\.[4-8]$/"
             ],
             "matchManagers": [
-                "gomod",
                 "tekton"
             ],
             "enabled": true,
@@ -31,6 +30,7 @@
             "matchManagers": [
                 "gomod"
             ],
+            "enabled": false,
             "groupName": "go dependencies",
             "groupSlug": "go-deps"
         }
