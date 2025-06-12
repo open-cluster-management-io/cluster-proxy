@@ -467,8 +467,8 @@ func TestNewAgentAddon(t *testing.T) {
 		addOnName,                   // namespace
 		"cluster-proxy",             // service account
 		"cluster-proxy-service-proxy-server-certificates",
-		"cluster-proxy-addon-agent-impersonator", // clusterrole for impersonation
-		"cluster-proxy-addon-agent-impersonator", // clusterrolebinding for impersonation
+		"cluster-proxy-addon-agent-impersonator",                                       // clusterrole for impersonation
+		"cluster-proxy-addon-agent-impersonator:open-cluster-management-cluster-proxy", // clusterrolebinding for impersonation
 	}
 
 	expectedManifestNamesWithoutClusterService := []string{
@@ -479,8 +479,8 @@ func TestNewAgentAddon(t *testing.T) {
 		addOnName,                   // namespace
 		"cluster-proxy",             // service account
 		"cluster-proxy-service-proxy-server-certificates",
-		"cluster-proxy-addon-agent-impersonator", // clusterrole for impersonation
-		"cluster-proxy-addon-agent-impersonator", // clusterrolebinding for impersonation
+		"cluster-proxy-addon-agent-impersonator",                                       // clusterrole for impersonation
+		"cluster-proxy-addon-agent-impersonator:open-cluster-management-cluster-proxy", // clusterrolebinding for impersonation
 	}
 
 	cases := []struct {
@@ -821,6 +821,7 @@ func TestNewAgentAddon(t *testing.T) {
 				newexpectedManifestNames := []string{}
 				newexpectedManifestNames = append(newexpectedManifestNames, expectedManifestNames...)
 				newexpectedManifestNames[5] = "addon-test"
+				newexpectedManifestNames[9] = "cluster-proxy-addon-agent-impersonator:addon-test" // clusterrolebinding
 				assert.ElementsMatch(t, newexpectedManifestNames, manifestNames(manifests))
 			},
 		},
