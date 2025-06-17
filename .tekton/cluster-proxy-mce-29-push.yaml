@@ -13,7 +13,7 @@ metadata:
     appstudio.openshift.io/application: release-mce-29
     appstudio.openshift.io/component: cluster-proxy-mce-29
     pipelines.appstudio.openshift.io/type: build
-  name: cluster-proxy-mce-29-on-push
+  generateName: cluster-proxy-mce-29-on-push
   namespace: crt-redhat-acm-tenant
 spec:
   params:
