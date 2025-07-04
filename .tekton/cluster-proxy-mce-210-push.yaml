@@ -10,10 +10,10 @@ metadata:
     pipelinesascode.tekton.dev/on-cel-expression: event == "push" && target_branch == "main"
   creationTimestamp:
   labels:
-    appstudio.openshift.io/application: release-mce-29
-    appstudio.openshift.io/component: cluster-proxy-mce-29
+    appstudio.openshift.io/application: release-mce-210
+    appstudio.openshift.io/component: cluster-proxy-mce-210
     pipelines.appstudio.openshift.io/type: build
-  generateName: cluster-proxy-mce-29-on-push
+  generateName: cluster-proxy-mce-210-on-push
   namespace: crt-redhat-acm-tenant
 spec:
   params:
@@ -22,7 +22,7 @@ spec:
     - name: revision
       value: '{{revision}}'
     - name: output-image
-      value: quay.io/redhat-user-workloads/crt-redhat-acm-tenant/cluster-proxy-mce-29:{{revision}}
+      value: quay.io/redhat-user-workloads/crt-redhat-acm-tenant/cluster-proxy-mce-210:{{revision}}
     - name: build-platforms
       value:
         - linux/x86_64
