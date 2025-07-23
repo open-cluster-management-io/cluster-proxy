@@ -33,6 +33,12 @@ spec:
       value: cmd/Dockerfile.rhtap
     - name: path-context
       value: .
+    - name: send-slack-notification
+      value: "true"
+    - name: konflux-application-name
+      value: "release-mce-210"
+    - name: slack-member-id
+      value: "U01TX25RJ3B"
   pipelineRef:
     resolver: git
     params:
@@ -41,7 +47,7 @@ spec:
       - name: revision
         value: main
       - name: pathInRepo
-        value: pipelines/common.yaml
+        value: pipelines/common_mce_2.10.yaml
   taskRunTemplate: {}
   workspaces:
     - name: git-auth
