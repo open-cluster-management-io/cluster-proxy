@@ -6,21 +6,21 @@
 
 ## What is Cluster Proxy?
 
-Cluster Proxy is a pluggable addon working on OCM rebased on the extensibility
-provided by [addon-framework](https://github.com/open-cluster-management-io/addon-framework) 
+Cluster Proxy is a pluggable addon working on OCM, based on the extensibility
+provided by [addon-framework](https://github.com/open-cluster-management-io/addon-framework), 
 which automates the installation of [apiserver-network-proxy](https://github.com/kubernetes-sigs/apiserver-network-proxy)
-on both hub cluster and managed clusters. The network proxy will be establishing
-reverse proxy tunnels from the managed cluster to the hub cluster to make the 
-clients from the hub network can access the services in the managed clusters'
-network even if all the clusters are isolated in different VPCs.
+on both hub cluster and managed clusters. The network proxy establishes
+reverse proxy tunnels from the managed cluster to the hub cluster to enable
+clients from the hub network to access services in the managed clusters'
+network even when all clusters are isolated in different VPCs.
 
 Cluster Proxy consists of two components:
 
-- __Addon-Manager__: Manages the installation of proxy-servers i.e. proxy ingress
+- __Addon-Manager__: Manages the installation of proxy-servers (i.e., proxy ingress)
   in the hub cluster.
   
 - __Addon-Agent__: Manages the installation of proxy-agents for each managed 
-  clusters.
+  cluster.
 
 The overall architecture is shown below:
 
@@ -71,16 +71,16 @@ NAMESPACE         NAME                     AVAILABLE   DEGRADED   PROGRESSING
 
 ### Usage
 
-By default, the proxy servers are running in GPRC mode so the proxy clients 
+By default, the proxy servers are running in gRPC mode so the proxy clients 
 are expected to proxy through the tunnels by the [konnectivity-client](https://github.com/kubernetes-sigs/apiserver-network-proxy#clients).
 Konnectivity is the underlying technique of Kubernetes' [egress-selector](https://kubernetes.io/docs/tasks/extend-kubernetes/setup-konnectivity/)
 feature and an example of konnectivity client is visible [here](https://github.com/open-cluster-management-io/cluster-proxy/tree/main/examples/test-client).
 
-Codewisely proxying to the managed cluster will be simply overriding the 
-dialer of the kubernetes original client config object, e.g.:
+Code-wise, proxying to the managed cluster can be accomplished by simply overriding the 
+dialer of the Kubernetes original client config object, e.g.:
 
 ```go
-  // instantiate a gprc proxy dialer
+  // instantiate a gRPC proxy dialer
   tunnel, err := konnectivity.CreateSingleUseGrpcTunnel(
       context.TODO(),
       <proxy service>,
@@ -99,8 +99,8 @@ dialer of the kubernetes original client config object, e.g.:
 ### Performance
 
 Here's the result of network bandwidth benchmarking via [goben](https://github.com/udhos/goben)
-with or without Cluster-Proxy (i.e. Apiserver-Network-Proxy) so roughly the proxying
-through the tunnel will involve 1/2 performance loss so it's recommended to avoid 
+with and without Cluster-Proxy (i.e., Apiserver-Network-Proxy). The results show that proxying
+through the tunnel involves approximately 50% performance loss, so it's recommended to avoid 
 transferring data-intensive traffic over the proxy.
 
 
