@@ -45,7 +45,7 @@ The overall architecture is shown below:
 1. Add the OCM Helm repository:
 
 ```shell
-helm repo add ocm https://openclustermanagement.blob.core.windows.net/releases/
+helm repo add ocm https://open-cluster-management.io/helm-charts/
 helm repo update
 helm search repo ocm/cluster-proxy
 ```
@@ -67,7 +67,7 @@ helm install \
 3. Verify the installation:
 
 ```shell
-kubectl -n open-cluster-management-cluster-proxy get pod
+kubectl get pods -n open-cluster-management-addon
 ```
 
 Expected output:
