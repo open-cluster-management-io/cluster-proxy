@@ -154,7 +154,7 @@ spec:
             - --cert=/server-cert/tls.crt
             - --key=/server-cert/tls.key
             - --hub-kubeconfig=/etc/kubeconfig/kubeconfig
-          livesnessProbe:
+          livenessProbe:
             httpGet:
               path: /healthz
               port: 8000
