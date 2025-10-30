@@ -1,5 +1,5 @@
 # Build the manager binary
-FROM golang:1.24.0 as builder
+FROM golang:1.24 as builder
 
 WORKDIR /workspace
 
@@ -38,7 +38,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a \
 
 # Use distroless as minimal base image to package the manager binary
 # Refer to https://github.com/GoogleContainerTools/distroless for more details
-FROM alpine:3.13
+FROM alpine:3.21
 
 WORKDIR /
 RUN apk add libc6-compat
