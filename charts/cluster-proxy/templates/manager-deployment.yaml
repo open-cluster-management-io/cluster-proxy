@@ -3,15 +3,19 @@ kind: Deployment
 metadata:
   namespace: {{ .Release.Namespace }}
   name: cluster-proxy-addon-manager
+  labels:
+    component: cluster-proxy-manager
 spec:
   replicas: {{ .Values.replicas }}
   selector:
     matchLabels:
       open-cluster-management.io/addon: cluster-proxy
+      component: cluster-proxy-manager
   template:
     metadata:
       labels:
         open-cluster-management.io/addon: cluster-proxy
+        component: cluster-proxy-manager
     spec:
       serviceAccount: cluster-proxy
       containers:
@@ -23,6 +27,9 @@ spec:
           args:
             - --leader-elect=true
             - --signer-secret-namespace={{ .Release.Namespace }}
+            - --enable-kube-api-proxy={{ .Values.enableKubeApiProxy }}
+            - --enable-service-proxy={{ .Values.enableServiceProxy }}
+            - --image-pull-policy={{ .Values.proxyServer.imagePullPolicy }}
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:

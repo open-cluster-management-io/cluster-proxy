@@ -49,7 +49,7 @@ func RegisterClusterManagementAddonReconciler(
 	selfSigner selfsigned.SelfSigner,
 	nativeClient kubernetes.Interface,
 	secretInformer informercorev1.SecretInformer,
-	supportsV1CSR bool,
+	imagePullPolicy string,
 ) error {
 	r := &ManagedProxyConfigurationReconciler{
 		Client:     mgr.GetClient(),
@@ -70,8 +70,7 @@ func RegisterClusterManagementAddonReconciler(
 		ServiceGetter:    nativeClient.CoreV1(),
 		DeploymentGetter: nativeClient.AppsV1(),
 		EventRecorder:    events.NewInMemoryRecorder("ClusterManagementAddonReconciler"),
-
-		supportsV1CSR: supportsV1CSR,
+		imagePullPolicy:  imagePullPolicy,
 	}
 	return r.SetupWithManager(mgr)
 }
@@ -87,7 +86,7 @@ type ManagedProxyConfigurationReconciler struct {
 	EventRecorder    events.Recorder
 
 	newCertRotatorFunc func(namespace, name string, sans ...string) selfsigned.CertRotation
-	supportsV1CSR      bool
+	imagePullPolicy    string
 }
 
 func (c *ManagedProxyConfigurationReconciler) SetupWithManager(mgr ctrl.Manager) error {
@@ -167,7 +166,7 @@ func (c *ManagedProxyConfigurationReconciler) deployProxyServer(config *proxyv1a
 		newServiceAccount(config),
 		newProxyService(config),
 		newProxySecret(config, c.SelfSigner.CAData()),
-		newProxyServerDeployment(config),
+		newProxyServerDeployment(config, c.imagePullPolicy),
 		newProxyServerRole(config),
 		newProxyServerRoleBinding(config),
 	}
@@ -385,11 +384,14 @@ func (c *ManagedProxyConfigurationReconciler) ensureRotation(config *proxyv1alph
 		hostNames,
 		"127.0.0.1",
 		"localhost",
-		entrypoint,
 		config.Spec.ProxyServer.InClusterServiceName+"."+config.Spec.ProxyServer.Namespace,
 		config.Spec.ProxyServer.InClusterServiceName+"."+config.Spec.ProxyServer.Namespace+".svc")
 	if config.Spec.ProxyServer.Entrypoint != nil && config.Spec.ProxyServer.Entrypoint.Type == proxyv1alpha1.EntryPointTypeHostname {
 		sans = append(sans, config.Spec.ProxyServer.Entrypoint.Hostname.Value)
+	}
+
+	if len(entrypoint) > 0 {
+		sans = append(sans, entrypoint)
 	}
 
 	tweakClientCertUsageFunc := func(cert *x509.Certificate) error {
@@ -424,20 +426,6 @@ func (c *ManagedProxyConfigurationReconciler) ensureRotation(config *proxyv1alph
 		sans...)
 	if err := proxyClientRotator.EnsureTargetCertKeyPair(c.CAPair, c.CAPair.Config.Certs, tweakClientCertUsageFunc); err != nil {
 		return errors.Wrapf(err, "fails to rotate proxy client cert")
-	}
-
-	if !c.supportsV1CSR {
-		// agent client cert rotation
-		// beta CSR running under Kubernetes release lower than 1.18 doesn't
-		// support custom CSR signer. so we need to sign the secret in the hub
-		// then apply it to the managed cluster via ManifestWork.
-		proxyClientRotator := c.newCertRotatorFunc(
-			config.Spec.ProxyServer.Namespace,
-			common.AgentClientSecretName,
-			sans...)
-		if err := proxyClientRotator.EnsureTargetCertKeyPair(c.CAPair, c.CAPair.Config.Certs, tweakClientCertUsageFunc); err != nil {
-			return errors.Wrapf(err, "fails to rotate proxy client cert")
-		}
 	}
 
 	return nil

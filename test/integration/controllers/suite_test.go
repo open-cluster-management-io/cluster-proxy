@@ -28,6 +28,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	openshiftcrypto "github.com/openshift/library-go/pkg/crypto"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
@@ -115,7 +116,7 @@ var _ = BeforeSuite(func() {
 	selfSigner, err := selfsigned.NewSelfSignerFromSecretOrGenerate(kubeClient, "default", "test-ca")
 	Expect(err).NotTo(HaveOccurred())
 
-	err = controllers.RegisterClusterManagementAddonReconciler(mgr, selfSigner, kubeClient, kubeInformer.Core().V1().Secrets(), true)
+	err = controllers.RegisterClusterManagementAddonReconciler(mgr, selfSigner, kubeClient, kubeInformer.Core().V1().Secrets(), string(corev1.PullIfNotPresent))
 	Expect(err).NotTo(HaveOccurred())
 
 	err = controllers.RegisterServiceResolverReconciler(mgr)

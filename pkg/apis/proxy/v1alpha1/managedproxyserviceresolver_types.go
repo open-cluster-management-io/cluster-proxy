@@ -27,6 +27,7 @@ func init() {
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 //+kubebuilder:resource:scope=Cluster
+//+kubebuilder:deprecatedversion:warning="ManagedProxyServiceResolver is deprecated and will be removed in the next release"
 
 // +genclient
 // +genclient:nonNamespaced
@@ -34,6 +35,9 @@ func init() {
 // To access a target service on a managed cluster from hub. First, users need to apply a proper ManagedProxyServiceResolver.
 // The managed cluster should match the ManagedClusterSet in the ManagedProxyServiceResolver.Spec. The serviceNamespace and serviceName should also match the target service.
 // A usage example: /examples/access-other-services/main.go
+//
+// Deprecated: ManagedProxyServiceResolver is deprecated and will be removed in the next release.
+// Please use the new service proxy mechanism instead.
 type ManagedProxyServiceResolver struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

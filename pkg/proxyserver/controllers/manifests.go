@@ -78,7 +78,7 @@ func newProxyService(config *proxyv1alpha1.ManagedProxyConfiguration) *corev1.Se
 	}
 }
 
-func newProxyServerDeployment(config *proxyv1alpha1.ManagedProxyConfiguration) *appsv1.Deployment {
+func newProxyServerDeployment(config *proxyv1alpha1.ManagedProxyConfiguration, imagePullPolicy string) *appsv1.Deployment {
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: config.Spec.ProxyServer.Namespace,
@@ -112,7 +112,7 @@ func newProxyServerDeployment(config *proxyv1alpha1.ManagedProxyConfiguration) *
 						{
 							Name:            common.ComponentNameProxyServer,
 							Image:           config.Spec.ProxyServer.Image,
-							ImagePullPolicy: corev1.PullAlways,
+							ImagePullPolicy: corev1.PullPolicy(imagePullPolicy), // TODO @xuezhaojun, the image pull policy should be configurable and by default should be IfNotPresent. Will update this later to a better solution. Currently, using the image pull policy from the command line flag.
 							Command: []string{
 								"/proxy-server",
 							},

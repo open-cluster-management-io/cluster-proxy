@@ -2,7 +2,6 @@
 package config
 
 import (
-	"fmt"
 	"strings"
 
 	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
@@ -22,11 +21,12 @@ func GetParsedAgentImage(defaultAgentImageName string) (string, string, string, 
 		klog.InfoS("AgentImageName is not set, use default value", "defaultAgentImageName", defaultAgentImageName)
 		AgentImageName = defaultAgentImageName
 	}
-	imgParts := strings.Split(AgentImageName, "/")
-	if len(imgParts) != 2 && len(imgParts) != 3 {
-		// image name without registry is also legal.
-		return "", "", "", fmt.Errorf("invalid agent image name: %s", AgentImageName)
-	}
+
+	return ParseImage(AgentImageName)
+}
+
+func ParseImage(imageName string) (string, string, string, error) {
+	imgParts := strings.Split(imageName, "/")
 
 	registry := strings.Join(imgParts[0:len(imgParts)-1], "/")
 

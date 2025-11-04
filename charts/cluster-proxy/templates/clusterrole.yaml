@@ -117,9 +117,70 @@ rules:
       - create
       - update
       - patch
+      - delete
   - apiGroups:
       - coordination.k8s.io
     resources:
       - leases
     verbs:
       - "*"
+  - apiGroups:
+      - ""
+    resources:
+      - "configmaps"
+      - "secrets"
+    verbs:
+      - "*"
+  - apiGroups:
+      - "apps"
+    resources:
+      - "replicasets"
+    verbs:
+      - "get"
+  - apiGroups:
+      - ""
+      - "events.k8s.io"
+    resources:
+      - "events"
+    verbs:
+      - "create"
+      - "patch"
+      - "update"
+  # Allow cluster-proxy hub controller to run with addon-framwork
+  - apiGroups:
+      - ""
+    resources:
+      - "configmaps"
+      - "secrets"
+    verbs:
+      - "*"
+  # Allow cluster-proxy hub controller to get managed cluster image registries
+  - apiGroups:
+      - "imageregistry.open-cluster-management.io"
+    resources:
+      - "managedclusterimageregistries"
+      - "managedclusterimageregistries"
+    verbs:
+      - "get"
+      - "list"
+      - "watch"
+  # Allow cluster-proxy to do impersonation
+  # Needs to create a clusterrole for the addon-agent to create tokenreview to hub
+  # Although hub side doesn't need to create token view, it still requires the tokenreview create permission
+  - apiGroups:
+      - rbac.authorization.k8s.io
+    resources:
+      - clusterroles
+      - clusterrolebindings
+    verbs:
+      - create
+      - get
+      - list
+      - watch
+      - delete
+  - apiGroups:
+      - authentication.k8s.io
+    resources:
+      - tokenreviews
+    verbs:
+      - create
