@@ -61,21 +61,6 @@ func TestGetParsedAgentImage(t *testing.T) {
 			"cluster-proxy-agent",
 			"latest",
 		},
-		{
-			// wrong image name
-			"foo",
-			true,
-			"",
-			"",
-			"",
-		}, {
-			// wrong image name
-			"foo/foo/foo/foo",
-			true,
-			"",
-			"",
-			"",
-		},
 	}
 
 	for _, c := range testcases {

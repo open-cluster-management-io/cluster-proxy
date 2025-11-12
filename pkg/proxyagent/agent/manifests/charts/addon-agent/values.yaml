@@ -30,21 +30,23 @@ base64EncodedCAData: Zm9vCg==
 
 serviceDomain: ""
 
-tolerations: []
-
 nodeSelector: {}
+
+tolerations:
+- key: "dedicated"
+  operator: "Equal"
+  value: "infra"
+  effect: "NoSchedule"
+- key: node-role.kubernetes.io/infra
+  operator: Exists
+  effect: NoSchedule
+
 proxyConfig:
   HTTP_PROXY: null
   HTTPS_PROXY: null
   NO_PROXY: null
 
+impersonatePermissionEnabled: "true"
+
 global:
-  resourceRequirements:
-  - containerIDRegex: ^.+:.+:.+$
-    resources:
-      requests:
-        memory: 100Mi
-        cpu: 200m
-      limits:
-        memory: 200Mi
-        cpu: 300m
+  resourceRequirements: []

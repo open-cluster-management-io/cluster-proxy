@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.18.0
+    controller-gen.kubebuilder.io/version: v0.19.0
   name: managedproxyserviceresolvers.proxy.open-cluster-management.io
 spec:
   group: proxy.open-cluster-management.io
@@ -14,7 +14,10 @@ spec:
     singular: managedproxyserviceresolver
   scope: Cluster
   versions:
-  - name: v1alpha1
+  - deprecated: true
+    deprecationWarning: ManagedProxyServiceResolver is deprecated and will be removed
+      in the next release
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: |-
@@ -22,6 +25,9 @@ spec:
           To access a target service on a managed cluster from hub. First, users need to apply a proper ManagedProxyServiceResolver.
           The managed cluster should match the ManagedClusterSet in the ManagedProxyServiceResolver.Spec. The serviceNamespace and serviceName should also match the target service.
           A usage example: /examples/access-other-services/main.go
+
+          Deprecated: ManagedProxyServiceResolver is deprecated and will be removed in the next release.
+          Please use the new service proxy mechanism instead.
         properties:
           apiVersion:
             description: |-

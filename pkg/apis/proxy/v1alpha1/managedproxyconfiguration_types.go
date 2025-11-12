@@ -315,6 +315,9 @@ type ManagedProxyConfigurationProxyAgent struct {
 	// `imagePullSecrets` defines the imagePullSecrets used by proxy-agent
 	// +optional
 	ImagePullSecrets []string `json:"imagePullSecrets,omitempty"`
+	// `additionalValues` defines values used in proxy-agent chart.
+	// +optional
+	AdditionalValues map[string]string `json:"additionalValues,omitempty"`
 }
 
 const (
