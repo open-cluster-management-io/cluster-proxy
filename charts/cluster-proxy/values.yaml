@@ -33,3 +33,4 @@ enableKubeApiProxy: true
 # Note: Other required secrets (proxy-server-ca, proxy-client) will be created automatically by the controller.
 # Without cluster-proxy-user-serving-cert, the user-server deployment will remain in Pending state.
 enableServiceProxy: false
+enableImpersonation: true

@@ -54,6 +54,8 @@ type serviceProxy struct {
 	hubKubeConfig            string
 	hubKubeClient            kubernetes.Interface
 	managedClusterKubeClient kubernetes.Interface
+
+	enableImpersonation bool
 }
 
 func newServiceProxy() *serviceProxy {
@@ -75,6 +77,7 @@ func (s *serviceProxy) AddFlags(cmd *cobra.Command) {
 	flags.DurationVar(&s.idleConnTimeout, "idle-conn-timeout", 90*time.Second, "The maximum amount of time an idle (keep-alive) connection will remain idle before closing itself.")
 	flags.DurationVar(&s.tLSHandshakeTimeout, "tls-handshake-timeout", 10*time.Second, "The maximum amount of time waiting to wait for a TLS handshake.")
 	flags.DurationVar(&s.expectContinueTimeout, "expect-continue-timeout", 1*time.Second, "The amount of time to wait for a server's first response headers after fully writing the request headers if the request has an \"Expect: 100-continue\" header.")
+	flags.BoolVar(&s.enableImpersonation, "enable-impersonation", true, "Whether to enable impersonation")
 }
 
 func (s *serviceProxy) Run(ctx context.Context) error {
@@ -179,10 +182,12 @@ func (s *serviceProxy) ServeHTTP(wr http.ResponseWriter, req *http.Request) {
 	}
 
 	if url.Host == "kubernetes.default.svc" {
-		if err := s.processAuthentication(req); err != nil {
-			klog.ErrorS(err, "authentication failed")
-			http.Error(wr, err.Error(), http.StatusUnauthorized)
-			return
+		if s.enableImpersonation {
+			if err := s.processAuthentication(req); err != nil {
+				klog.ErrorS(err, "authentication failed")
+				http.Error(wr, err.Error(), http.StatusUnauthorized)
+				return
+			}
 		}
 	}
 

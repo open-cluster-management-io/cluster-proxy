@@ -313,7 +313,7 @@ func GetClusterProxyValueFunc(
 		}
 		agentIdentifiers := strings.Join(aids, "&")
 
-		return map[string]interface{}{
+		values := map[string]interface{}{
 			"agentDeploymentName":        "cluster-proxy-proxy-agent",
 			"serviceDomain":              serviceDomain,
 			"includeNamespaceCreation":   true,
@@ -337,7 +337,20 @@ func GetClusterProxyValueFunc(
 			"servicesToExpose":            servicesToExpose,
 			"enableKubeApiProxy":          enableKubeApiProxy,
 			"addtionalServiceCAConfigMap": proxyConfig.Spec.ProxyAgent.AdditionalValues["addtionalServiceCAConfigMap"],
-		}, nil
+		}
+
+		if enableImpersonationStr := proxyConfig.Spec.ProxyAgent.AdditionalValues["enableImpersonation"]; enableImpersonationStr != "" {
+			// Validate the boolean string to prevent invalid values that would cause deployment failure
+			// Valid values: "true", "false", "1", "0" (as accepted by Go's flag.BoolVar)
+			if enableImpersonationStr == "true" || enableImpersonationStr == "false" ||
+				enableImpersonationStr == "1" || enableImpersonationStr == "0" {
+				values["enableImpersonation"] = enableImpersonationStr
+			} else {
+				return nil, fmt.Errorf("invalid value for enableImpersonation: %q, must be one of: true, false, 1, 0", enableImpersonationStr)
+			}
+		}
+
+		return values, nil
 	}
 }
 

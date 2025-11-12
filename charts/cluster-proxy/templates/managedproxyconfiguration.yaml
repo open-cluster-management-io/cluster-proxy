@@ -28,3 +28,5 @@ spec:
   proxyAgent:
     image: {{ .Values.proxyAgentImage }}:{{ .Values.tag | default (print "v" .Chart.Version) }}
     replicas: {{ .Values.replicas }}
+    additionalValues:
+      enableImpersonation: {{ .Values.enableImpersonation | quote }}
