@@ -167,6 +167,7 @@ rules:
   # Allow cluster-proxy to do impersonation
   # Needs to create a clusterrole for the addon-agent to create tokenreview to hub
   # Although hub side doesn't need to create token view, it still requires the tokenreview create permission
+  {{- if .Values.enableImpersonation }}
   - apiGroups:
       - rbac.authorization.k8s.io
     resources:
@@ -184,3 +185,4 @@ rules:
       - tokenreviews
     verbs:
       - create
+  {{- end }}

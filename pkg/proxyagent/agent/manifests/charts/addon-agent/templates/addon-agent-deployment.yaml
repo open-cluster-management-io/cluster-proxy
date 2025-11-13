@@ -154,6 +154,7 @@ spec:
           {{- if .Values.addtionalServiceCAConfigMap }}
             - --additional-service-ca=/additional-service-ca/service-ca.crt
           {{- end }}
+            - --enable-impersonation={{ .Values.enableImpersonation }}
             - --cert=/server-cert/tls.crt
             - --key=/server-cert/tls.key
             - --hub-kubeconfig=/etc/kubeconfig/kubeconfig
