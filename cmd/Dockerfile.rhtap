@@ -8,6 +8,7 @@ COPY . .
 # Build addons
 RUN CGO_ENABLED=1 go build -a -o agent cmd/addon-agent/main.go
 RUN CGO_ENABLED=1 go build -a -o manager cmd/addon-manager/main.go
+RUN CGO_ENABLED=1 go build -a -o cluster-proxy cmd/cluster-proxy/main.go
 
 # Use distroless as minimal base image to package the manager binary
 FROM registry.access.redhat.com/ubi9/ubi-minimal:latest
@@ -23,6 +24,6 @@ LABEL \
     io.openshift.tags="mce acm ocm cluster-proxy"
 
 WORKDIR /
-COPY --from=builder /workspace/agent /workspace/manager ./
+COPY --from=builder /workspace/agent /workspace/manager /workspace/cluster-proxy ./
 
 USER ${USER_UID}
