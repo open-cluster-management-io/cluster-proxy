@@ -88,7 +88,7 @@ func main() {
 		config.AgentImageName,
 		"The name of the addon agent's image")
 	flag.BoolVar(&enableKubeApiProxy, "enable-kube-api-proxy", true, "Enable proxy to agent kube-apiserver")
-	flag.BoolVar(&enableServiceProxy, "enable-service-proxy", false, "Enable service proxy")
+	flag.BoolVar(&enableServiceProxy, "enable-service-proxy", true, "Enable service proxy")
 	flag.StringVar(&config.DefaultAddonInstallNamespace, "agent-install-namespace", config.DefaultAddonInstallNamespace,
 		"The default namespace to install the addon agents.")
 	flag.StringVar(&imagePullPolicy, "image-pull-policy", string(corev1.PullIfNotPresent), "The image pull policy for the addon manager")
