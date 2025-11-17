@@ -145,7 +145,7 @@ spec:
               {{- break -}}
             {{- end -}}
           {{- end }}
-          image: {{ .Values.proxyAgentImage }} # build by the cluster-proxy-addon repo
+          image: {{ .Values.registry }}/{{ .Values.image }}:{{ .Values.tag }}
           imagePullPolicy: IfNotPresent
           command:
             - /cluster-proxy
