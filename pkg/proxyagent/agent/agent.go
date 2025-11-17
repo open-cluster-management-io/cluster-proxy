@@ -53,10 +53,10 @@ const (
 func NewAgentAddon(
 	signer selfsigned.SelfSigner,
 	signerNamespace string,
-	v1CSRSupported bool,
 	runtimeClient client.Client,
 	nativeClient kubernetes.Interface,
 	enableKubeApiProxy bool,
+	enableServiceProxy bool,
 	addonClient addonclient.Interface) (agent.AgentAddon, error) {
 	caCertData, caKeyData, err := signer.CA().Config.GetPEMBytes()
 	if err != nil {
@@ -77,20 +77,18 @@ func NewAgentAddon(
 	// Register the custom signer CSR option if V1 csr is supported
 	// caculate a hash value of signer ca data and add it to the organizationUnits of the subject
 	signerHash := sha256.Sum256(signer.CAData())
-	if v1CSRSupported {
-		regConfigs = append(regConfigs, addonv1alpha1.RegistrationConfig{
-			SignerName: ProxyAgentSignerName,
-			Subject: addonv1alpha1.Subject{
-				User: common.SubjectUserClusterProxyAgent,
-				Groups: []string{
-					common.SubjectGroupClusterProxy,
-				},
-				OrganizationUnits: []string{
-					fmt.Sprintf("signer-%x", base64.StdEncoding.EncodeToString(signerHash[:])),
-				},
+	regConfigs = append(regConfigs, addonv1alpha1.RegistrationConfig{
+		SignerName: ProxyAgentSignerName,
+		Subject: addonv1alpha1.Subject{
+			User: common.SubjectUserClusterProxyAgent,
+			Groups: []string{
+				common.SubjectGroupClusterProxy,
 			},
-		})
-	}
+			OrganizationUnits: []string{
+				fmt.Sprintf("signer-%x", base64.StdEncoding.EncodeToString(signerHash[:])),
+			},
+		},
+	})
 
 	agentFactory := addonfactory.NewAgentAddonFactory(common.AddonName, FS, "manifests/charts/addon-agent").
 		WithAgentRegistrationOption(&agent.RegistrationOption{
@@ -169,8 +167,8 @@ func NewAgentAddon(
 			utils.AddOnDeploymentConfigGVR,
 		).
 		WithGetValuesFuncs(
-			GetClusterProxyValueFunc(runtimeClient, nativeClient, signerNamespace, caCertData, v1CSRSupported, enableKubeApiProxy),
-			GetClusterProxyValueStolostronFunc(runtimeClient, nativeClient, signerNamespace),
+			GetClusterProxyValueFunc(runtimeClient, nativeClient, signerNamespace, caCertData, enableKubeApiProxy),
+			GetClusterProxyAdditionalValueFunc(runtimeClient, nativeClient, signerNamespace, enableServiceProxy),
 			addonfactory.GetAddOnDeploymentConfigValues(
 				utils.NewAddOnDeploymentConfigGetter(addonClient),
 				toAgentAddOnChartValues(caCertData),
@@ -203,7 +201,6 @@ func GetClusterProxyValueFunc(
 	nativeClient kubernetes.Interface,
 	signerNamespace string,
 	caCertData []byte,
-	v1CSRSupported bool,
 	enableKubeApiProxy bool,
 ) addonfactory.GetValuesFunc {
 	return func(cluster *clusterv1.ManagedCluster,
@@ -260,20 +257,6 @@ func GetClusterProxyValueFunc(
 			serviceEntryPointPort = 8091
 		}
 
-		// If v1 CSR is not supported in the hub cluster, copy and apply the secret named
-		// "agent-client" to the managed clusters.
-		certDataBase64, keyDataBase64 := "", ""
-		if !v1CSRSupported {
-			agentClientSecret, err := nativeClient.CoreV1().
-				Secrets(signerNamespace).
-				Get(context.TODO(), common.AgentClientSecretName, metav1.GetOptions{})
-			if err != nil {
-				return nil, err
-			}
-			certDataBase64 = base64.StdEncoding.EncodeToString(agentClientSecret.Data[corev1.TLSCertKey])
-			keyDataBase64 = base64.StdEncoding.EncodeToString(agentClientSecret.Data[corev1.TLSPrivateKeyKey])
-		}
-
 		registry, image, tag, err := config.GetParsedAgentImage(proxyConfig.Spec.ProxyAgent.Image)
 		if err != nil {
 			return nil, err
@@ -316,7 +299,7 @@ func GetClusterProxyValueFunc(
 		// Using SHA256 to hash cluster.name to:
 		// 1. Generate consistent and unique host names
 		// 2. Keep host name length under DNS limit (max 64 chars)
-		serviceProxyHost := fmt.Sprintf("cluster-%x", sha256.Sum256([]byte(cluster.Name)))[:64-len("cluster-")] + ".open-cluster-management.proxy"
+		serviceProxyHost := util.GenerateServiceProxyHost(cluster.Name)
 		aids = append(aids, fmt.Sprintf("host=%s", serviceProxyHost))
 
 		// add default kube-apiserver agentIdentifiers
@@ -330,33 +313,44 @@ func GetClusterProxyValueFunc(
 		}
 		agentIdentifiers := strings.Join(aids, "&")
 
-		return map[string]interface{}{
-			"agentDeploymentName":           "cluster-proxy-proxy-agent",
-			"serviceDomain":                 serviceDomain,
-			"includeNamespaceCreation":      true,
-			"spokeAddonNamespace":           addon.Spec.InstallNamespace,
-			"additionalProxyAgentArgs":      proxyConfig.Spec.ProxyAgent.AdditionalArgs,
-			"clusterName":                   cluster.Name,
-			"registry":                      registry,
-			"image":                         image,
-			"tag":                           tag,
-			"proxyAgentImage":               proxyConfig.Spec.ProxyAgent.Image,
-			"proxyAgentImagePullSecrets":    proxyConfig.Spec.ProxyAgent.ImagePullSecrets,
-			"replicas":                      proxyConfig.Spec.ProxyAgent.Replicas,
-			"base64EncodedCAData":           base64.StdEncoding.EncodeToString(caCertData),
-			"serviceEntryPoint":             serviceEntryPoint,
-			"serviceEntryPointPort":         serviceEntryPointPort,
-			"agentDeploymentAnnotations":    annotations,
-			"addonAgentArgs":                addonAgentArgs,
-			"includeStaticProxyAgentSecret": !v1CSRSupported,
-			"staticProxyAgentSecretCert":    certDataBase64,
-			"staticProxyAgentSecretKey":     keyDataBase64,
+		values := map[string]interface{}{
+			"agentDeploymentName":        "cluster-proxy-proxy-agent",
+			"serviceDomain":              serviceDomain,
+			"includeNamespaceCreation":   true,
+			"spokeAddonNamespace":        addon.Spec.InstallNamespace,
+			"additionalProxyAgentArgs":   proxyConfig.Spec.ProxyAgent.AdditionalArgs,
+			"clusterName":                cluster.Name,
+			"registry":                   registry,
+			"image":                      image,
+			"tag":                        tag,
+			"proxyAgentImage":            proxyConfig.Spec.ProxyAgent.Image,
+			"proxyAgentImagePullSecrets": proxyConfig.Spec.ProxyAgent.ImagePullSecrets,
+			"replicas":                   proxyConfig.Spec.ProxyAgent.Replicas,
+			"base64EncodedCAData":        base64.StdEncoding.EncodeToString(caCertData),
+			"serviceEntryPoint":          serviceEntryPoint,
+			"serviceEntryPointPort":      serviceEntryPointPort,
+			"agentDeploymentAnnotations": annotations,
+			"addonAgentArgs":             addonAgentArgs,
 			// support to access not only but also other services on managed cluster
-			"agentIdentifiers":   agentIdentifiers,
-			"serviceProxyHost":   serviceProxyHost,
-			"servicesToExpose":   servicesToExpose,
-			"enableKubeApiProxy": enableKubeApiProxy,
-		}, nil
+			"agentIdentifiers":            agentIdentifiers,
+			"serviceProxyHost":            serviceProxyHost,
+			"servicesToExpose":            servicesToExpose,
+			"enableKubeApiProxy":          enableKubeApiProxy,
+			"addtionalServiceCAConfigMap": proxyConfig.Spec.ProxyAgent.AdditionalValues["addtionalServiceCAConfigMap"],
+		}
+
+		if enableImpersonationStr := proxyConfig.Spec.ProxyAgent.AdditionalValues["enableImpersonation"]; enableImpersonationStr != "" {
+			// Validate the boolean string to prevent invalid values that would cause deployment failure
+			// Valid values: "true", "false", "1", "0" (as accepted by Go's flag.BoolVar)
+			if enableImpersonationStr == "true" || enableImpersonationStr == "false" ||
+				enableImpersonationStr == "1" || enableImpersonationStr == "0" {
+				values["enableImpersonation"] = enableImpersonationStr
+			} else {
+				return nil, fmt.Errorf("invalid value for enableImpersonation: %q, must be one of: true, false, 1, 0", enableImpersonationStr)
+			}
+		}
+
+		return values, nil
 	}
 }
 

@@ -1,0 +1,86 @@
+{{- if .Values.enableServiceProxy }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: {{ .Release.Namespace }}
+  name: cluster-proxy-addon-user
+  labels:
+    component: cluster-proxy-addon-user
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      open-cluster-management.io/addon: cluster-proxy
+      component: cluster-proxy-addon-user
+  template:
+    metadata:
+      labels:
+        open-cluster-management.io/addon: cluster-proxy
+        component: cluster-proxy-addon-user
+    spec:
+      serviceAccount: cluster-proxy
+      containers:
+        - name: controllers
+          image: {{ .Values.registry }}/{{ .Values.image }}:{{ .Values.tag | default (print "v" .Chart.Version) }}
+          imagePullPolicy: IfNotPresent
+          command:
+            - /cluster-proxy
+          args:
+            - controllers
+            - --certificates-namespace={{ .Release.Namespace }}
+            - --signer-secret-namespace={{ .Release.Namespace }}
+            - --agent-image={{ .Values.registry }}/{{ .Values.image }}:{{ .Values.tag | default (print "v" .Chart.Version) }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
+            privileged: false
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
+        - name: user-server
+          image: {{ .Values.registry }}/{{ .Values.image }}:{{ .Values.tag | default (print "v" .Chart.Version) }}
+          imagePullPolicy: IfNotPresent
+          command:
+            - /cluster-proxy
+          args:
+            - user-server
+            - --host=proxy-entrypoint.{{ .Release.Namespace }}.svc
+            - --port=8090
+            - --proxy-ca-cert=/proxy-ca/ca.crt
+            - --proxy-cert=/proxy-client-tls/tls.crt
+            - --proxy-key=/proxy-client-tls/tls.key
+            - --server-port=9092
+            - --server-key=/user-tls/tls.key
+            - --server-cert=/user-tls/tls.crt
+            - --service-proxy-ca-cert=/proxy-ca/ca.crt
+            - --agent-install-namespace=open-cluster-management-agent-addon
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
+            privileged: false
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: user-tls-vol
+              mountPath: /user-tls
+              readOnly: true
+            - name: proxy-server-ca
+              mountPath: /proxy-ca
+              readOnly: true
+            - name: proxy-client-cert
+              mountPath: /proxy-client-tls
+              readOnly: true
+      volumes:
+        - name: user-tls-vol
+          secret:
+            secretName: cluster-proxy-user-serving-cert
+        - name: proxy-server-ca
+          secret:
+            secretName: proxy-server-ca
+        - name: proxy-client-cert
+          secret:
+            secretName: proxy-client
+{{- end }}

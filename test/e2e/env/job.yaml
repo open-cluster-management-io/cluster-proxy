@@ -1,0 +1,70 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cluster-proxy-e2e
+  namespace: open-cluster-management-addon
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cluster-proxy-e2e
+rules:
+  - apiGroups: ["*"]
+    resources: ["*"]
+    verbs: ["*"]
+  - nonResourceURLs: ["*"]
+    verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cluster-proxy-e2e
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-proxy-e2e
+subjects:
+  - kind: ServiceAccount
+    name: cluster-proxy-e2e
+    namespace: open-cluster-management-addon
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: cluster-proxy-e2e
+  namespace: open-cluster-management-addon
+spec:
+  backoffLimit: 1
+  template:
+    metadata:
+      labels:
+        app: cluster-proxy-e2e
+    spec:
+      serviceAccountName: cluster-proxy-e2e
+      restartPolicy: Never
+      containers:
+        - name: e2e
+          # Use the e2e test image built from test/e2e/Dockerfile
+          image: quay.io/open-cluster-management/cluster-proxy-e2e:latest
+          imagePullPolicy: Never
+          args:
+            - -ginkgo.v
+            - -ginkgo.label-filter=$(LABEL_FILTER)
+          env:
+            - name: MANAGED_CLUSTER_NAME
+              value: "loopback"
+            - name: LABEL_FILTER
+              value: ""
+            - name: PROXY_ENTRYPOINT_NAMESPACE
+              value: "open-cluster-management-addon"
+            - name: PROXY_ENTRYPOINT_SERVICE
+              value: "proxy-entrypoint"
+            - name: PROXY_ENTRYPOINT_PORT
+              value: "8090"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi

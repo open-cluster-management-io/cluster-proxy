@@ -373,7 +373,6 @@ func TestAgentAddonRegistrationOption(t *testing.T) {
 	cases := []struct {
 		name               string
 		signerName         string
-		v1CSRSupported     bool
 		cluster            *clusterv1.ManagedCluster
 		addon              *addonv1alpha1.ManagedClusterAddOn
 		expextedCSRConfigs int
@@ -384,13 +383,6 @@ func TestAgentAddonRegistrationOption(t *testing.T) {
 			name:               "install all",
 			cluster:            newCluster("cluster", false),
 			addon:              newAddOn("addon", "cluster"),
-			expextedCSRConfigs: 1,
-		},
-		{
-			name:               "csr v1 supported",
-			v1CSRSupported:     true,
-			cluster:            newCluster("cluster", false),
-			addon:              newAddOn("addon", "cluster"),
 			expextedCSRConfigs: 2,
 		},
 		{
@@ -398,14 +390,14 @@ func TestAgentAddonRegistrationOption(t *testing.T) {
 			signerName:         ProxyAgentSignerName,
 			cluster:            newCluster("cluster", false),
 			addon:              newAddOn("addon", "cluster"),
-			expextedCSRConfigs: 1,
+			expextedCSRConfigs: 2,
 			expectedSignedCSR:  true,
 		},
 		{
 			name:               "approve csr",
 			cluster:            newCluster("cluster", true),
 			addon:              newAddOn("addon", "cluster"),
-			expextedCSRConfigs: 1,
+			expextedCSRConfigs: 2,
 			expectedCSRApprove: true,
 		},
 	}
@@ -417,10 +409,10 @@ func TestAgentAddonRegistrationOption(t *testing.T) {
 			agentAddOn, err := NewAgentAddon(
 				&fakeSelfSigner{t: t},
 				"",
-				c.v1CSRSupported,
 				nil,
 				fakeKubeClient,
 				true,
+				false,
 				nil,
 			)
 			assert.NoError(t, err)
@@ -459,27 +451,25 @@ func TestNewAgentAddon(t *testing.T) {
 	addOndDeployConfigName := "deploy-config"
 
 	expectedManifestNames := []string{
-		"cluster-proxy-proxy-agent", // deployment
-		"cluster-proxy-addon-agent", // role
-		"cluster-proxy-addon-agent", // rolebinding
-		"cluster-proxy-ca",          // ca
-		clusterName,                 // cluster service
-		addOnName,                   // namespace
-		"cluster-proxy",             // service account
-		"cluster-proxy-service-proxy-server-certificates",
-		"cluster-proxy-addon-agent-impersonator",                                       // clusterrole for impersonation
+		"cluster-proxy-proxy-agent",              // deployment
+		"cluster-proxy-addon-agent",              // role
+		"cluster-proxy-addon-agent",              // rolebinding
+		"cluster-proxy-ca",                       // ca
+		clusterName,                              // cluster service
+		addOnName,                                // namespace
+		"cluster-proxy",                          // service account
+		"cluster-proxy-addon-agent-impersonator", // clusterrole for impersonation
 		"cluster-proxy-addon-agent-impersonator:open-cluster-management-cluster-proxy", // clusterrolebinding for impersonation
 	}
 
 	expectedManifestNamesWithoutClusterService := []string{
-		"cluster-proxy-proxy-agent", // deployment
-		"cluster-proxy-addon-agent", // role
-		"cluster-proxy-addon-agent", // rolebinding
-		"cluster-proxy-ca",          // ca
-		addOnName,                   // namespace
-		"cluster-proxy",             // service account
-		"cluster-proxy-service-proxy-server-certificates",
-		"cluster-proxy-addon-agent-impersonator",                                       // clusterrole for impersonation
+		"cluster-proxy-proxy-agent",              // deployment
+		"cluster-proxy-addon-agent",              // role
+		"cluster-proxy-addon-agent",              // rolebinding
+		"cluster-proxy-ca",                       // ca
+		addOnName,                                // namespace
+		"cluster-proxy",                          // service account
+		"cluster-proxy-addon-agent-impersonator", // clusterrole for impersonation
 		"cluster-proxy-addon-agent-impersonator:open-cluster-management-cluster-proxy", // clusterrolebinding for impersonation
 	}
 
@@ -490,7 +480,6 @@ func TestNewAgentAddon(t *testing.T) {
 		managedProxyConfig      runtimeclient.Object
 		addOndDeploymentConfigs []runtime.Object
 		kubeObjs                []runtime.Object
-		v1CSRSupported          bool
 		enableKubeApiProxy      bool
 		expectedErrorMsg        string
 		verifyManifests         func(t *testing.T, manifests []runtime.Object)
@@ -556,7 +545,6 @@ func TestNewAgentAddon(t *testing.T) {
 			managedProxyConfig:      newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypeLoadBalancerService),
 			addOndDeploymentConfigs: []runtime.Object{},
 			kubeObjs:                []runtime.Object{newLoadBalancerService("1.2.3.4")},
-			v1CSRSupported:          true,
 			enableKubeApiProxy:      true,
 			verifyManifests: func(t *testing.T, manifests []runtime.Object) {
 				assert.Len(t, manifests, len(expectedManifestNames))
@@ -564,24 +552,6 @@ func TestNewAgentAddon(t *testing.T) {
 				agentDeploy := getAgentDeployment(manifests)
 				assert.NotNil(t, agentDeploy)
 				assert.Equal(t, getProxyServerHost(agentDeploy), "1.2.3.4")
-			},
-		},
-		{
-			name:    "crs is not v1",
-			cluster: newCluster(clusterName, true),
-			addon: func() *addonv1alpha1.ManagedClusterAddOn {
-				addOn := newAddOn(addOnName, clusterName)
-				addOn.Status.ConfigReferences = []addonv1alpha1.ConfigReference{newManagedProxyConfigReference(managedProxyConfigName)}
-				return addOn
-			}(),
-			managedProxyConfig:      newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypeLoadBalancerService),
-			addOndDeploymentConfigs: []runtime.Object{},
-			kubeObjs:                []runtime.Object{newLoadBalancerService("1.2.3.4"), newAgentClientSecret()},
-			enableKubeApiProxy:      true,
-			verifyManifests: func(t *testing.T, manifests []runtime.Object) {
-				crsExpectedManifestNames := append(expectedManifestNames, "cluster-proxy-open-cluster-management.io-proxy-agent-signer-client-cert")
-				assert.Len(t, manifests, len(crsExpectedManifestNames))
-				assert.ElementsMatch(t, crsExpectedManifestNames, manifestNames(manifests))
 			},
 		},
 		{
@@ -595,7 +565,6 @@ func TestNewAgentAddon(t *testing.T) {
 			managedProxyConfig:      newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypeHostname),
 			addOndDeploymentConfigs: []runtime.Object{},
 			kubeObjs:                []runtime.Object{},
-			v1CSRSupported:          true,
 			enableKubeApiProxy:      true,
 			verifyManifests: func(t *testing.T, manifests []runtime.Object) {
 				assert.Len(t, manifests, len(expectedManifestNames))
@@ -616,7 +585,6 @@ func TestNewAgentAddon(t *testing.T) {
 			managedProxyConfig:      setProxyAgentReplicas(newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypeHostname), 2),
 			addOndDeploymentConfigs: []runtime.Object{},
 			kubeObjs:                []runtime.Object{},
-			v1CSRSupported:          true,
 			enableKubeApiProxy:      true,
 			verifyManifests: func(t *testing.T, manifests []runtime.Object) {
 				assert.Len(t, manifests, len(expectedManifestNames))
@@ -637,7 +605,6 @@ func TestNewAgentAddon(t *testing.T) {
 			managedProxyConfig:      newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypePortForward),
 			addOndDeploymentConfigs: []runtime.Object{},
 			kubeObjs:                []runtime.Object{},
-			v1CSRSupported:          true,
 			enableKubeApiProxy:      true,
 			verifyManifests: func(t *testing.T, manifests []runtime.Object) {
 				assert.Len(t, manifests, len(expectedManifestNames))
@@ -660,7 +627,6 @@ func TestNewAgentAddon(t *testing.T) {
 			}(),
 			managedProxyConfig:      newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypePortForward),
 			addOndDeploymentConfigs: []runtime.Object{newAddOnDeploymentConfig(addOndDeployConfigName, clusterName)},
-			v1CSRSupported:          true,
 			enableKubeApiProxy:      true,
 			verifyManifests: func(t *testing.T, manifests []runtime.Object) {
 				assert.Len(t, manifests, len(expectedManifestNames))
@@ -697,7 +663,6 @@ func TestNewAgentAddon(t *testing.T) {
 			}(),
 			managedProxyConfig:      newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypePortForward),
 			addOndDeploymentConfigs: []runtime.Object{newAddOnDeploymentConfigWithCustomizedServiceDomain(addOndDeployConfigName, clusterName, "svc.test.com")},
-			v1CSRSupported:          true,
 			enableKubeApiProxy:      true,
 			verifyManifests: func(t *testing.T, manifests []runtime.Object) {
 				assert.Len(t, manifests, len(expectedManifestNames))
@@ -720,7 +685,6 @@ func TestNewAgentAddon(t *testing.T) {
 			}(),
 			managedProxyConfig:      newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypePortForward),
 			addOndDeploymentConfigs: []runtime.Object{newAddOnDeploymentConfigWithCustomizedServiceDomain(addOndDeployConfigName, clusterName, "svc.test.com")},
-			v1CSRSupported:          true,
 			enableKubeApiProxy:      false,
 			verifyManifests: func(t *testing.T, manifests []runtime.Object) {
 				// expect cluster service not created.
@@ -741,7 +705,6 @@ func TestNewAgentAddon(t *testing.T) {
 			}(),
 			managedProxyConfig:      newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypePortForward),
 			addOndDeploymentConfigs: []runtime.Object{newAddOnDeploymentConfigWithHttpsProxy(addOndDeployConfigName, clusterName)},
-			v1CSRSupported:          true,
 			enableKubeApiProxy:      true,
 			verifyManifests: func(t *testing.T, manifests []runtime.Object) {
 				assert.Len(t, manifests, len(expectedManifestNames))
@@ -775,7 +738,6 @@ func TestNewAgentAddon(t *testing.T) {
 			}(),
 			managedProxyConfig:      newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypePortForward),
 			addOndDeploymentConfigs: []runtime.Object{newAddOnDeploymentConfigWithHttpProxy(addOndDeployConfigName, clusterName)},
-			v1CSRSupported:          true,
 			enableKubeApiProxy:      true,
 			verifyManifests: func(t *testing.T, manifests []runtime.Object) {
 				assert.Len(t, manifests, len(expectedManifestNames))
@@ -814,14 +776,13 @@ func TestNewAgentAddon(t *testing.T) {
 					config.Spec.AgentInstallNamespace = "addon-test"
 					return config
 				}()},
-			v1CSRSupported:     true,
 			enableKubeApiProxy: true,
 			verifyManifests: func(t *testing.T, manifests []runtime.Object) {
 				assert.Len(t, manifests, len(expectedManifestNames))
 				newexpectedManifestNames := []string{}
 				newexpectedManifestNames = append(newexpectedManifestNames, expectedManifestNames...)
 				newexpectedManifestNames[5] = "addon-test"
-				newexpectedManifestNames[9] = "cluster-proxy-addon-agent-impersonator:addon-test" // clusterrolebinding
+				newexpectedManifestNames[8] = "cluster-proxy-addon-agent-impersonator:addon-test" // clusterrolebinding
 				assert.ElementsMatch(t, newexpectedManifestNames, manifestNames(manifests))
 			},
 		},
@@ -849,7 +810,6 @@ func TestNewAgentAddon(t *testing.T) {
 					return config
 				}(),
 			},
-			v1CSRSupported:     true,
 			enableKubeApiProxy: true,
 			verifyManifests: func(t *testing.T, manifests []runtime.Object) {
 				assert.Len(t, manifests, len(expectedManifestNames))
@@ -872,7 +832,6 @@ func TestNewAgentAddon(t *testing.T) {
 			}(),
 			managedProxyConfig:      newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypePortForward),
 			addOndDeploymentConfigs: []runtime.Object{newAddOnDeploymentConfigWithCustomizedServiceDomain(addOndDeployConfigName, clusterName, "svc.test.com")},
-			v1CSRSupported:          true,
 			enableKubeApiProxy:      true,
 			verifyManifests: func(t *testing.T, manifests []runtime.Object) {
 				assert.Len(t, manifests, len(expectedManifestNames))
@@ -911,7 +870,6 @@ func TestNewAgentAddon(t *testing.T) {
 					},
 				),
 			},
-			v1CSRSupported:     true,
 			enableKubeApiProxy: true,
 			verifyManifests: func(t *testing.T, manifests []runtime.Object) {
 				assert.Len(t, manifests, len(expectedManifestNames))
@@ -960,10 +918,10 @@ func TestNewAgentAddon(t *testing.T) {
 			agentAddOn, err := NewAgentAddon(
 				&fakeSelfSigner{t: t},
 				"test",
-				c.v1CSRSupported,
 				fakeRuntimeClient,
 				fakeKubeClient,
 				c.enableKubeApiProxy,
+				false, // enableServiceProxy
 				fakeAddonClient,
 			)
 			assert.NoError(t, err)

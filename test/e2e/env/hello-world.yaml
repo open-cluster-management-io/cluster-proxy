@@ -1,0 +1,31 @@
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: hello-world
+  namespace: default
+  labels:
+    run: hello-world
+spec:
+  containers:
+  - name: hello-world
+    image: quay.io/prometheus/busybox
+    args:
+    - sh
+    - -c
+    - echo 'Hello from hello-world' > /var/www/index.html && httpd -f -p 8000 -h /var/www/
+    ports:
+    - containerPort: 8000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hello-world
+  namespace: default
+  labels:
+    run: hello-world
+spec:
+  selector:
+    run: hello-world
+  ports:
+  - port: 8000
