@@ -8,13 +8,14 @@ COPY . .
 # Build addons
 RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -a -o agent cmd/addon-agent/main.go
 RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -a -o manager cmd/addon-manager/main.go
+RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -a -o cluster-proxy cmd/cluster-proxy/main.go
 
 # Use distroless as minimal base image to package the manager binary
 FROM registry.access.redhat.com/ubi9/ubi-minimal:latest
 ENV USER_UID=10001
 
 WORKDIR /
-COPY --from=builder /workspace/agent /workspace/manager ./
+COPY --from=builder /workspace/agent /workspace/manager /workspace/cluster-proxy ./
 
 RUN microdnf update -y && \
     microdnf clean all
