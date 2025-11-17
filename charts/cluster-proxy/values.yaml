@@ -19,7 +19,18 @@ proxyServer:
   entrypointLoadBalancer: false
   entrypointAddress: ""
   port: 8091
+  imagePullPolicy: IfNotPresent
 
 installByPlacement:
-  placementName: global
-  placementNamespace: open-cluster-management-global-set
+  placementName: ""
+  placementNamespace: ""
+
+enableKubeApiProxy: true
+
+# Enable user server deployment
+# WARNING: Before setting this to true, ensure the following secret exists in the release namespace:
+#   - cluster-proxy-user-serving-cert (TLS cert for user server)
+# Note: Other required secrets (proxy-server-ca, proxy-client) will be created automatically by the controller.
+# Without cluster-proxy-user-serving-cert, the user-server deployment will remain in Pending state.
+enableServiceProxy: false
+enableImpersonation: true

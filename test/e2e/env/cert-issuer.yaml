@@ -1,0 +1,66 @@
+---
+# Self-signed Issuer for bootstrapping the CA certificate
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: selfsigned-issuer
+  namespace: open-cluster-management-addon
+spec:
+  selfSigned: {}
+
+---
+# CA Certificate for cluster-proxy
+# This creates a self-signed CA that will be used to issue certificates for services
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: cluster-proxy-ca
+  namespace: open-cluster-management-addon
+spec:
+  isCA: true
+  commonName: cluster-proxy-ca
+  secretName: cluster-proxy-ca-secret
+  duration: 87600h  # 10 years
+  privateKey:
+    algorithm: RSA
+    size: 4096
+  issuerRef:
+    name: selfsigned-issuer
+    kind: Issuer
+
+---
+# Issuer that uses the CA certificate to issue certificates
+# Changed from ClusterIssuer to Issuer to allow accessing secret in the same namespace
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: cluster-proxy-ca-issuer
+  namespace: open-cluster-management-addon
+spec:
+  ca:
+    secretName: cluster-proxy-ca-secret
+
+---
+# Certificate for cluster-proxy-user-server
+# This creates a TLS certificate for the user server
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: cluster-proxy-user-serving-cert
+  namespace: open-cluster-management-addon
+spec:
+  secretName: cluster-proxy-user-serving-cert
+  duration: 8760h  # 1 year
+  renewBefore: 720h  # 30 days
+  commonName: cluster-proxy-addon-user.open-cluster-management-addon.svc
+  dnsNames:
+    - cluster-proxy-addon-user
+    - cluster-proxy-addon-user.open-cluster-management-addon
+    - cluster-proxy-addon-user.open-cluster-management-addon.svc
+    - cluster-proxy-addon-user.open-cluster-management-addon.svc.cluster.local
+  privateKey:
+    algorithm: RSA
+    size: 2048
+  issuerRef:
+    name: cluster-proxy-ca-issuer
+    kind: Issuer

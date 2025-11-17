@@ -29,14 +29,6 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
       - name: build
         run: make build
-  linelint:
-    name: linelint
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Linelint
-        uses: fernandrone/linelint@0.0.4
   verify:
     name: verify
     runs-on: ubuntu-latest
@@ -98,25 +90,11 @@ jobs:
         run: curl -L https://raw.githubusercontent.com/open-cluster-management-io/clusteradm/main/install.sh | bash
       - name: Create k8s Kind Cluster
         uses: helm/kind-action@v1.2.0
-      - name: Prepare OCM testing environment
-        run: |
-          clusteradm init --output-join-command-file join.sh --wait
-          sh -c "$(cat join.sh) loopback --force-internal-endpoint-lookup"
-          clusteradm accept --clusters loopback --wait 30
-          kubectl wait --for=condition=ManagedClusterConditionAvailable managedcluster/loopback
+        with:
+          cluster_name: e2e
       - name: Build image
-        run: |
-          make images
-          kind load docker-image quay.io/open-cluster-management/cluster-proxy:latest  --name chart-testing
-      - name: Install latest cluster-proxy
-        run: |
-          helm install \
-             -n open-cluster-management-addon --create-namespace \
-             cluster-proxy charts/cluster-proxy/ \
-             --set tag=latest --set installByPlacement.placementName=default
-      - name: Build&Run e2e test
-        run: |
-          kubectl wait --for=condition=ProxyServerDeployed=true managedproxyconfiguration cluster-proxy --timeout=60s
-          kubectl wait --for=condition=Available deployment/cluster-proxy --timeout=60s -n open-cluster-management-addon
-          kubectl port-forward -n open-cluster-management-addon services/proxy-entrypoint 8090:8090 &
-          make test-e2e
+        run: make images
+      - name: Setup environment
+        run: make setup-env-for-e2e && make deploy-cluster-proxy-e2e
+      - name: Run e2e tests
+        run: make test-e2e

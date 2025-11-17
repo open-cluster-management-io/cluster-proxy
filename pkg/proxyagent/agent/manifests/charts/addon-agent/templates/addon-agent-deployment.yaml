@@ -135,6 +135,7 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+        {{- if .Values.enableServiceProxy }}
         - name: service-proxy
           {{- $reverseResourceRequirements := reverse .Values.global.resourceRequirements }}
           {{- range $item := $reverseResourceRequirements }}
@@ -150,7 +151,10 @@ spec:
             - /cluster-proxy
           args:
             - service-proxy
-            - --ocpservice-ca=/ocpservice-ca/service-ca.crt
+          {{- if .Values.addtionalServiceCAConfigMap }}
+            - --additional-service-ca=/additional-service-ca/service-ca.crt
+          {{- end }}
+            - --enable-impersonation={{ .Values.enableImpersonation }}
             - --cert=/server-cert/tls.crt
             - --key=/server-cert/tls.key
             - --hub-kubeconfig=/etc/kubeconfig/kubeconfig
@@ -175,12 +179,15 @@ spec:
             - name: hub
               mountPath: /etc/tls
               readOnly: true
-            - name: ocpservice-ca
-              mountPath: /ocpservice-ca
+            {{- if .Values.addtionalServiceCAConfigMap }}
+            - name: additional-service-ca
+              mountPath: /additional-service-ca
               readOnly: true
+            {{- end }}
             - name: service-proxy-server-cert
               mountPath: /server-cert
               readOnly: true
+        {{- end }}
       volumes:
         - name: ca
           secret:
@@ -191,13 +198,17 @@ spec:
         - name: hub-kubeconfig
           secret:
             secretName: cluster-proxy-hub-kubeconfig
-        - name: ocpservice-ca
+        {{- if .Values.enableServiceProxy }}
+        {{- if .Values.addtionalServiceCAConfigMap }}
+        - name: additional-service-ca
           configMap:
-            name: openshift-service-ca.crt
-            optional: true # In non-ocp clusters, the configmap is not present, so we make it optional
+            name: {{ .Values.addtionalServiceCAConfigMap }}
+            optional: true
+        {{- end }}
         - name: service-proxy-server-cert
           secret:
             secretName: cluster-proxy-service-proxy-server-certificates
+        {{- end }}
       imagePullSecrets:
       {{- range .Values.proxyAgentImagePullSecrets }}
       - name: {{ . }}
