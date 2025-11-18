@@ -148,7 +148,7 @@ spec:
                             The rollout strategy only watches the addon configurations defined in ClusterManagementAddOn.
                           properties:
                             all:
-                              description: All defines required fields for RolloutStrategy
+                              description: all defines required fields for RolloutStrategy
                                 type All
                               properties:
                                 maxFailures:
@@ -195,7 +195,7 @@ spec:
                                   type: string
                               type: object
                             progressive:
-                              description: Progressive defines required fields for
+                              description: progressive defines required fields for
                                 RolloutStrategy type Progressive
                               properties:
                                 mandatoryDecisionGroups:
@@ -211,13 +211,13 @@ spec:
                                     properties:
                                       groupIndex:
                                         description: |-
-                                          GroupIndex of the decision group should match the placementDecisions label value with label key
+                                          groupIndex of the decision group should match the placementDecisions label value with label key
                                           cluster.open-cluster-management.io/decision-group-index
                                         format: int32
                                         type: integer
                                       groupName:
                                         description: |-
-                                          GroupName of the decision group should match the placementDecisions label value with label key
+                                          groupName of the decision group should match the placementDecisions label value with label key
                                           cluster.open-cluster-management.io/decision-group-name
                                         type: string
                                     type: object
@@ -227,7 +227,7 @@ spec:
                                   - type: integer
                                   - type: string
                                   description: |-
-                                    MaxConcurrency is the max number of clusters to deploy workload concurrently. The default value
+                                    maxConcurrency is the max number of clusters to deploy workload concurrently. The default value
                                     for MaxConcurrency is determined from the clustersPerDecisionGroup defined in the
                                     placement->DecisionStrategy.
                                   pattern: ^((100|[0-9]{1,2})%|[0-9]+)$
@@ -276,7 +276,7 @@ spec:
                                   type: string
                               type: object
                             progressivePerGroup:
-                              description: ProgressivePerGroup defines required fields
+                              description: progressivePerGroup defines required fields
                                 for RolloutStrategy type ProgressivePerGroup
                               properties:
                                 mandatoryDecisionGroups:
@@ -292,13 +292,13 @@ spec:
                                     properties:
                                       groupIndex:
                                         description: |-
-                                          GroupIndex of the decision group should match the placementDecisions label value with label key
+                                          groupIndex of the decision group should match the placementDecisions label value with label key
                                           cluster.open-cluster-management.io/decision-group-index
                                         format: int32
                                         type: integer
                                       groupName:
                                         description: |-
-                                          GroupName of the decision group should match the placementDecisions label value with label key
+                                          groupName of the decision group should match the placementDecisions label value with label key
                                           cluster.open-cluster-management.io/decision-group-name
                                         type: string
                                     type: object
@@ -468,18 +468,8 @@ spec:
                       description: conditions describe the state of the managed and
                         monitored components for the operator.
                       items:
-                        description: "Condition contains details for one aspect of
-                          the current state of this API Resource.\n---\nThis struct
-                          is intended for direct use as an array at the field path
-                          .status.conditions.  For example,\n\n\n\ttype FooStatus
-                          struct{\n\t    // Represents the observations of a foo's
-                          current state.\n\t    // Known .status.conditions.type are:
-                          \"Available\", \"Progressing\", and \"Degraded\"\n\t    //
-                          +patchMergeKey=type\n\t    // +patchStrategy=merge\n\t    //
-                          +listType=map\n\t    // +listMapKey=type\n\t    Conditions
-                          []metav1.Condition `json:\"conditions,omitempty\" patchStrategy:\"merge\"
-                          patchMergeKey:\"type\" protobuf:\"bytes,1,rep,name=conditions\"`\n\n\n\t
-                          \   // other fields\n\t}"
+                        description: Condition contains details for one aspect of
+                          the current state of this API Resource.
                         properties:
                           lastTransitionTime:
                             description: |-
@@ -521,12 +511,7 @@ spec:
                             - Unknown
                             type: string
                           type:
-                            description: |-
-                              type of condition in CamelCase or in foo.example.com/CamelCase.
-                              ---
-                              Many .condition.type values are consistent across resources like Available, but because arbitrary conditions can be
-                              useful (see .node.status.conditions), the ability to deconflict is important.
-                              The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
+                            description: type of condition in CamelCase or in foo.example.com/CamelCase.
                             maxLength: 316
                             pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
                             type: string
@@ -634,6 +619,8 @@ spec:
                   type: object
                 type: array
             type: object
+        required:
+        - spec
         type: object
     served: true
     storage: true

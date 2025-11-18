@@ -1,3 +1,4 @@
+// Copyright Contributors to the Open Cluster Management project
 package v1alpha1
 
 import (
@@ -33,6 +34,7 @@ type ManagedClusterAddOn struct {
 // ManagedClusterAddOnSpec defines the install configuration of
 // an addon agent on managed cluster.
 type ManagedClusterAddOnSpec struct {
+	// Deprecated: Use AddonDeploymentConfig instead.
 	// installNamespace is the namespace on the managed cluster to install the addon agent.
 	// If it is not set, open-cluster-management-agent-addon namespace is used to install the addon agent.
 	// +optional
