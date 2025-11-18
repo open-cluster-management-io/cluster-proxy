@@ -92,8 +92,8 @@ func NewAgentAddon(
 
 	agentFactory := addonfactory.NewAgentAddonFactory(common.AddonName, FS, "manifests/charts/addon-agent").
 		WithAgentRegistrationOption(&agent.RegistrationOption{
-			CSRConfigurations: func(cluster *clusterv1.ManagedCluster) []addonv1alpha1.RegistrationConfig {
-				return regConfigs
+			CSRConfigurations: func(cluster *clusterv1.ManagedCluster, addon *addonv1alpha1.ManagedClusterAddOn) ([]addonv1alpha1.RegistrationConfig, error) {
+				return regConfigs, nil
 			},
 			CSRApproveCheck: func(cluster *clusterv1.ManagedCluster, addon *addonv1alpha1.ManagedClusterAddOn, csr *csrv1.CertificateSigningRequest) bool {
 				return cluster.Spec.HubAcceptsClient
@@ -360,11 +360,11 @@ type serviceToExpose struct {
 }
 
 func CustomSignerWithExpiry(customSignerName string, caKey, caData []byte, duration time.Duration) agent.CSRSignerFunc {
-	return func(csr *csrv1.CertificateSigningRequest) []byte {
+	return func(cluster *clusterv1.ManagedCluster, addon *addonv1alpha1.ManagedClusterAddOn, csr *csrv1.CertificateSigningRequest) ([]byte, error) {
 		if csr.Spec.SignerName != customSignerName {
-			return nil
+			return nil, nil
 		}
-		return utils.DefaultSignerWithExpiry(caKey, caData, duration)(csr)
+		return utils.DefaultSignerWithExpiry(caKey, caData, duration)(cluster, addon, csr)
 	}
 }
 

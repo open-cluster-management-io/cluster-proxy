@@ -5,9 +5,9 @@ go 1.24.0
 require (
 	github.com/onsi/ginkgo/v2 v2.22.0
 	github.com/onsi/gomega v1.36.1
-	github.com/openshift/library-go v0.0.0-20240621150525-4bb4238aef81
+	github.com/openshift/library-go v0.0.0-20250711143941-47604345e7ea
 	github.com/pkg/errors v0.9.1
-	github.com/stolostron/cluster-lifecycle-api v0.0.0-20240813023109-42b5c115d0a3 // TODO: @xuezhaojun remove dependency on stolostron.
+	github.com/stolostron/cluster-lifecycle-api v0.0.0-20251028083736-64a17b44b598 // TODO: @xuezhaojun remove dependency on stolostron.
 	github.com/stretchr/testify v1.11.1
 	google.golang.org/grpc v1.72.1
 	k8s.io/api v0.34.1
@@ -15,9 +15,9 @@ require (
 	k8s.io/client-go v0.34.1
 	k8s.io/klog/v2 v2.130.1
 	k8s.io/utils v0.0.0-20250604170112-4c0f3b243397
-	open-cluster-management.io/addon-framework v0.12.0
-	open-cluster-management.io/api v0.16.0
-	open-cluster-management.io/sdk-go v0.16.0
+	open-cluster-management.io/addon-framework v1.1.1
+	open-cluster-management.io/api v1.1.0
+	open-cluster-management.io/sdk-go v1.1.0
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.31.2
 	sigs.k8s.io/controller-runtime v0.22.3
 )
@@ -41,7 +41,6 @@ require (
 	github.com/cyphar/filepath-securejoin v0.4.1 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/emicklei/go-restful/v3 v3.12.2 // indirect
-	github.com/evanphx/json-patch v5.9.11+incompatible // indirect
 	github.com/evanphx/json-patch/v5 v5.9.11 // indirect
 	github.com/fatih/structs v1.1.0 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect

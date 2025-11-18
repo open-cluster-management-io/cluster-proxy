@@ -34,6 +34,7 @@ import (
 	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
 	corev1listers "k8s.io/client-go/listers/core/v1"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/clock"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -69,7 +70,7 @@ func RegisterClusterManagementAddonReconciler(
 		SecretGetter:     nativeClient.CoreV1(),
 		ServiceGetter:    nativeClient.CoreV1(),
 		DeploymentGetter: nativeClient.AppsV1(),
-		EventRecorder:    events.NewInMemoryRecorder("ClusterManagementAddonReconciler"),
+		EventRecorder:    events.NewInMemoryRecorder("ClusterManagementAddonReconciler", clock.RealClock{}),
 		imagePullPolicy:  imagePullPolicy,
 	}
 	return r.SetupWithManager(mgr)
