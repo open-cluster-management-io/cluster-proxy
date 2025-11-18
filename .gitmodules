@@ -1,0 +1,4 @@
+[submodule "third_party/apiserver-network-proxy"]
+	path = third_party/apiserver-network-proxy
+	url = https://github.com/stolostron/apiserver-network-proxy.git
+	branch = v0.1.6-patch-03
