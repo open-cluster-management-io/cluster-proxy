@@ -19,12 +19,10 @@ spec:
           PlacementDecision indicates a decision from a placement.
           PlacementDecision must have a cluster.open-cluster-management.io/placement={placement name} label to reference a certain placement.
 
-
           If a placement has spec.numberOfClusters specified, the total number of decisions contained in
           the status.decisions of PlacementDecisions must be the same as NumberOfClusters. Otherwise, the
           total number of decisions must equal the number of ManagedClusters that
           match the placement requirements.
-
 
           Some of the decisions might be empty when there are not enough ManagedClusters to meet the placement requirements.
         properties:
@@ -50,7 +48,7 @@ spec:
             properties:
               decisions:
                 description: |-
-                  Decisions is a slice of decisions according to a placement
+                  decisions is a slice of decisions according to a placement
                   The number of decisions should not be larger than 100
                 items:
                   description: |-
@@ -59,11 +57,11 @@ spec:
                   properties:
                     clusterName:
                       description: |-
-                        ClusterName is the name of the ManagedCluster. If it is not empty, its value should be unique cross all
+                        clusterName is the name of the ManagedCluster. If it is not empty, its value should be unique across all
                         placement decisions for the Placement.
                       type: string
                     reason:
-                      description: Reason represents the reason why the ManagedCluster
+                      description: reason represents the reason why the ManagedCluster
                         is selected.
                       type: string
                   required:

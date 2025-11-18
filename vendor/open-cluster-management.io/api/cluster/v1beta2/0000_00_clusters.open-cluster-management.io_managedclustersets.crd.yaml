@@ -32,7 +32,6 @@ spec:
           - The workload cannot run on any ManagedCluster outside the ManagedClusterSet
           - The service exposed by the workload can be shared in any ManagedCluster in the ManagedClusterSet
 
-
           To assign a ManagedCluster to a certain ManagedClusterSet, add a label with the name cluster.open-cluster-management.io/clusterset
           on the ManagedCluster to refer to the ManagedClusterSet. You are not
           allowed to add or remove this label on a ManagedCluster unless you have an
@@ -66,10 +65,10 @@ spec:
               clusterSelector:
                 default:
                   selectorType: ExclusiveClusterSetLabel
-                description: ClusterSelector represents a selector of ManagedClusters
+                description: clusterSelector represents a selector of ManagedClusters
                 properties:
                   labelSelector:
-                    description: LabelSelector define the general labelSelector which
+                    description: labelSelector define the general labelSelector which
                       clusterset will use to select target managedClusters
                     properties:
                       matchExpressions:
@@ -118,14 +117,37 @@ spec:
                   selectorType:
                     default: ExclusiveClusterSetLabel
                     description: |-
-                      SelectorType could only be "ExclusiveClusterSetLabel" or "LabelSelector"
+                      selectorType could only be "ExclusiveClusterSetLabel" or "LabelSelector"
                       "ExclusiveClusterSetLabel" means to use label "cluster.open-cluster-management.io/clusterset:<ManagedClusterSet Name>"" to select target clusters.
                       "LabelSelector" means use labelSelector to select target managedClusters
                     enum:
                     - ExclusiveClusterSetLabel
                     - LabelSelector
                     type: string
+                required:
+                - selectorType
                 type: object
+              managedNamespaces:
+                description: |-
+                  managedNamespaces defines the list of namespace on the managedclusters
+                  across the clusterset to be managed.
+                items:
+                  description: |-
+                    managedNamespaces defines a namespace on the managedclusters across the
+                    clusterset to be managed by this clusterset.
+                  properties:
+                    name:
+                      description: name is the name of the namespace.
+                      maxLength: 63
+                      pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                      type: string
+                  required:
+                  - name
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - name
+                x-kubernetes-list-type: map
             type: object
           status:
             description: Status represents the current status of the ManagedClusterSet
@@ -134,16 +156,8 @@ spec:
                 description: Conditions contains the different condition statuses
                   for this ManagedClusterSet.
                 items:
-                  description: "Condition contains details for one aspect of the current
-                    state of this API Resource.\n---\nThis struct is intended for
-                    direct use as an array at the field path .status.conditions.  For
-                    example,\n\n\n\ttype FooStatus struct{\n\t    // Represents the
-                    observations of a foo's current state.\n\t    // Known .status.conditions.type
-                    are: \"Available\", \"Progressing\", and \"Degraded\"\n\t    //
-                    +patchMergeKey=type\n\t    // +patchStrategy=merge\n\t    // +listType=map\n\t
-                    \   // +listMapKey=type\n\t    Conditions []metav1.Condition `json:\"conditions,omitempty\"
-                    patchStrategy:\"merge\" patchMergeKey:\"type\" protobuf:\"bytes,1,rep,name=conditions\"`\n\n\n\t
-                    \   // other fields\n\t}"
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
                   properties:
                     lastTransitionTime:
                       description: |-
@@ -184,12 +198,7 @@ spec:
                       - Unknown
                       type: string
                     type:
-                      description: |-
-                        type of condition in CamelCase or in foo.example.com/CamelCase.
-                        ---
-                        Many .condition.type values are consistent across resources like Available, but because arbitrary conditions can be
-                        useful (see .node.status.conditions), the ability to deconflict is important.
-                        The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
                       maxLength: 316
                       pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
                       type: string

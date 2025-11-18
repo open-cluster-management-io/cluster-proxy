@@ -419,7 +419,8 @@ func TestAgentAddonRegistrationOption(t *testing.T) {
 
 			options := agentAddOn.GetAgentAddonOptions()
 
-			csrConfigs := options.Registration.CSRConfigurations(c.cluster)
+			csrConfigs, err := options.Registration.CSRConfigurations(c.cluster, nil)
+			assert.NoError(t, err)
 			assert.Len(t, csrConfigs, c.expextedCSRConfigs)
 
 			csrApprove := options.Registration.CSRApproveCheck(c.cluster, nil, nil)
@@ -437,7 +438,8 @@ func TestAgentAddonRegistrationOption(t *testing.T) {
 			rolebinding := actions[3].(clienttesting.CreateAction).GetObject().(*rbacv1.RoleBinding)
 			assert.Equal(t, "cluster-proxy-addon-agent", rolebinding.Name)
 
-			cert := options.Registration.CSRSign(newCSR(c.signerName))
+			cert, err := options.Registration.CSRSign(nil, nil, newCSR(c.signerName))
+			assert.NoError(t, err)
 			assert.Equal(t, c.expectedSignedCSR, (len(cert) != 0))
 		})
 	}
