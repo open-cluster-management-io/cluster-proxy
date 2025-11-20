@@ -7,3 +7,7 @@ approvers:
 - xuezhaojun
 - skeeey
 - qiujian16
+# Temporary approvers added for Konflux migration to facilitate updates to release repo prow configuration
+# These will be removed after the migration is complete
+- xuezhaojun
+- zhujian7
