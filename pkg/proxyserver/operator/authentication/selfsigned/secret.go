@@ -7,29 +7,12 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
 	TLSCACert = "ca.crt"
 	TLSCAKey  = "ca.key"
 )
-
-func DumpSecret(c client.Client, namespace, name string, caData, certData, keyData []byte) error {
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: namespace,
-			Name:      name,
-		},
-		Type: corev1.SecretTypeTLS,
-		Data: map[string][]byte{
-			corev1.TLSCertKey:       certData,
-			corev1.TLSPrivateKeyKey: keyData,
-			TLSCACert:               caData,
-		},
-	}
-	return c.Create(context.TODO(), secret)
-}
 
 func DumpCASecret(c kubernetes.Interface, namespace, name string, caCertData, caKeyData []byte) (bool, error) {
 	secret := &corev1.Secret{
