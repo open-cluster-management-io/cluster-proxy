@@ -7,17 +7,11 @@ ARG APISERVER_NETWORK_PROXY_VERSION=0.30.2
 ARG KUBECTL_VERSION=v1.30.2
 ARG ADDON_AGENT_IMAGE_NAME
 
-# Build Apiserver-network-proxy binaries
-RUN wget https://github.com/kubernetes-sigs/apiserver-network-proxy/archive/refs/tags/v${APISERVER_NETWORK_PROXY_VERSION}.tar.gz \
-      && tar xzvf v${APISERVER_NETWORK_PROXY_VERSION}.tar.gz \
-      && cd apiserver-network-proxy-${APISERVER_NETWORK_PROXY_VERSION} \
-      && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /workspace/proxy-server ./cmd/server/ \
-      && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /workspace/proxy-agent ./cmd/agent/ \
-      && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /workspace/proxy-test-client ./cmd/test-client/ \
-      && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /workspace/proxy-test-server ./cmd/test-server/ \
-      && cd /workspace \
-      && curl -LO "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl" \
-      && chmod a+x kubectl
+# Build apiserver-network-proxy binaries from git submodule (third_party/apiserver-network-proxy)
+# The submodule is at version v0.1.6-patch-03 from https://github.com/stolostron/apiserver-network-proxy
+RUN cd third_party/apiserver-network-proxy && \
+    CGO_ENABLED=1 go build -o proxy-agent cmd/agent/main.go && \
+    CGO_ENABLED=1 go build -o proxy-server cmd/server/main.go
 
 # Copy the Go Modules manifests
 COPY go.mod go.mod
@@ -43,7 +37,12 @@ FROM alpine:3.21
 
 WORKDIR /
 RUN apk add libc6-compat
-COPY --from=builder /workspace/kubectl /workspace/proxy-server /workspace/proxy-agent /workspace/proxy-test-client /workspace/proxy-test-server ./
+
 COPY --from=builder /workspace/agent /workspace/manager ./
 COPY --from=builder /workspace/cluster-proxy ./
+
+# Copy apiserver-network-proxy binaries
+COPY --from=builder /workspace/third_party/apiserver-network-proxy/proxy-agent ./proxy-agent
+COPY --from=builder /workspace/third_party/apiserver-network-proxy/proxy-server ./proxy-server
+
 USER 65532:65532
