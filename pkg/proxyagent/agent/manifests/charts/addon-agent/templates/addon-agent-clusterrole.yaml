@@ -5,7 +5,7 @@ metadata:
 rules:
 {{- if .Values.enableImpersonation }}
 - apiGroups: [""]
-  resources: ["users", "groups", "serviceaccounts"]
+  resources: ["users", "groups"]
   verbs: ["impersonate"]
 {{- end }}
 - apiGroups: ["authentication.k8s.io"]
