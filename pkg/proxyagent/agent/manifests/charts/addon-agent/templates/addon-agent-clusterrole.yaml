@@ -3,7 +3,7 @@ kind: ClusterRole
 metadata:
   name: cluster-proxy-addon-agent-impersonator
 rules:
-{{- if .Values.enableImpersonation }}
+{{- if eq .Values.enableImpersonation "true" }}
 - apiGroups: [""]
   resources: ["users", "groups", "serviceaccounts"]
   verbs: ["impersonate"]
