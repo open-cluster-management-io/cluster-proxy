@@ -1,6 +1,6 @@
 # Build the manager binary
 # This dockerfile only used in middle stream build, without downloading and building APISERVER_NETWORK_PROXY_VERSION
-FROM brew.registry.redhat.io/rh-osbs/openshift-golang-builder:rhel_9_1.24 as builder
+FROM brew.registry.redhat.io/rh-osbs/openshift-golang-builder:rhel_9_1.25 as builder
 
 WORKDIR /workspace
 COPY . .
