@@ -144,12 +144,6 @@ spec:
                     items:
                       type: string
                     type: array
-                  additionalValues:
-                    additionalProperties:
-                      type: string
-                    description: '`additionalValues` defines values used in proxy-agent
-                      chart.'
-                    type: object
                   image:
                     description: '`image` is the container image of the proxy agent.'
                     type: string
