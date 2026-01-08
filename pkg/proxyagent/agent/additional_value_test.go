@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/stolostron/cluster-lifecycle-api/constants"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
+	"open-cluster-management.io/cluster-proxy/pkg/common"
 )
 
 func TestGetNodeSelector(t *testing.T) {
@@ -25,13 +25,13 @@ func TestGetNodeSelector(t *testing.T) {
 		{
 			name: "managedCluster is local-cluster, but no annotation, expect empty nodeSelector",
 			cluster: newClusterWithLabelsAnnotations("cluster", false,
-				map[string]string{constants.SelfManagedClusterLabelKey: "true"}, nil),
+				map[string]string{common.SelfManagedClusterLabelKey: "true"}, nil),
 			expect: map[string]string{},
 		},
 		{
 			name: "managedCluster is local-cluster with incorrect annotation, expect err",
 			cluster: newClusterWithLabelsAnnotations("cluster", false,
-				map[string]string{constants.SelfManagedClusterLabelKey: "true"},
+				map[string]string{common.SelfManagedClusterLabelKey: "true"},
 				map[string]string{
 					annotationNodeSelector: "kubernetes.io/os=linux",
 				}),
@@ -40,7 +40,7 @@ func TestGetNodeSelector(t *testing.T) {
 		{
 			name: "managedCluster is local-cluster with correct annotation, expect nodeSelector",
 			cluster: newClusterWithLabelsAnnotations("local-cluster", false,
-				map[string]string{constants.SelfManagedClusterLabelKey: "true"},
+				map[string]string{common.SelfManagedClusterLabelKey: "true"},
 				map[string]string{
 					annotationNodeSelector: `{"kubernetes.io/os":"linux"}`,
 				}),
