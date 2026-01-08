@@ -6,8 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/stolostron/cluster-lifecycle-api/helpers/imageregistry"
-	"github.com/stolostron/cluster-lifecycle-api/helpers/localcluster"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
@@ -15,6 +13,7 @@ import (
 	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
+	"open-cluster-management.io/cluster-proxy/pkg/common"
 	"open-cluster-management.io/cluster-proxy/pkg/config"
 	"open-cluster-management.io/cluster-proxy/pkg/constant"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -33,6 +32,8 @@ func GetClusterProxyAdditionalValueFunc(
 ) addonfactory.GetValuesFunc {
 	return func(cluster *clusterv1.ManagedCluster,
 		addon *addonv1alpha1.ManagedClusterAddOn) (addonfactory.Values, error) {
+		var err error
+
 		proxyConfig := &proxyv1alpha1.ManagedProxyConfiguration{}
 		if err := runtimeClient.Get(context.TODO(), types.NamespacedName{
 			Name: ManagedClusterConfigurationName,
@@ -41,10 +42,7 @@ func GetClusterProxyAdditionalValueFunc(
 		}
 
 		// get image of proxy-agent(cluster-proxy-addon)
-		clusterProxyAddonImage, err := imageregistry.OverrideImageByAnnotation(cluster.GetAnnotations(), proxyConfig.Spec.ProxyAgent.Image)
-		if err != nil {
-			return nil, err
-		}
+		clusterProxyAddonImage := proxyConfig.Spec.ProxyAgent.Image
 
 		// get image of agent-addon(cluster-proxy)
 		var clusterProxyImage string
@@ -53,10 +51,7 @@ func GetClusterProxyAdditionalValueFunc(
 		} else {
 			clusterProxyImage = config.AgentImageName
 		}
-		clusterProxyImage, err = imageregistry.OverrideImageByAnnotation(cluster.GetAnnotations(), clusterProxyImage)
-		if err != nil {
-			return nil, err
-		}
+
 		registry, image, tag, err := config.ParseImage(clusterProxyImage)
 		if err != nil {
 			return nil, err
@@ -95,7 +90,7 @@ func GetClusterProxyAdditionalValueFunc(
 
 func getNodeSelector(managedCluster *clusterv1.ManagedCluster) (map[string]string, error) {
 	nodeSelector := map[string]string{}
-	if localcluster.IsClusterSelfManaged(managedCluster) {
+	if common.IsClusterSelfManaged(managedCluster) {
 		annotations := managedCluster.GetAnnotations()
 		if nodeSelectorString, ok := annotations[annotationNodeSelector]; ok {
 			if err := json.Unmarshal([]byte(nodeSelectorString), &nodeSelector); err != nil {
