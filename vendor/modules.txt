@@ -230,12 +230,6 @@ github.com/spf13/cobra
 # github.com/spf13/pflag v1.0.9
 ## explicit; go 1.12
 github.com/spf13/pflag
-# github.com/stolostron/cluster-lifecycle-api v0.0.0-20251028083736-64a17b44b598
-## explicit; go 1.24.0
-github.com/stolostron/cluster-lifecycle-api/constants
-github.com/stolostron/cluster-lifecycle-api/helpers/imageregistry
-github.com/stolostron/cluster-lifecycle-api/helpers/localcluster
-github.com/stolostron/cluster-lifecycle-api/imageregistry/v1alpha1
 # github.com/stretchr/testify v1.11.1
 ## explicit; go 1.17
 github.com/stretchr/testify/assert

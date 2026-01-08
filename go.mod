@@ -7,7 +7,6 @@ require (
 	github.com/onsi/gomega v1.36.1
 	github.com/openshift/library-go v0.0.0-20250711143941-47604345e7ea
 	github.com/pkg/errors v0.9.1
-	github.com/stolostron/cluster-lifecycle-api v0.0.0-20251028083736-64a17b44b598 // TODO: @xuezhaojun remove dependency on stolostron.
 	github.com/stretchr/testify v1.11.1
 	google.golang.org/grpc v1.72.1
 	k8s.io/api v0.34.1
