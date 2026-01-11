@@ -1,3 +1,4 @@
+---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
@@ -69,6 +70,12 @@ spec:
                             description: |-
                               `signingProxyServerSecretName` the secret name of the proxy server's listening
                               certificates for serving proxy requests.
+                            type: string
+                          signingUserServerSecretName:
+                            default: cluster-proxy-user-serving-cert
+                            description: |-
+                              `signingUserServerSecretName` is the secret name of the user server's listening
+                              certificates for serving user requests.
                             type: string
                         type: object
                     type: object
@@ -310,6 +317,30 @@ spec:
                     type: integer
                 required:
                 - image
+                type: object
+              userServer:
+                description: |-
+                  `userServer` configures certificate rotation for the user server.
+                  When configured, certificates will be automatically generated and rotated.
+                properties:
+                  additionalSANs:
+                    description: |-
+                      `additionalSANs` adds additional hostnames or IPs to the user server certificate.
+                      Use this to add external hostnames when the user server is exposed outside the cluster.
+                      The certificate always includes internal service DNS names automatically.
+                    items:
+                      type: string
+                    type: array
+                  namespace:
+                    description: |-
+                      `namespace` is the namespace where the user server is deployed.
+                      If not specified, defaults to the same namespace as ProxyServer.
+                    type: string
+                  serviceName:
+                    default: cluster-proxy-addon-user
+                    description: '`serviceName` is the name of the Kubernetes service
+                      for the user server.'
+                    type: string
                 type: object
             required:
             - authentication

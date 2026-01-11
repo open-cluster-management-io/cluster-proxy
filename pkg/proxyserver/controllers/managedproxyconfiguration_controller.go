@@ -321,11 +321,24 @@ func (c *ManagedProxyConfigurationReconciler) getConditions(s *state) []metav1.C
 		agentServerCondition.Message = "Expiry:" + s.agentServerCertExpireTime.String()
 	}
 
-	return []metav1.Condition{
+	conditions := []metav1.Condition{
 		deployedCondition,
 		proxyServerCondition,
 		agentServerCondition,
 	}
+
+	// Add user server condition if certificate time is available
+	if s.userServerCertExpireTime != nil {
+		userServerCondition := metav1.Condition{
+			Type:    proxyv1alpha1.ConditionTypeUserServerSecretSigned,
+			Status:  metav1.ConditionTrue,
+			Reason:  "SuccessfullySigned",
+			Message: "Expiry:" + s.userServerCertExpireTime.String(),
+		}
+		conditions = append(conditions, userServerCondition)
+	}
+
+	return conditions
 }
 
 func (c *ManagedProxyConfigurationReconciler) ensureEntrypoint(config *proxyv1alpha1.ManagedProxyConfiguration) (string, error) {
@@ -429,7 +442,65 @@ func (c *ManagedProxyConfigurationReconciler) ensureRotation(config *proxyv1alph
 		return errors.Wrapf(err, "fails to rotate proxy client cert")
 	}
 
+	// user server cert rotation (if configured)
+	if config.Spec.UserServer != nil {
+		userServerSANs := c.buildUserServerSANs(config)
+
+		// User server namespace defaults to ProxyServer namespace if not specified
+		namespace := config.Spec.UserServer.Namespace
+		if namespace == "" {
+			namespace = config.Spec.ProxyServer.Namespace
+		}
+
+		secretName := config.Spec.Authentication.Dump.Secrets.SigningUserServerSecretName
+		if secretName == "" {
+			secretName = "cluster-proxy-user-serving-cert"
+		}
+
+		userServerRotator := c.newCertRotatorFunc(namespace, secretName, userServerSANs...)
+		if err := userServerRotator.EnsureTargetCertKeyPair(c.CAPair, c.CAPair.Config.Certs); err != nil {
+			return errors.Wrapf(err, "fails to rotate user server cert")
+		}
+	}
+
 	return nil
+}
+
+// buildUserServerSANs builds the SANs for user server certificate based on configuration.
+func (c *ManagedProxyConfigurationReconciler) buildUserServerSANs(config *proxyv1alpha1.ManagedProxyConfiguration) []string {
+	userServer := config.Spec.UserServer
+
+	// Get namespace with default (same as ProxyServer if not specified)
+	namespace := userServer.Namespace
+	if namespace == "" {
+		namespace = config.Spec.ProxyServer.Namespace
+	}
+
+	serviceName := userServer.ServiceName
+	if serviceName == "" {
+		serviceName = "cluster-proxy-addon-user"
+	}
+
+	// Base SANs (always included)
+	sans := []string{
+		"127.0.0.1",
+		"localhost",
+	}
+
+	// Add Kubernetes service DNS names (always included)
+	sans = append(sans,
+		serviceName,
+		serviceName+"."+namespace,
+		serviceName+"."+namespace+".svc",
+		serviceName+"."+namespace+".svc.cluster.local",
+	)
+
+	// Add user-specified additional SANs (for external hostnames, etc.)
+	if len(userServer.AdditionalSANs) > 0 {
+		sans = append(sans, userServer.AdditionalSANs...)
+	}
+
+	return sans
 }
 
 func (c *ManagedProxyConfigurationReconciler) ensureBasicResources(config *proxyv1alpha1.ManagedProxyConfiguration) error {
@@ -465,6 +536,7 @@ type state struct {
 	replicas                  int
 	proxyServerCertExpireTime *metav1.Time
 	agentServerCertExpireTime *metav1.Time
+	userServerCertExpireTime  *metav1.Time
 }
 
 func (c *ManagedProxyConfigurationReconciler) getCurrentState(isRedeployed bool, config *proxyv1alpha1.ManagedProxyConfiguration) (*state, error) {
@@ -503,6 +575,33 @@ func (c *ManagedProxyConfigurationReconciler) getCurrentState(isRedeployed bool,
 			return nil, err
 		}
 	}
+
+	// Check user server certificate if UserServer is configured
+	var userServerCertExpireTime *metav1.Time
+	if config.Spec.UserServer != nil {
+		userServerSecretName := config.Spec.Authentication.Dump.Secrets.SigningUserServerSecretName
+		if userServerSecretName == "" {
+			userServerSecretName = "cluster-proxy-user-serving-cert"
+		}
+
+		// User server namespace defaults to ProxyServer namespace if not specified
+		userServerNamespace := config.Spec.UserServer.Namespace
+		if userServerNamespace == "" {
+			userServerNamespace = namespace
+		}
+
+		userServerSecret, err := c.SecretGetter.Secrets(userServerNamespace).
+			Get(context.TODO(), userServerSecretName, metav1.GetOptions{})
+		if err != nil {
+			if !apierrors.IsNotFound(err) {
+				return nil, err
+			}
+			// Secret not found is okay, will be created during rotation
+		} else {
+			userServerCertExpireTime = getPEMCertExpireTime(userServerSecret.Data[corev1.TLSCertKey])
+		}
+	}
+
 	return &state{
 		isCurrentlyDeployed:       isCurrentlyDeployed,
 		isRedeployed:              isRedeployed,
@@ -510,6 +609,7 @@ func (c *ManagedProxyConfigurationReconciler) getCurrentState(isRedeployed bool,
 		replicas:                  int(scale.Status.Replicas),
 		proxyServerCertExpireTime: getPEMCertExpireTime(proxyServerSecret.Data[corev1.TLSCertKey]),
 		agentServerCertExpireTime: getPEMCertExpireTime(agentServerSecret.Data[corev1.TLSCertKey]),
+		userServerCertExpireTime:  userServerCertExpireTime,
 	}, nil
 }
 

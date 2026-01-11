@@ -267,8 +267,9 @@ func prepareClusterProxyClient() {
 	userServerServiceAddress = "cluster-proxy-addon-user." + hubInstallNamespace + ".svc:9092"
 
 	By("Get RootCA of the cluster-proxy")
-	// Get the CA certificate from the cluster-proxy-ca-secret that was used to sign the user-server certificate
-	caSecret, err := hubKubeClient.CoreV1().Secrets(hubInstallNamespace).Get(context.Background(), "cluster-proxy-ca-secret", metav1.GetOptions{})
+	// Get the CA certificate from the proxy-server-ca secret that is used to sign all certificates
+	// including the user-server certificate (when userServer.enabled=true)
+	caSecret, err := hubKubeClient.CoreV1().Secrets(hubInstallNamespace).Get(context.Background(), "proxy-server-ca", metav1.GetOptions{})
 	Expect(err).To(BeNil())
 	rootCA := string(caSecret.Data["ca.crt"])
 

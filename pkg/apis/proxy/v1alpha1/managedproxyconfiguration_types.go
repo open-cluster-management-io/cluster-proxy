@@ -41,6 +41,10 @@ type ManagedProxyConfigurationSpec struct {
 	// `deploy` is where we override miscellaneous details for deploying either
 	// proxy servers or agents.
 	Deploy *ManagedProxyConfigurationDeploy `json:"deploy,omitempty"`
+	// +optional
+	// `userServer` configures certificate rotation for the user server.
+	// When configured, certificates will be automatically generated and rotated.
+	UserServer *ManagedProxyConfigurationUserServer `json:"userServer,omitempty"`
 }
 
 // ManagedProxyConfigurationStatus defines the observed state of ManagedProxyConfiguration
@@ -151,6 +155,11 @@ type CertificateSigningSecrets struct {
 	// +kubebuilder:default=agent-server
 	// +optional
 	SigningAgentServerSecretName string `json:"signingAgentServerSecretName,omitempty"`
+	// `signingUserServerSecretName` is the secret name of the user server's listening
+	// certificates for serving user requests.
+	// +kubebuilder:default=cluster-proxy-user-serving-cert
+	// +optional
+	SigningUserServerSecretName string `json:"signingUserServerSecretName,omitempty"`
 }
 
 // ManagedProxyConfigurationDeploy prescribes a few common details for running components.
@@ -322,4 +331,26 @@ const (
 	ConditionTypeProxyServerSecretSigned = "ProxyServerSecretSigned"
 	ConditionTypeAgentServerSecretSigned = "AgentServerSecretSigned"
 	ConditionTypeProxyClientSecretSigned = "ProxyClientSecretSigned"
+	ConditionTypeUserServerSecretSigned  = "UserServerSecretSigned"
 )
+
+// ManagedProxyConfigurationUserServer configures certificate rotation for the user server.
+// When configured, certificates will be automatically generated and rotated.
+// The certificate always includes Kubernetes internal service DNS names.
+type ManagedProxyConfigurationUserServer struct {
+	// `namespace` is the namespace where the user server is deployed.
+	// If not specified, defaults to the same namespace as ProxyServer.
+	// +optional
+	Namespace string `json:"namespace,omitempty"`
+
+	// `serviceName` is the name of the Kubernetes service for the user server.
+	// +optional
+	// +kubebuilder:default=cluster-proxy-addon-user
+	ServiceName string `json:"serviceName,omitempty"`
+
+	// `additionalSANs` adds additional hostnames or IPs to the user server certificate.
+	// Use this to add external hostnames when the user server is exposed outside the cluster.
+	// The certificate always includes internal service DNS names automatically.
+	// +optional
+	AdditionalSANs []string `json:"additionalSANs,omitempty"`
+}
