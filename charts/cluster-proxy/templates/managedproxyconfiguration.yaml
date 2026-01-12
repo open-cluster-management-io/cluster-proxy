@@ -5,10 +5,7 @@ metadata:
 spec:
   authentication:
     dump:
-      secrets:
-        {{- if .Values.userServer.enabled }}
-        signingUserServerSecretName: cluster-proxy-user-serving-cert
-        {{- end }}
+      secrets: {}
     signer:
       type: SelfSigned
   proxyServer:

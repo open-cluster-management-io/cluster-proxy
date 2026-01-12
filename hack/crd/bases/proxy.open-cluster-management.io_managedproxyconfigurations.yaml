@@ -71,12 +71,6 @@ spec:
                               `signingProxyServerSecretName` the secret name of the proxy server's listening
                               certificates for serving proxy requests.
                             type: string
-                          signingUserServerSecretName:
-                            default: cluster-proxy-user-serving-cert
-                            description: |-
-                              `signingUserServerSecretName` is the secret name of the user server's listening
-                              certificates for serving user requests.
-                            type: string
                         type: object
                     type: object
                   signer:

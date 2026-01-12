@@ -155,11 +155,6 @@ type CertificateSigningSecrets struct {
 	// +kubebuilder:default=agent-server
 	// +optional
 	SigningAgentServerSecretName string `json:"signingAgentServerSecretName,omitempty"`
-	// `signingUserServerSecretName` is the secret name of the user server's listening
-	// certificates for serving user requests.
-	// +kubebuilder:default=cluster-proxy-user-serving-cert
-	// +optional
-	SigningUserServerSecretName string `json:"signingUserServerSecretName,omitempty"`
 }
 
 // ManagedProxyConfigurationDeploy prescribes a few common details for running components.

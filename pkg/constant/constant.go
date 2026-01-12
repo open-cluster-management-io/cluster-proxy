@@ -10,4 +10,9 @@ const (
 	ServiceProxyName = "cluster-proxy-service-proxy"
 
 	AddonName = "cluster-proxy"
+
+	// UserServerSecretName is the fixed secret name for user server certificates.
+	// This is used both by controller-generated certificates and external certificate generators
+	// to ensure consistency.
+	UserServerSecretName = "cluster-proxy-user-serving-cert"
 )

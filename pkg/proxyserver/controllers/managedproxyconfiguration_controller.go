@@ -11,6 +11,7 @@ import (
 
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 	"open-cluster-management.io/cluster-proxy/pkg/common"
+	"open-cluster-management.io/cluster-proxy/pkg/constant"
 	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/operator/authentication/selfsigned"
 	"open-cluster-management.io/sdk-go/pkg/certrotation"
 
@@ -452,12 +453,7 @@ func (c *ManagedProxyConfigurationReconciler) ensureRotation(config *proxyv1alph
 			namespace = config.Spec.ProxyServer.Namespace
 		}
 
-		secretName := config.Spec.Authentication.Dump.Secrets.SigningUserServerSecretName
-		if secretName == "" {
-			secretName = "cluster-proxy-user-serving-cert"
-		}
-
-		userServerRotator := c.newCertRotatorFunc(namespace, secretName, userServerSANs...)
+		userServerRotator := c.newCertRotatorFunc(namespace, constant.UserServerSecretName, userServerSANs...)
 		if err := userServerRotator.EnsureTargetCertKeyPair(c.CAPair, c.CAPair.Config.Certs); err != nil {
 			return errors.Wrapf(err, "fails to rotate user server cert")
 		}
@@ -579,11 +575,6 @@ func (c *ManagedProxyConfigurationReconciler) getCurrentState(isRedeployed bool,
 	// Check user server certificate if UserServer is configured
 	var userServerCertExpireTime *metav1.Time
 	if config.Spec.UserServer != nil {
-		userServerSecretName := config.Spec.Authentication.Dump.Secrets.SigningUserServerSecretName
-		if userServerSecretName == "" {
-			userServerSecretName = "cluster-proxy-user-serving-cert"
-		}
-
 		// User server namespace defaults to ProxyServer namespace if not specified
 		userServerNamespace := config.Spec.UserServer.Namespace
 		if userServerNamespace == "" {
@@ -591,7 +582,7 @@ func (c *ManagedProxyConfigurationReconciler) getCurrentState(isRedeployed bool,
 		}
 
 		userServerSecret, err := c.SecretGetter.Secrets(userServerNamespace).
-			Get(context.TODO(), userServerSecretName, metav1.GetOptions{})
+			Get(context.TODO(), constant.UserServerSecretName, metav1.GetOptions{})
 		if err != nil {
 			if !apierrors.IsNotFound(err) {
 				return nil, err
