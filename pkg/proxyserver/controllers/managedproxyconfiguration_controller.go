@@ -447,13 +447,11 @@ func (c *ManagedProxyConfigurationReconciler) ensureRotation(config *proxyv1alph
 	if config.Spec.UserServer != nil {
 		userServerSANs := c.buildUserServerSANs(config)
 
-		// User server namespace defaults to ProxyServer namespace if not specified
-		namespace := config.Spec.UserServer.Namespace
-		if namespace == "" {
-			namespace = config.Spec.ProxyServer.Namespace
-		}
-
-		userServerRotator := c.newCertRotatorFunc(namespace, constant.UserServerSecretName, userServerSANs...)
+		// User server is always deployed in the same namespace as ProxyServer
+		userServerRotator := c.newCertRotatorFunc(
+			config.Spec.ProxyServer.Namespace,
+			constant.UserServerSecretName,
+			userServerSANs...)
 		if err := userServerRotator.EnsureTargetCertKeyPair(c.CAPair, c.CAPair.Config.Certs); err != nil {
 			return errors.Wrapf(err, "fails to rotate user server cert")
 		}
@@ -465,17 +463,7 @@ func (c *ManagedProxyConfigurationReconciler) ensureRotation(config *proxyv1alph
 // buildUserServerSANs builds the SANs for user server certificate based on configuration.
 func (c *ManagedProxyConfigurationReconciler) buildUserServerSANs(config *proxyv1alpha1.ManagedProxyConfiguration) []string {
 	userServer := config.Spec.UserServer
-
-	// Get namespace with default (same as ProxyServer if not specified)
-	namespace := userServer.Namespace
-	if namespace == "" {
-		namespace = config.Spec.ProxyServer.Namespace
-	}
-
-	serviceName := userServer.ServiceName
-	if serviceName == "" {
-		serviceName = "cluster-proxy-addon-user"
-	}
+	namespace := config.Spec.ProxyServer.Namespace
 
 	// Base SANs (always included)
 	sans := []string{
@@ -483,12 +471,12 @@ func (c *ManagedProxyConfigurationReconciler) buildUserServerSANs(config *proxyv
 		"localhost",
 	}
 
-	// Add Kubernetes service DNS names (always included)
+	// Add Kubernetes service DNS names with fixed service name
 	sans = append(sans,
-		serviceName,
-		serviceName+"."+namespace,
-		serviceName+"."+namespace+".svc",
-		serviceName+"."+namespace+".svc.cluster.local",
+		constant.UserServerServiceName,
+		constant.UserServerServiceName+"."+namespace,
+		constant.UserServerServiceName+"."+namespace+".svc",
+		constant.UserServerServiceName+"."+namespace+".svc.cluster.local",
 	)
 
 	// Add user-specified additional SANs (for external hostnames, etc.)
@@ -575,13 +563,8 @@ func (c *ManagedProxyConfigurationReconciler) getCurrentState(isRedeployed bool,
 	// Check user server certificate if UserServer is configured
 	var userServerCertExpireTime *metav1.Time
 	if config.Spec.UserServer != nil {
-		// User server namespace defaults to ProxyServer namespace if not specified
-		userServerNamespace := config.Spec.UserServer.Namespace
-		if userServerNamespace == "" {
-			userServerNamespace = namespace
-		}
-
-		userServerSecret, err := c.SecretGetter.Secrets(userServerNamespace).
+		// User server is always in the same namespace as ProxyServer
+		userServerSecret, err := c.SecretGetter.Secrets(namespace).
 			Get(context.TODO(), constant.UserServerSecretName, metav1.GetOptions{})
 		if err != nil {
 			if !apierrors.IsNotFound(err) {

@@ -174,8 +174,7 @@ deploy-cluster-proxy-e2e: delete-cluster-proxy-image-from-kind load-cluster-prox
 	--set proxyServer.entrypointAddress="proxy-entrypoint.open-cluster-management-addon.svc" \
 	--set proxyServer.port=8091 \
 	--set enableServiceProxy=true \
-	--set userServer.enabled=true \
-	--set userServer.serviceName=cluster-proxy-addon-user
+	--set userServer.enabled=true
 	@echo "Cluster-proxy deployed successfully!"
 .PHONY: deploy-cluster-proxy-e2e
 

@@ -331,21 +331,17 @@ const (
 
 // ManagedProxyConfigurationUserServer configures certificate rotation for the user server.
 // When configured, certificates will be automatically generated and rotated.
-// The certificate always includes Kubernetes internal service DNS names.
+// The certificate is stored in the ProxyServer namespace with fixed names:
+// - Secret: cluster-proxy-user-serving-cert
+// - Service: cluster-proxy-addon-user
 type ManagedProxyConfigurationUserServer struct {
-	// `namespace` is the namespace where the user server is deployed.
-	// If not specified, defaults to the same namespace as ProxyServer.
-	// +optional
-	Namespace string `json:"namespace,omitempty"`
-
-	// `serviceName` is the name of the Kubernetes service for the user server.
-	// +optional
-	// +kubebuilder:default=cluster-proxy-addon-user
-	ServiceName string `json:"serviceName,omitempty"`
-
 	// `additionalSANs` adds additional hostnames or IPs to the user server certificate.
 	// Use this to add external hostnames when the user server is exposed outside the cluster.
-	// The certificate always includes internal service DNS names automatically.
+	// The certificate always includes internal service DNS names automatically:
+	// - cluster-proxy-addon-user
+	// - cluster-proxy-addon-user.{namespace}
+	// - cluster-proxy-addon-user.{namespace}.svc
+	// - cluster-proxy-addon-user.{namespace}.svc.cluster.local
 	// +optional
 	AdditionalSANs []string `json:"additionalSANs,omitempty"`
 }

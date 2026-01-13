@@ -35,14 +35,12 @@ enableImpersonation: true
 
 # User server configuration for automatic certificate rotation
 # When enabled, certificates are automatically generated and rotated by the controller.
-# The certificate always includes Kubernetes internal service DNS names automatically.
+# The certificate is stored in the ProxyServer namespace with fixed names:
+# - Secret: cluster-proxy-user-serving-cert
+# - Service: cluster-proxy-addon-user
 userServer:
   # Enable automatic certificate rotation for user server
   enabled: false
-  # Namespace where user server is deployed (defaults to ProxyServer namespace if empty)
-  namespace: ""
-  # Service name for user server
-  serviceName: "cluster-proxy-addon-user"
   # Additional SANs for the certificate (e.g., external hostnames)
   # Example: ["user-server.example.com", "10.0.0.100"]
   additionalSANs: []

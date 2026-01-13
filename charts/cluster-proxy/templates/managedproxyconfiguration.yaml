@@ -32,10 +32,6 @@ spec:
       enableImpersonation: {{ .Values.enableImpersonation | quote }}
   {{- if .Values.userServer.enabled }}
   userServer:
-    {{- if .Values.userServer.namespace }}
-    namespace: {{ .Values.userServer.namespace }}
-    {{- end }}
-    serviceName: {{ .Values.userServer.serviceName }}
     {{- if .Values.userServer.additionalSANs }}
     additionalSANs:
       {{- toYaml .Values.userServer.additionalSANs | nindent 6 }}
