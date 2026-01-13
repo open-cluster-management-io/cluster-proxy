@@ -30,3 +30,12 @@ spec:
     replicas: {{ .Values.replicas }}
     additionalValues:
       enableImpersonation: {{ .Values.enableImpersonation | quote }}
+  {{- if .Values.userServer.enabled }}
+  userServer:
+  {{- if .Values.userServer.additionalSANs }}
+    additionalSANs:
+      {{- toYaml .Values.userServer.additionalSANs | nindent 6 }}
+  {{- else }}
+    {}
+  {{- end }}
+  {{- end }}

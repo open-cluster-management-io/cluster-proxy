@@ -312,6 +312,24 @@ spec:
                 required:
                 - image
                 type: object
+              userServer:
+                description: |-
+                  `userServer` configures certificate rotation for the user server.
+                  When configured, certificates will be automatically generated and rotated.
+                properties:
+                  additionalSANs:
+                    description: |-
+                      `additionalSANs` adds additional hostnames or IPs to the user server certificate.
+                      Use this to add external hostnames when the user server is exposed outside the cluster.
+                      The certificate always includes internal service DNS names automatically:
+                      - cluster-proxy-addon-user
+                      - cluster-proxy-addon-user.{namespace}
+                      - cluster-proxy-addon-user.{namespace}.svc
+                      - cluster-proxy-addon-user.{namespace}.svc.cluster.local
+                    items:
+                      type: string
+                    type: array
+                type: object
             required:
             - authentication
             - proxyAgent
