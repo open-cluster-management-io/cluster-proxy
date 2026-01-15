@@ -4,8 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
+
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
@@ -18,7 +21,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
-	"time"
 )
 
 type clusterProfileReconciler struct {
@@ -103,6 +105,10 @@ func (r *clusterProfileReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	r.setAccessProvider(cp, ocmAccessProvider)
+	// Initialize conditions to empty array if nil to avoid validation errors
+	if cp.Status.Conditions == nil {
+		cp.Status.Conditions = []metav1.Condition{}
+	}
 	err = r.Status().Update(ctx, cp)
 	return ctrl.Result{}, err
 }

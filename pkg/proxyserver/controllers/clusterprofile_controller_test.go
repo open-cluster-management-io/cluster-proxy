@@ -11,11 +11,11 @@ import (
 
 func TestSetAccessProvider(t *testing.T) {
 	tests := []struct {
-		name             string
+		name              string
 		existingProviders []cpv1alpha1.AccessProvider
-		newProvider      cpv1alpha1.AccessProvider
-		expectedCount    int
-		expectedProvider cpv1alpha1.AccessProvider
+		newProvider       cpv1alpha1.AccessProvider
+		expectedCount     int
+		expectedProvider  cpv1alpha1.AccessProvider
 	}{
 		{
 			name:              "add provider to empty list",

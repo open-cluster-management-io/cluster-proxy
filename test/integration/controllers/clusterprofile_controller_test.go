@@ -54,6 +54,13 @@ var _ = Describe("ClusterProfileReconciler Test", func() {
 				ProxyServer: proxyv1alpha1.ManagedProxyConfigurationProxyServer{
 					Namespace:            proxyServerNamespace,
 					InClusterServiceName: constant.UserServerServiceName,
+					Image:                "quay.io/open-cluster-management/cluster-proxy:latest",
+					Entrypoint: &proxyv1alpha1.ManagedProxyConfigurationProxyServerEntrypoint{
+						Type: proxyv1alpha1.EntryPointTypePortForward,
+					},
+				},
+				ProxyAgent: proxyv1alpha1.ManagedProxyConfigurationProxyAgent{
+					Image: "quay.io/open-cluster-management/cluster-proxy:latest",
 				},
 				Authentication: proxyv1alpha1.ManagedProxyConfigurationAuthentication{
 					Signer: proxyv1alpha1.ManagedProxyConfigurationCertificateSigner{
@@ -305,6 +312,13 @@ var _ = Describe("ClusterProfileReconciler Test", func() {
 					ProxyServer: proxyv1alpha1.ManagedProxyConfigurationProxyServer{
 						Namespace:            proxyServerNamespace,
 						InClusterServiceName: constant.UserServerServiceName,
+						Image:                "quay.io/open-cluster-management/cluster-proxy:latest",
+						Entrypoint: &proxyv1alpha1.ManagedProxyConfigurationProxyServerEntrypoint{
+							Type: proxyv1alpha1.EntryPointTypePortForward,
+						},
+					},
+					ProxyAgent: proxyv1alpha1.ManagedProxyConfigurationProxyAgent{
+						Image: "quay.io/open-cluster-management/cluster-proxy:latest",
 					},
 					Authentication: proxyv1alpha1.ManagedProxyConfigurationAuthentication{
 						Signer: proxyv1alpha1.ManagedProxyConfigurationCertificateSigner{
