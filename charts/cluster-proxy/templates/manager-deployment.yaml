@@ -30,6 +30,9 @@ spec:
             - --enable-kube-api-proxy={{ .Values.enableKubeApiProxy }}
             - --enable-service-proxy={{ .Values.enableServiceProxy }}
             - --image-pull-policy={{ .Values.proxyServer.imagePullPolicy }}
+            {{- if .Values.featureGates }}
+            - --feature-gates=ClusterProfileAccessProvider={{ .Values.featureGates.clusterProfileAccessProvider | default false}}
+            {{- end}}
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
