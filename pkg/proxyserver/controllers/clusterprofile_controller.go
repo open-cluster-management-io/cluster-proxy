@@ -11,8 +11,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/kubernetes"
-	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
 	clientcmdapiv1 "k8s.io/client-go/tools/clientcmd/api/v1"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 	"open-cluster-management.io/cluster-proxy/pkg/constant"
@@ -21,21 +19,26 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
+
+var _ reconcile.Reconciler = &clusterProfileReconciler{}
+
+var logger = ctrl.Log.WithName("ClusterProfileReconciler")
+
+const OCMAccessProviderName = "open-cluster-management"
 
 type clusterProfileReconciler struct {
 	client.Client
-	serviceGetter corev1client.ServicesGetter
 }
 
 type execClusterConfig struct {
 	ClusterName string `json:"clusterName"`
 }
 
-func SetupClusterProfileReconciler(mgr manager.Manager, nativeClient kubernetes.Interface) error {
+func SetupClusterProfileReconciler(mgr manager.Manager) error {
 	reconciler := &clusterProfileReconciler{
-		Client:        mgr.GetClient(),
-		serviceGetter: nativeClient.CoreV1(),
+		Client: mgr.GetClient(),
 	}
 	return reconciler.SetupWithManager(mgr)
 }
@@ -47,13 +50,14 @@ func (r *clusterProfileReconciler) SetupWithManager(mgr manager.Manager) error {
 }
 
 func (r *clusterProfileReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log.Info("Start reconcile", "name", req.Name)
+	logger.Info("Start reconcile", "namespace", req.Namespace, "name", req.Name)
 	cp := &cpv1alpha1.ClusterProfile{}
 	err := r.Get(ctx, req.NamespacedName, cp)
 	if err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
+	// get the managed proxy configuration
 	config := &proxyv1alpha1.ManagedProxyConfiguration{}
 	err = r.Get(ctx, types.NamespacedName{
 		Name: agent.ManagedClusterConfigurationName,
@@ -65,6 +69,7 @@ func (r *clusterProfileReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, err
 	}
 
+	// prepare ca for access provider
 	caSecret := &corev1.Secret{}
 	err = r.Get(ctx, types.NamespacedName{
 		Namespace: config.Spec.ProxyServer.Namespace, Name: constant.UserServerSecretName}, caSecret)
@@ -75,19 +80,22 @@ func (r *clusterProfileReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, err
 	}
 
-	caData, ok := caSecret.Data["ca.crt"]
+	// retrieve the cluster-proxy-user-server certificate as ca because it's allowed self-signed leaf trust.
+	caData, ok := caSecret.Data["tls.crt"]
 	if !ok {
-		return ctrl.Result{}, fmt.Errorf("ca.crt not found in secret")
+		return ctrl.Result{}, fmt.Errorf("tls.crt not found in secret")
 	}
 
+	// ensure cluster name is added to exec extension for per cluster access.
 	execExtension := &execClusterConfig{ClusterName: cp.Name}
 	rawExecExtension, err := json.Marshal(execExtension)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
+	// prepare the access provider to access spoke via user-server.
 	ocmAccessProvider := cpv1alpha1.AccessProvider{
-		Name: "open-cluster-management",
+		Name: OCMAccessProviderName,
 		Cluster: clientcmdapiv1.Cluster{
 			Server: fmt.Sprintf("https://%s.%s:9092/%s",
 				constant.UserServerServiceName,
@@ -104,13 +112,18 @@ func (r *clusterProfileReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		},
 	}
 
+	// set access provider for clusterprofile
 	r.setAccessProvider(cp, ocmAccessProvider)
 	// Initialize conditions to empty array if nil to avoid validation errors
 	if cp.Status.Conditions == nil {
 		cp.Status.Conditions = []metav1.Condition{}
 	}
-	err = r.Status().Update(ctx, cp)
-	return ctrl.Result{}, err
+	if err = r.Status().Update(ctx, cp); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	logger.Info("Reconcile completed", "namespace", req.Namespace, "name", req.Name)
+	return ctrl.Result{}, nil
 }
 
 func (r *clusterProfileReconciler) setAccessProvider(cp *cpv1alpha1.ClusterProfile, accessProvider cpv1alpha1.AccessProvider) {
@@ -119,7 +132,7 @@ func (r *clusterProfileReconciler) setAccessProvider(cp *cpv1alpha1.ClusterProfi
 	}
 
 	for i := range cp.Status.AccessProviders {
-		if cp.Status.AccessProviders[i].Name == "open-cluster-management" {
+		if cp.Status.AccessProviders[i].Name == OCMAccessProviderName {
 			cp.Status.AccessProviders[i] = accessProvider
 			return
 		}

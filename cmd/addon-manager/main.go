@@ -20,6 +20,7 @@ import (
 	"context"
 	"flag"
 	"os"
+	"strings"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -32,6 +33,7 @@ import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/klog/v2"
 	"k8s.io/klog/v2/textlogger"
 	"open-cluster-management.io/addon-framework/pkg/addonmanager"
@@ -40,9 +42,11 @@ import (
 	clusterv1beta2 "open-cluster-management.io/api/cluster/v1beta2"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 	"open-cluster-management.io/cluster-proxy/pkg/config"
+	"open-cluster-management.io/cluster-proxy/pkg/features"
 	"open-cluster-management.io/cluster-proxy/pkg/proxyagent/agent"
 	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/controllers"
 	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/operator/authentication/selfsigned"
+	cpv1alpha1 "sigs.k8s.io/cluster-inventory-api/apis/v1alpha1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
@@ -60,6 +64,7 @@ func init() {
 	utilruntime.Must(addonv1alpha1.Install(scheme))
 	utilruntime.Must(proxyv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(clusterv1beta2.Install(scheme))
+	utilruntime.Must(cpv1alpha1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 }
 
@@ -71,6 +76,7 @@ func main() {
 	var enableKubeApiProxy bool
 	var enableServiceProxy bool
 	var imagePullPolicy string
+	var featureGates map[string]bool
 
 	logger := textlogger.NewLogger(textlogger.NewConfig())
 	klog.SetOutput(os.Stdout)
@@ -92,8 +98,17 @@ func main() {
 	flag.StringVar(&config.DefaultAddonInstallNamespace, "agent-install-namespace", config.DefaultAddonInstallNamespace,
 		"The default namespace to install the addon agents.")
 	flag.StringVar(&imagePullPolicy, "image-pull-policy", string(corev1.PullIfNotPresent), "The image pull policy for the addon manager")
+	flag.Var(cliflag.NewMapStringBool(&featureGates), "feature-gates",
+		"A set of key=value pairs that describe feature gates for alpha/experimental features. "+
+			"Options are:\n"+strings.Join(features.FeatureGates.KnownFeatures(), "\n"))
 
 	flag.Parse()
+
+	// Apply feature gates
+	if err := features.FeatureGates.SetFromMap(featureGates); err != nil {
+		setupLog.Error(err, "failed to set feature gates")
+		os.Exit(1)
+	}
 
 	// pipe controller-runtime logs to klog
 	ctrl.SetLogger(logger)
@@ -141,6 +156,14 @@ func main() {
 	); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ClusterManagementAddonReconciler")
 		os.Exit(1)
+	}
+
+	if features.FeatureGates.Enabled(features.ClusterProfileAccessProvider) {
+		setupLog.Info("ClusterProfileAccessProvider feature gate is enabled")
+		if err := controllers.SetupClusterProfileReconciler(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "ClusterProfileReconciler")
+			os.Exit(1)
+		}
 	}
 
 	if err := controllers.RegisterServiceResolverReconciler(mgr); err != nil {

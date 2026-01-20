@@ -14,6 +14,7 @@ import (
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 	"open-cluster-management.io/cluster-proxy/pkg/constant"
 	"open-cluster-management.io/cluster-proxy/pkg/proxyagent/agent"
+	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/controllers"
 	cpv1alpha1 "sigs.k8s.io/cluster-inventory-api/apis/v1alpha1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -79,7 +80,7 @@ var _ = Describe("ClusterProfileReconciler Test", func() {
 				Namespace: proxyServerNamespace,
 			},
 			Data: map[string][]byte{
-				"ca.crt": []byte("test-ca-certificate-data"),
+				"tls.crt": []byte("test-certificate-data"),
 			},
 		}
 		err = ctrlClient.Create(ctx, caSecret)
@@ -138,7 +139,7 @@ var _ = Describe("ClusterProfileReconciler Test", func() {
 				// Check if open-cluster-management provider exists
 				var ocmProvider *cpv1alpha1.AccessProvider
 				for i := range currentProfile.Status.AccessProviders {
-					if currentProfile.Status.AccessProviders[i].Name == "open-cluster-management" {
+					if currentProfile.Status.AccessProviders[i].Name == controllers.OCMAccessProviderName {
 						ocmProvider = &currentProfile.Status.AccessProviders[i]
 						break
 					}
@@ -158,7 +159,7 @@ var _ = Describe("ClusterProfileReconciler Test", func() {
 				}
 
 				// Verify CA data
-				if string(ocmProvider.Cluster.CertificateAuthorityData) != "test-ca-certificate-data" {
+				if string(ocmProvider.Cluster.CertificateAuthorityData) != "test-certificate-data" {
 					return fmt.Errorf("unexpected CA data")
 				}
 
@@ -250,7 +251,7 @@ var _ = Describe("ClusterProfileReconciler Test", func() {
 				hasOCM := false
 				hasAnother := false
 				for _, provider := range currentProfile.Status.AccessProviders {
-					if provider.Name == "open-cluster-management" {
+					if provider.Name == controllers.OCMAccessProviderName {
 						hasOCM = true
 					}
 					if provider.Name == "another-provider" {
@@ -288,6 +289,12 @@ var _ = Describe("ClusterProfileReconciler Test", func() {
 			}
 			err = ctrlClient.Create(ctx, newCluster)
 			Expect(err).ToNot(HaveOccurred())
+
+			// Wait for the ClusterProfile to be readable
+			Eventually(func() error {
+				currentProfile := &cpv1alpha1.ClusterProfile{}
+				return ctrlClient.Get(ctx, client.ObjectKeyFromObject(newCluster), currentProfile)
+			}, timeout, interval).Should(Succeed())
 
 			// Verify no AccessProvider is added (since config is missing)
 			Consistently(func() int {
@@ -352,6 +359,12 @@ var _ = Describe("ClusterProfileReconciler Test", func() {
 			err = ctrlClient.Create(ctx, newCluster)
 			Expect(err).ToNot(HaveOccurred())
 
+			// Wait for the ClusterProfile to be readable
+			Eventually(func() error {
+				currentProfile := &cpv1alpha1.ClusterProfile{}
+				return ctrlClient.Get(ctx, client.ObjectKeyFromObject(newCluster), currentProfile)
+			}, timeout, interval).Should(Succeed())
+
 			// Verify no AccessProvider is added (since secret is missing)
 			Consistently(func() int {
 				currentProfile := &cpv1alpha1.ClusterProfile{}
@@ -373,7 +386,7 @@ var _ = Describe("ClusterProfileReconciler Test", func() {
 					Namespace: proxyServerNamespace,
 				},
 				Data: map[string][]byte{
-					"ca.crt": []byte("test-ca-certificate-data"),
+					"tls.crt": []byte("test-certificate-data"),
 				},
 			}
 			err = ctrlClient.Create(ctx, caSecret)

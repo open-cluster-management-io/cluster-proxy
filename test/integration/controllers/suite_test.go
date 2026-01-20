@@ -127,7 +127,7 @@ var _ = BeforeSuite(func() {
 	err = controllers.RegisterServiceResolverReconciler(mgr)
 	Expect(err).NotTo(HaveOccurred())
 
-	err = controllers.SetupClusterProfileReconciler(mgr, kubeClient)
+	err = controllers.SetupClusterProfileReconciler(mgr)
 	Expect(err).NotTo(HaveOccurred())
 
 	By("start manager")

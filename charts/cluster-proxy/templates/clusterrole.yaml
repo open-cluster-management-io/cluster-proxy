@@ -186,3 +186,18 @@ rules:
     verbs:
       - create
   {{- end }}
+  - apiGroups:
+      - multicluster.x-k8s.io
+    resources:
+      - clusterprofiles
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - multicluster.x-k8s.io
+    resources:
+      - clusterprofiles/status
+    verbs:
+      - update
+      - patch

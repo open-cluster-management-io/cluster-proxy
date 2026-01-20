@@ -21,7 +21,7 @@ func TestSetAccessProvider(t *testing.T) {
 			name:              "add provider to empty list",
 			existingProviders: nil,
 			newProvider: cpv1alpha1.AccessProvider{
-				Name: "open-cluster-management",
+				Name: OCMAccessProviderName,
 				Cluster: clientcmdapiv1.Cluster{
 					Server:                   "https://test-server:9092/cluster1",
 					CertificateAuthorityData: []byte("test-ca-data"),
@@ -29,7 +29,7 @@ func TestSetAccessProvider(t *testing.T) {
 			},
 			expectedCount: 1,
 			expectedProvider: cpv1alpha1.AccessProvider{
-				Name: "open-cluster-management",
+				Name: OCMAccessProviderName,
 				Cluster: clientcmdapiv1.Cluster{
 					Server:                   "https://test-server:9092/cluster1",
 					CertificateAuthorityData: []byte("test-ca-data"),
@@ -47,7 +47,7 @@ func TestSetAccessProvider(t *testing.T) {
 				},
 			},
 			newProvider: cpv1alpha1.AccessProvider{
-				Name: "open-cluster-management",
+				Name: OCMAccessProviderName,
 				Cluster: clientcmdapiv1.Cluster{
 					Server:                   "https://test-server:9092/cluster1",
 					CertificateAuthorityData: []byte("test-ca-data"),
@@ -55,7 +55,7 @@ func TestSetAccessProvider(t *testing.T) {
 			},
 			expectedCount: 2,
 			expectedProvider: cpv1alpha1.AccessProvider{
-				Name: "open-cluster-management",
+				Name: OCMAccessProviderName,
 				Cluster: clientcmdapiv1.Cluster{
 					Server:                   "https://test-server:9092/cluster1",
 					CertificateAuthorityData: []byte("test-ca-data"),
@@ -66,7 +66,7 @@ func TestSetAccessProvider(t *testing.T) {
 			name: "update existing provider",
 			existingProviders: []cpv1alpha1.AccessProvider{
 				{
-					Name: "open-cluster-management",
+					Name: OCMAccessProviderName,
 					Cluster: clientcmdapiv1.Cluster{
 						Server:                   "https://old-server:9092/cluster1",
 						CertificateAuthorityData: []byte("old-ca-data"),
@@ -74,7 +74,7 @@ func TestSetAccessProvider(t *testing.T) {
 				},
 			},
 			newProvider: cpv1alpha1.AccessProvider{
-				Name: "open-cluster-management",
+				Name: OCMAccessProviderName,
 				Cluster: clientcmdapiv1.Cluster{
 					Server:                   "https://new-server:9092/cluster1",
 					CertificateAuthorityData: []byte("new-ca-data"),
@@ -90,7 +90,7 @@ func TestSetAccessProvider(t *testing.T) {
 			},
 			expectedCount: 1,
 			expectedProvider: cpv1alpha1.AccessProvider{
-				Name: "open-cluster-management",
+				Name: OCMAccessProviderName,
 				Cluster: clientcmdapiv1.Cluster{
 					Server:                   "https://new-server:9092/cluster1",
 					CertificateAuthorityData: []byte("new-ca-data"),
@@ -115,7 +115,7 @@ func TestSetAccessProvider(t *testing.T) {
 					},
 				},
 				{
-					Name: "open-cluster-management",
+					Name: OCMAccessProviderName,
 					Cluster: clientcmdapiv1.Cluster{
 						Server:                   "https://old-server:9092/cluster1",
 						CertificateAuthorityData: []byte("old-ca-data"),
@@ -129,7 +129,7 @@ func TestSetAccessProvider(t *testing.T) {
 				},
 			},
 			newProvider: cpv1alpha1.AccessProvider{
-				Name: "open-cluster-management",
+				Name: OCMAccessProviderName,
 				Cluster: clientcmdapiv1.Cluster{
 					Server:                   "https://new-server:9092/cluster1",
 					CertificateAuthorityData: []byte("new-ca-data"),
@@ -137,7 +137,7 @@ func TestSetAccessProvider(t *testing.T) {
 			},
 			expectedCount: 3,
 			expectedProvider: cpv1alpha1.AccessProvider{
-				Name: "open-cluster-management",
+				Name: OCMAccessProviderName,
 				Cluster: clientcmdapiv1.Cluster{
 					Server:                   "https://new-server:9092/cluster1",
 					CertificateAuthorityData: []byte("new-ca-data"),
@@ -162,7 +162,7 @@ func TestSetAccessProvider(t *testing.T) {
 			// Find the open-cluster-management provider
 			var foundProvider *cpv1alpha1.AccessProvider
 			for i := range cp.Status.AccessProviders {
-				if cp.Status.AccessProviders[i].Name == "open-cluster-management" {
+				if cp.Status.AccessProviders[i].Name == OCMAccessProviderName {
 					foundProvider = &cp.Status.AccessProviders[i]
 					break
 				}
