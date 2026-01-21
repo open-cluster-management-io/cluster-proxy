@@ -21,7 +21,8 @@ FROM registry.access.redhat.com/ubi9/ubi-minimal:latest
 ENV USER_UID=10001
 
 LABEL \
-    name="cluster-proxy" \
+    name="multicluster-engine/cluster-proxy-rhel9" \
+    cpe="cpe:/a:redhat:multicluster_engine:2.11::el9" \
     com.redhat.component="cluster-proxy" \
     description="A pluggable addon for OCM that enables proxy tunnels between hub and managed clusters using apiserver-network-proxy" \
     io.k8s.description="Cluster Proxy automates the installation of apiserver-network-proxy on both hub cluster and managed clusters, establishing reverse proxy tunnels to enable cross-VPC service access" \
