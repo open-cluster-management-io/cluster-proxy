@@ -166,6 +166,7 @@ func NewAgentAddon(
 			},
 			utils.AddOnDeploymentConfigGVR,
 		).
+		WithAgentDeployTriggerClusterFilter(utils.ClusterImageRegistriesAnnotationChanged).
 		WithGetValuesFuncs(
 			GetClusterProxyValueFunc(runtimeClient, nativeClient, signerNamespace, caCertData, enableKubeApiProxy),
 			GetClusterProxyAdditionalValueFunc(runtimeClient, nativeClient, signerNamespace, enableServiceProxy),
