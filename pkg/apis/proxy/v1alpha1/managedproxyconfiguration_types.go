@@ -41,6 +41,10 @@ type ManagedProxyConfigurationSpec struct {
 	// `deploy` is where we override miscellaneous details for deploying either
 	// proxy servers or agents.
 	Deploy *ManagedProxyConfigurationDeploy `json:"deploy,omitempty"`
+	// +optional
+	// `userServer` configures certificate rotation for the user server.
+	// When configured, certificates will be automatically generated and rotated.
+	UserServer *ManagedProxyConfigurationUserServer `json:"userServer,omitempty"`
 }
 
 // ManagedProxyConfigurationStatus defines the observed state of ManagedProxyConfiguration
@@ -322,4 +326,22 @@ const (
 	ConditionTypeProxyServerSecretSigned = "ProxyServerSecretSigned"
 	ConditionTypeAgentServerSecretSigned = "AgentServerSecretSigned"
 	ConditionTypeProxyClientSecretSigned = "ProxyClientSecretSigned"
+	ConditionTypeUserServerSecretSigned  = "UserServerSecretSigned"
 )
+
+// ManagedProxyConfigurationUserServer configures certificate rotation for the user server.
+// When configured, certificates will be automatically generated and rotated.
+// The certificate is stored in the ProxyServer namespace with fixed names:
+// - Secret: cluster-proxy-user-serving-cert
+// - Service: cluster-proxy-addon-user
+type ManagedProxyConfigurationUserServer struct {
+	// `additionalSANs` adds additional hostnames or IPs to the user server certificate.
+	// Use this to add external hostnames when the user server is exposed outside the cluster.
+	// The certificate always includes internal service DNS names automatically:
+	// - cluster-proxy-addon-user
+	// - cluster-proxy-addon-user.{namespace}
+	// - cluster-proxy-addon-user.{namespace}.svc
+	// - cluster-proxy-addon-user.{namespace}.svc.cluster.local
+	// +optional
+	AdditionalSANs []string `json:"additionalSANs,omitempty"`
+}

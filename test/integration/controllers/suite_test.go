@@ -39,6 +39,7 @@ import (
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/controllers"
 	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/operator/authentication/selfsigned"
+	cpv1alpha1 "sigs.k8s.io/cluster-inventory-api/apis/v1alpha1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
@@ -78,6 +79,7 @@ var _ = BeforeSuite(func() {
 			filepath.Join("..", "..", "..", "hack", "crd", "addon"),
 			filepath.Join("..", "..", "..", "hack", "crd", "bases"),
 			filepath.Join("..", "..", "..", "hack", "crd", "cluster"),
+			filepath.Join("..", "..", "..", "hack", "crd", "cluster-inventory"),
 		},
 		ErrorIfCRDPathMissing: true,
 	}
@@ -97,6 +99,9 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 
 	err = clusterv1beta2.AddToScheme(scheme)
+	Expect(err).NotTo(HaveOccurred())
+
+	err = cpv1alpha1.AddToScheme(scheme)
 	Expect(err).NotTo(HaveOccurred())
 
 	kubeClient, err = kubernetes.NewForConfig(cfg)
@@ -120,6 +125,9 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 
 	err = controllers.RegisterServiceResolverReconciler(mgr)
+	Expect(err).NotTo(HaveOccurred())
+
+	err = controllers.SetupClusterProfileReconciler(mgr)
 	Expect(err).NotTo(HaveOccurred())
 
 	By("start manager")

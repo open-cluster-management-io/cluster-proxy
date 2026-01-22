@@ -28,9 +28,27 @@ installByPlacement:
 enableKubeApiProxy: true
 
 # Enable user server deployment
-# WARNING: Before setting this to true, ensure the following secret exists in the release namespace:
-#   - cluster-proxy-user-serving-cert (TLS cert for user server)
-# Note: Other required secrets (proxy-server-ca, proxy-client) will be created automatically by the controller.
-# Without cluster-proxy-user-serving-cert, the user-server deployment will remain in Pending state.
+# Note: When userServer.enabled is true, the user server certificate will be automatically
+# generated and rotated by the controller. No manual secret creation is required.
 enableServiceProxy: false
 enableImpersonation: true
+
+# Feature gates for alpha/experimental features
+# Format: key=value pairs separated by commas
+# Example: "clusterProfileAccessProvider=true,someOtherFeature=false"
+# Available feature gates:
+#   clusterProfileAccessProvider: Enable ClusterProfile controller for cluster-inventory-api integration (default: false)
+featureGates:
+  clusterProfileAccessProvider: false
+
+# User server configuration for automatic certificate rotation
+# When enabled, certificates are automatically generated and rotated by the controller.
+# The certificate is stored in the ProxyServer namespace with fixed names:
+# - Secret: cluster-proxy-user-serving-cert
+# - Service: cluster-proxy-addon-user
+userServer:
+  # Enable automatic certificate rotation for user server
+  enabled: false
+  # Additional SANs for the certificate (e.g., external hostnames)
+  # Example: ["user-server.example.com", "10.0.0.100"]
+  additionalSANs: []

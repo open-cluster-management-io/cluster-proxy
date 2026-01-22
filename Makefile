@@ -82,7 +82,7 @@ docker-push: ## Push docker image with the manager.
 
 CONTROLLER_GEN = $(shell pwd)/bin/controller-gen
 controller-gen: ## Download controller-gen locally if necessary.
-	$(call go-get-tool,$(CONTROLLER_GEN),sigs.k8s.io/controller-tools/cmd/controller-gen@v0.19.0)
+	$(call go-get-tool,$(CONTROLLER_GEN),sigs.k8s.io/controller-tools/cmd/controller-gen@v0.20.0)
 
 KUSTOMIZE = $(shell pwd)/bin/kustomize
 kustomize: ## Download kustomize locally if necessary.
@@ -173,7 +173,8 @@ deploy-cluster-proxy-e2e: delete-cluster-proxy-image-from-kind load-cluster-prox
 	--set proxyAgentImage=$(IMAGE_REGISTRY_NAME)/$(IMAGE_NAME) \
 	--set proxyServer.entrypointAddress="proxy-entrypoint.open-cluster-management-addon.svc" \
 	--set proxyServer.port=8091 \
-	--set enableServiceProxy=true
+	--set enableServiceProxy=true \
+	--set userServer.enabled=true
 	@echo "Cluster-proxy deployed successfully!"
 .PHONY: deploy-cluster-proxy-e2e
 
