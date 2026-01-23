@@ -10,6 +10,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"open-cluster-management.io/addon-framework/pkg/addonfactory"
+	"open-cluster-management.io/addon-framework/pkg/utils"
 	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
@@ -40,7 +41,10 @@ func GetClusterProxyAdditionalValueFunc(
 		}
 
 		// get image of proxy-agent(cluster-proxy-addon)
-		clusterProxyAddonImage := proxyConfig.Spec.ProxyAgent.Image
+		clusterProxyAddonImage, err := utils.OverrideImageByAnnotation(cluster.GetAnnotations(), proxyConfig.Spec.ProxyAgent.Image)
+		if err != nil {
+			return nil, err
+		}
 
 		// get image of agent-addon(cluster-proxy)
 		var clusterProxyImage string
@@ -48,6 +52,11 @@ func GetClusterProxyAdditionalValueFunc(
 			clusterProxyImage = clusterProxyAddonImage
 		} else {
 			clusterProxyImage = config.AgentImageName
+		}
+
+		clusterProxyImage, err = utils.OverrideImageByAnnotation(cluster.GetAnnotations(), clusterProxyImage)
+		if err != nil {
+			return nil, err
 		}
 
 		registry, image, tag, err := config.ParseImage(clusterProxyImage)
