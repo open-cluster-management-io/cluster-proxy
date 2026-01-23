@@ -2,9 +2,11 @@ package controllers
 
 import (
 	"context"
+	"os"
 	"time"
 
 	"github.com/spf13/cobra"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/informers"
@@ -12,12 +14,14 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/klog/v2"
 	"k8s.io/klog/v2/klogr"
+	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/operator/authentication/selfsigned"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
+	proxyclient "open-cluster-management.io/cluster-proxy/pkg/generated/clientset/versioned"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 )
 
@@ -96,8 +100,23 @@ func runControllerManager() error {
 		return err
 	}
 
+	// loading ManagedProxyConfiguration for owner reference
+	proxyClient, err := proxyclient.NewForConfig(mgr.GetConfig())
+	if err != nil {
+		klog.Error(err, "unable to set up proxy client")
+		os.Exit(1)
+	}
+	proxyConfig, err := proxyClient.ProxyV1alpha1().ManagedProxyConfigurations().Get(
+		context.TODO(), "cluster-proxy", metav1.GetOptions{})
+	if err != nil {
+		klog.Error(err, "failed to get ManagedProxyConfiguration 'cluster-proxy'")
+		os.Exit(1)
+	}
+	ownerRef := selfsigned.NewOwnerReferenceFromConfig(proxyConfig)
+
 	// Register CertController
-	err = registerCertController(certificatesNamespace, signerSecretName, signerSecretNamespace, secertLister, secertClient, mgr)
+	err = registerCertController(certificatesNamespace, signerSecretName, signerSecretNamespace,
+		secertLister, secertClient, ownerRef, mgr)
 	if err != nil {
 		klog.Error(err, "unable to set up cert-controller")
 		return err

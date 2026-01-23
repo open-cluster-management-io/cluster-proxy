@@ -7,6 +7,7 @@ import (
 	"github.com/openshift/library-go/pkg/crypto"
 	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
 	corev1listers "k8s.io/client-go/listers/core/v1"
@@ -47,7 +48,9 @@ type reconcileServerCertificates struct {
 func registerCertController(certNamespace string,
 	signerSecretName, signerSecretNamespace string,
 	secertLister corev1listers.SecretLister,
-	secertGetter corev1client.SecretsGetter, mgr manager.Manager) error {
+	secertGetter corev1client.SecretsGetter,
+	ownerRef *metav1.OwnerReference,
+	mgr manager.Manager) error {
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&corev1.Secret{}).
@@ -59,12 +62,13 @@ func registerCertController(certNamespace string,
 			signerSecretName:      signerSecretName,
 			signerSecretNamespace: signerSecretNamespace,
 			serverCertRotation: &certrotation.TargetRotation{
-				Namespace: certNamespace,
-				Name:      constant.ServerCertSecretName,
-				Validity:  time.Hour * 24 * 180, // align with the signer ca by cluster-proxy
-				HostNames: []string{"*", "localhost", "127.0.0.1", "*.open-cluster-management.proxy"},
-				Lister:    secertLister,
-				Client:    secertGetter,
+				Namespace:      certNamespace,
+				Name:           constant.ServerCertSecretName,
+				Validity:       time.Hour * 24 * 180, // align with the signer ca by cluster-proxy
+				HostNames:      []string{"*", "localhost", "127.0.0.1", "*.open-cluster-management.proxy"},
+				Lister:         secertLister,
+				Client:         secertGetter,
+				OwnerReference: ownerRef,
 			},
 		})
 }
