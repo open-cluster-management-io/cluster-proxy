@@ -1,0 +1,70 @@
+---
+# ConfigMap to store the startup script for HTTPS server
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hello-world-https-script
+  namespace: default
+data:
+  server.sh: |
+    #!/bin/sh
+    set -e
+
+    # Create directory for certificates
+    mkdir -p /certs
+
+    # Generate self-signed certificate
+    openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+      -keyout /certs/server.key \
+      -out /certs/server.crt \
+      -subj "/CN=hello-world-https.default.svc" \
+      -addext "subjectAltName=DNS:hello-world-https,DNS:hello-world-https.default,DNS:hello-world-https.default.svc,DNS:hello-world-https.default.svc.cluster.local"
+
+    # Create web content
+    mkdir -p /var/www
+    echo 'Hello from hello-world-https' > /var/www/index.html
+
+    # Start HTTPS server using openssl s_server
+    cd /var/www
+    while true; do
+      openssl s_server -accept 8443 -cert /certs/server.crt -key /certs/server.key -WWW -quiet 2>/dev/null || true
+    done
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: hello-world-https
+  namespace: default
+  labels:
+    run: hello-world-https
+spec:
+  containers:
+  - name: hello-world-https
+    image: alpine/openssl:latest
+    imagePullPolicy: IfNotPresent
+    command:
+    - /bin/sh
+    - /scripts/server.sh
+    ports:
+    - containerPort: 8443
+    volumeMounts:
+    - name: script
+      mountPath: /scripts
+  volumes:
+  - name: script
+    configMap:
+      name: hello-world-https-script
+      defaultMode: 0755
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hello-world-https
+  namespace: default
+  labels:
+    run: hello-world-https
+spec:
+  selector:
+    run: hello-world-https
+  ports:
+  - port: 8443
