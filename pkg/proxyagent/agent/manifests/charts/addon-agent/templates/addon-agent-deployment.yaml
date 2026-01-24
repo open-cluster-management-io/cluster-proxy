@@ -151,7 +151,7 @@ spec:
             - /cluster-proxy
           args:
             - service-proxy
-          {{- if .Values.addtionalServiceCAConfigMap }}
+          {{- if .Values.additionalServiceCAConfigMap }}
             - --additional-service-ca=/additional-service-ca/service-ca.crt
           {{- end }}
             - --enable-impersonation={{ .Values.enableImpersonation }}
@@ -179,7 +179,7 @@ spec:
             - name: hub
               mountPath: /etc/tls
               readOnly: true
-            {{- if .Values.addtionalServiceCAConfigMap }}
+            {{- if .Values.additionalServiceCAConfigMap }}
             - name: additional-service-ca
               mountPath: /additional-service-ca
               readOnly: true
@@ -199,10 +199,10 @@ spec:
           secret:
             secretName: cluster-proxy-hub-kubeconfig
         {{- if .Values.enableServiceProxy }}
-        {{- if .Values.addtionalServiceCAConfigMap }}
+        {{- if .Values.additionalServiceCAConfigMap }}
         - name: additional-service-ca
           configMap:
-            name: {{ .Values.addtionalServiceCAConfigMap }}
+            name: {{ .Values.additionalServiceCAConfigMap }}
             optional: true
         {{- end }}
         - name: service-proxy-server-cert
