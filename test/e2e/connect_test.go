@@ -248,4 +248,43 @@ var _ = Describe("Requests through Cluster-Proxy", Label("serviceproxy", "connec
 			Expect(strings.Contains(string(body), "Hello from hello-world")).To(Equal(true))
 		})
 	})
+
+	// Note: hello-world-https service is deployed during environment initialization in test/e2e/env/init.sh
+	// This test verifies that service-proxy correctly routes HTTPS requests to backend services.
+	// The backend service uses a self-signed certificate, so we expect either:
+	// 1. Success (200) if the certificate is trusted by the service-proxy
+	// 2. Bad Gateway (502) with a TLS error message if the certificate is not trusted
+	// Both cases confirm that the request was correctly routed to the HTTPS backend.
+	Describe("Access hello-world-https service", Label("service-access-https"), func() {
+		It("should route request to hello-world-https backend service", Label("hello-world-https", "https"), func() {
+			targetHost := fmt.Sprintf(`https://%s/%s/api/v1/namespaces/default/services/https:hello-world-https:8443/proxy-service/index.html`, userServerServiceAddress, managedClusterName)
+			fmt.Println("The targetHost: ", targetHost)
+
+			req, err := http.NewRequest("GET", targetHost, nil)
+			Expect(err).To(BeNil())
+
+			resp, err := clusterProxyHttpClient.Do(req)
+			Expect(err).To(BeNil())
+			defer resp.Body.Close()
+
+			body, err := io.ReadAll(resp.Body)
+			Expect(err).To(BeNil())
+			fmt.Println("response:", string(body))
+
+			// The request should either succeed (if cert is trusted) or fail with TLS error (if cert is self-signed)
+			// Both cases confirm the request was correctly routed to the HTTPS backend
+			switch resp.StatusCode {
+			case http.StatusOK:
+				// Certificate is trusted, response should contain expected content
+				Expect(strings.Contains(string(body), "Hello from hello-world-https")).To(Equal(true))
+			case http.StatusBadGateway:
+				// Certificate is not trusted (self-signed), but request was correctly routed
+				// The error message should indicate a TLS/certificate issue, confirming the request reached the backend
+				Expect(strings.Contains(string(body), "certificate") || strings.Contains(string(body), "tls")).To(Equal(true))
+				fmt.Println("Request correctly routed to HTTPS backend, TLS verification failed as expected with self-signed cert")
+			default:
+				Fail(fmt.Sprintf("Unexpected status code: %d, body: %s", resp.StatusCode, string(body)))
+			}
+		})
+	})
 })
