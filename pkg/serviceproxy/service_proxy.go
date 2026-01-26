@@ -42,9 +42,9 @@ func NewServiceProxyCommand() *cobra.Command {
 }
 
 type serviceProxy struct {
-	cert, key    string
-	ocpserviceCA string
-	rootCAs      *x509.CertPool
+	cert, key           string
+	additionalServiceCA string
+	rootCAs             *x509.CertPool
 
 	maxIdleConns          int
 	idleConnTimeout       time.Duration
@@ -67,7 +67,7 @@ func (s *serviceProxy) AddFlags(cmd *cobra.Command) {
 
 	flags.StringVar(&s.cert, "cert", s.cert, "The path to the certificate of the service proxy server")
 	flags.StringVar(&s.key, "key", s.key, "The path to the key of the service proxy server")
-	flags.StringVar(&s.ocpserviceCA, "ocpservice-ca", s.ocpserviceCA, "The path to the CA certificate of the ocp services")
+	flags.StringVar(&s.additionalServiceCA, "additional-service-ca", s.additionalServiceCA, "The path to the additional CA certificate for services")
 
 	// hubKubeConfig is the kubeconfig file for connecting to the hub cluster
 	flags.StringVar(&s.hubKubeConfig, "hub-kubeconfig", "", "The kubeconfig file for connecting to the hub cluster")
@@ -106,23 +106,26 @@ func (s *serviceProxy) Run(ctx context.Context) error {
 		return err
 	}
 	s.rootCAs.AppendCertsFromPEM(apiserverPem)
-	// ca for accessing ocp services
-	ocpserviceCAPem, err := os.ReadFile(s.ocpserviceCA)
-	if err != nil {
-		if os.IsNotExist(err) {
-			klog.Infof("ocpservice-ca is not provided")
-		} else {
-			return err
-		}
-	} else {
-		s.rootCAs.AppendCertsFromPEM(ocpserviceCAPem)
 
-		// add configchecker into http probes only when ocpservice-ca is provided
-		cc, err := addonutils.NewConfigChecker("ocpservice-ca", s.ocpserviceCA)
+	// ca for accessing additional services
+	if s.additionalServiceCA != "" {
+		additionalCAPem, err := os.ReadFile(s.additionalServiceCA)
 		if err != nil {
-			return err
+			if os.IsNotExist(err) {
+				klog.Infof("additional-service-ca file not found: %s", s.additionalServiceCA)
+			} else {
+				return err
+			}
+		} else {
+			s.rootCAs.AppendCertsFromPEM(additionalCAPem)
+
+			// add configchecker into http probes when additional-service-ca is provided
+			cc, err := addonutils.NewConfigChecker("additional-service-ca", s.additionalServiceCA)
+			if err != nil {
+				return err
+			}
+			customChecks = append(customChecks, cc.Check)
 		}
-		customChecks = append(customChecks, cc.Check)
 	}
 
 	// init managedClusterKubeClient

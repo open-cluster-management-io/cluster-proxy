@@ -319,6 +319,11 @@ type ManagedProxyConfigurationProxyAgent struct {
 	// `imagePullSecrets` defines the imagePullSecrets used by proxy-agent
 	// +optional
 	ImagePullSecrets []string `json:"imagePullSecrets,omitempty"`
+	// `additionalServiceCAConfigMap` is the name of a ConfigMap in the managed cluster
+	// that contains additional CA certificates for services.
+	// The ConfigMap should contain a key named "service-ca.crt".
+	// +optional
+	AdditionalServiceCAConfigMap string `json:"additionalServiceCAConfigMap,omitempty"`
 }
 
 const (
