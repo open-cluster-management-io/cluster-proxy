@@ -52,6 +52,7 @@ func RegisterClusterManagementAddonReconciler(
 	nativeClient kubernetes.Interface,
 	secretInformer informercorev1.SecretInformer,
 	imagePullPolicy string,
+	ownerReference *metav1.OwnerReference,
 ) error {
 	r := &ManagedProxyConfigurationReconciler{
 		Client:     mgr.GetClient(),
@@ -59,12 +60,13 @@ func RegisterClusterManagementAddonReconciler(
 		CAPair:     selfSigner.CA(),
 		newCertRotatorFunc: func(namespace, name string, sans ...string) selfsigned.CertRotation {
 			return &certrotation.TargetRotation{
-				Namespace: namespace,
-				Name:      name,
-				Validity:  time.Hour * 24 * 180,
-				HostNames: sans,
-				Lister:    secretInformer.Lister(),
-				Client:    nativeClient.CoreV1(),
+				Namespace:      namespace,
+				Name:           name,
+				Validity:       time.Hour * 24 * 180,
+				HostNames:      sans,
+				Lister:         secretInformer.Lister(),
+				Client:         nativeClient.CoreV1(),
+				OwnerReference: ownerReference,
 			}
 		},
 		SecretLister:     secretInformer.Lister(),

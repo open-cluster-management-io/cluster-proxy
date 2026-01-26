@@ -28,6 +28,7 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/informers"
@@ -43,6 +44,7 @@ import (
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 	"open-cluster-management.io/cluster-proxy/pkg/config"
 	"open-cluster-management.io/cluster-proxy/pkg/features"
+	proxyclient "open-cluster-management.io/cluster-proxy/pkg/generated/clientset/versioned"
 	"open-cluster-management.io/cluster-proxy/pkg/proxyagent/agent"
 	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/controllers"
 	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/operator/authentication/selfsigned"
@@ -139,9 +141,23 @@ func main() {
 
 	nativeInformer := informers.NewSharedInformerFactoryWithOptions(nativeClient, 0)
 
+	// loading ManagedProxyConfiguration for owner reference
+	proxyClient, err := proxyclient.NewForConfig(mgr.GetConfig())
+	if err != nil {
+		setupLog.Error(err, "unable to set up proxy client")
+		os.Exit(1)
+	}
+	proxyConfig, err := proxyClient.ProxyV1alpha1().ManagedProxyConfigurations().Get(
+		context.TODO(), "cluster-proxy", metav1.GetOptions{})
+	if err != nil {
+		setupLog.Error(err, "failed to get ManagedProxyConfiguration 'cluster-proxy'")
+		os.Exit(1)
+	}
+	ownerRef := selfsigned.NewOwnerReferenceFromConfig(proxyConfig)
+
 	// loading self-signer
 	selfSigner, err := selfsigned.NewSelfSignerFromSecretOrGenerate(
-		nativeClient, signerSecretNamespace, signerSecretName)
+		nativeClient, signerSecretNamespace, signerSecretName, ownerRef)
 	if err != nil {
 		setupLog.Error(err, "failed loading self-signer")
 		os.Exit(1)
@@ -153,6 +169,7 @@ func main() {
 		nativeClient,
 		nativeInformer.Core().V1().Secrets(),
 		imagePullPolicy,
+		ownerRef,
 	); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ClusterManagementAddonReconciler")
 		os.Exit(1)
