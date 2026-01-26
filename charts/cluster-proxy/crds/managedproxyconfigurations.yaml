@@ -144,6 +144,12 @@ spec:
                     items:
                       type: string
                     type: array
+                  additionalServiceCAConfigMap:
+                    description: |-
+                      `additionalServiceCAConfigMap` is the name of a ConfigMap in the managed cluster
+                      that contains additional CA certificates for services.
+                      The ConfigMap should contain a key named "service-ca.crt".
+                    type: string
                   image:
                     description: '`image` is the container image of the proxy agent.'
                     type: string

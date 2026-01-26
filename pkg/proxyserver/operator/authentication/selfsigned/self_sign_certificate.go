@@ -46,7 +46,7 @@ type selfSigner struct {
 	nextSerial *big.Int
 }
 
-func NewSelfSignerFromSecretOrGenerate(c kubernetes.Interface, secretNamespace, secretName string) (SelfSigner, error) {
+func NewSelfSignerFromSecretOrGenerate(c kubernetes.Interface, secretNamespace, secretName string, ownerRef *metav1.OwnerReference) (SelfSigner, error) {
 	shouldGenerate := false
 	caSecret, err := c.CoreV1().Secrets(secretNamespace).Get(context.TODO(), secretName, metav1.GetOptions{})
 	if err != nil {
@@ -56,6 +56,14 @@ func NewSelfSignerFromSecretOrGenerate(c kubernetes.Interface, secretNamespace, 
 		shouldGenerate = true
 	}
 	if !shouldGenerate {
+		// Update owner reference if missing and ownerRef is provided
+		if ownerRef != nil && !hasOwnerReference(caSecret.OwnerReferences, ownerRef) {
+			caSecret.OwnerReferences = []metav1.OwnerReference{*ownerRef}
+			_, err = c.CoreV1().Secrets(secretNamespace).Update(context.TODO(), caSecret, metav1.UpdateOptions{})
+			if err != nil {
+				return nil, errors.Wrapf(err, "failed to update owner reference for secret %v/%v", secretNamespace, secretName)
+			}
+		}
 		return NewSelfSignerWithCAData(caSecret.Data[TLSCACert], caSecret.Data[TLSCAKey])
 	}
 	generatedSigner, err := NewGeneratedSelfSigner()
@@ -73,14 +81,23 @@ func NewSelfSignerFromSecretOrGenerate(c kubernetes.Interface, secretNamespace, 
 	})
 	isAlreadyExists, err := DumpCASecret(c,
 		secretNamespace, secretName,
-		generatedSigner.CAData(), caKeyData)
+		generatedSigner.CAData(), caKeyData, ownerRef)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to dump generated ca secret %v/%v", secretNamespace, secretName)
 	}
 	if isAlreadyExists {
-		return NewSelfSignerFromSecretOrGenerate(c, secretNamespace, secretName)
+		return NewSelfSignerFromSecretOrGenerate(c, secretNamespace, secretName, ownerRef)
 	}
 	return generatedSigner, nil
+}
+
+func hasOwnerReference(refs []metav1.OwnerReference, target *metav1.OwnerReference) bool {
+	for _, ref := range refs {
+		if ref.UID == target.UID {
+			return true
+		}
+	}
+	return false
 }
 
 func NewGeneratedSelfSigner() (SelfSigner, error) {

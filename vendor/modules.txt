@@ -1041,7 +1041,7 @@ open-cluster-management.io/addon-framework/pkg/assets
 open-cluster-management.io/addon-framework/pkg/index
 open-cluster-management.io/addon-framework/pkg/lease
 open-cluster-management.io/addon-framework/pkg/utils
-# open-cluster-management.io/api v1.1.1-0.20251222023835-510285203ee6
+# open-cluster-management.io/api v1.1.1-0.20260108015315-68cef17a0643
 ## explicit; go 1.25.0
 open-cluster-management.io/api/addon/v1alpha1
 open-cluster-management.io/api/addon/v1beta1
@@ -1095,8 +1095,8 @@ open-cluster-management.io/api/operator/v1
 open-cluster-management.io/api/utils/work/v1/workapplier
 open-cluster-management.io/api/work/v1
 open-cluster-management.io/api/work/v1alpha1
-# open-cluster-management.io/sdk-go v1.1.1-0.20251125014036-c7d6056a7936
-## explicit; go 1.24.0
+# open-cluster-management.io/sdk-go v1.1.1-0.20260122131919-bfb55c41e64a
+## explicit; go 1.25.0
 open-cluster-management.io/sdk-go/pkg/apis/cluster/v1beta2
 open-cluster-management.io/sdk-go/pkg/apis/work/v1/applier
 open-cluster-management.io/sdk-go/pkg/apis/work/v1/builder
