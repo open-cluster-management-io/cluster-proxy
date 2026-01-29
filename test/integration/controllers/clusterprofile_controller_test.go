@@ -400,6 +400,35 @@ var _ = Describe("ClusterProfileReconciler Test", func() {
 	})
 
 	Context("Filter ClusterProfile with labels", func() {
+		It("Should NOT reconcile ClusterProfile with nil labels", func() {
+			// Create ClusterProfile with nil labels
+			nilLabelsCluster := &cpv1alpha1.ClusterProfile{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "cluster-nil-labels",
+					Namespace: "default",
+					Labels:    nil,
+				},
+				Spec: cpv1alpha1.ClusterProfileSpec{
+					DisplayName: "Cluster With Nil Labels",
+				},
+			}
+			err := ctrlClient.Create(ctx, nilLabelsCluster)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Wait a bit to ensure controller has time to process
+			time.Sleep(3 * time.Second)
+
+			// Verify no AccessProvider is added (controller should skip it)
+			currentProfile := &cpv1alpha1.ClusterProfile{}
+			err = ctrlClient.Get(ctx, client.ObjectKeyFromObject(nilLabelsCluster), currentProfile)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(len(currentProfile.Status.AccessProviders)).To(Equal(0))
+
+			// Cleanup
+			err = ctrlClient.Delete(ctx, nilLabelsCluster)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
 		It("Should NOT reconcile ClusterProfile without cluster manager label", func() {
 			// Create ClusterProfile without cluster manager label
 			noManagerCluster := &cpv1alpha1.ClusterProfile{
