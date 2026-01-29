@@ -11,6 +11,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientcmdapiv1 "k8s.io/client-go/tools/clientcmd/api/v1"
+	clusterv1 "open-cluster-management.io/api/cluster/v1"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 	"open-cluster-management.io/cluster-proxy/pkg/constant"
 	"open-cluster-management.io/cluster-proxy/pkg/proxyagent/agent"
@@ -86,16 +87,20 @@ var _ = Describe("ClusterProfileReconciler Test", func() {
 		err = ctrlClient.Create(ctx, caSecret)
 		Expect(err).ToNot(HaveOccurred())
 
-		// Create ClusterProfile
+		// Create ClusterProfile with proper labels
 		clusterProfile = &cpv1alpha1.ClusterProfile{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      clusterName,
 				Namespace: "default",
+				Labels: map[string]string{
+					cpv1alpha1.LabelClusterManagerKey: controllers.ClusterProfileManagerName,
+					clusterv1.ClusterNameLabelKey:     clusterName,
+				},
 			},
 			Spec: cpv1alpha1.ClusterProfileSpec{
-				DisplayName: "Test Cluster",
+				DisplayName: clusterName,
 				ClusterManager: cpv1alpha1.ClusterManager{
-					Name: "ocm",
+					Name: controllers.ClusterProfileManagerName,
 				},
 			},
 		}
@@ -283,7 +288,7 @@ var _ = Describe("ClusterProfileReconciler Test", func() {
 				Spec: cpv1alpha1.ClusterProfileSpec{
 					DisplayName: "Cluster Without Config",
 					ClusterManager: cpv1alpha1.ClusterManager{
-						Name: "ocm",
+						Name: controllers.ClusterProfileManagerName,
 					},
 				},
 			}
@@ -352,7 +357,7 @@ var _ = Describe("ClusterProfileReconciler Test", func() {
 				Spec: cpv1alpha1.ClusterProfileSpec{
 					DisplayName: "Cluster Without Secret",
 					ClusterManager: cpv1alpha1.ClusterManager{
-						Name: "ocm",
+						Name: controllers.ClusterProfileManagerName,
 					},
 				},
 			}
@@ -390,6 +395,179 @@ var _ = Describe("ClusterProfileReconciler Test", func() {
 				},
 			}
 			err = ctrlClient.Create(ctx, caSecret)
+			Expect(err).ToNot(HaveOccurred())
+		})
+	})
+
+	Context("Filter ClusterProfile with labels", func() {
+		It("Should NOT reconcile ClusterProfile with nil labels", func() {
+			// Create ClusterProfile with nil labels
+			nilLabelsCluster := &cpv1alpha1.ClusterProfile{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "cluster-nil-labels",
+					Namespace: "default",
+					Labels:    nil,
+				},
+				Spec: cpv1alpha1.ClusterProfileSpec{
+					DisplayName: "Cluster With Nil Labels",
+				},
+			}
+			err := ctrlClient.Create(ctx, nilLabelsCluster)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Wait a bit to ensure controller has time to process
+			time.Sleep(3 * time.Second)
+
+			// Verify no AccessProvider is added (controller should skip it)
+			currentProfile := &cpv1alpha1.ClusterProfile{}
+			err = ctrlClient.Get(ctx, client.ObjectKeyFromObject(nilLabelsCluster), currentProfile)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(len(currentProfile.Status.AccessProviders)).To(Equal(0))
+
+			// Cleanup
+			err = ctrlClient.Delete(ctx, nilLabelsCluster)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("Should NOT reconcile ClusterProfile without cluster manager label", func() {
+			// Create ClusterProfile without cluster manager label
+			noManagerCluster := &cpv1alpha1.ClusterProfile{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "cluster-no-manager-label",
+					Namespace: "default",
+					Labels: map[string]string{
+						clusterv1.ClusterNameLabelKey: "cluster-no-manager-label",
+					},
+				},
+				Spec: cpv1alpha1.ClusterProfileSpec{
+					DisplayName: "Cluster Without Manager Label",
+				},
+			}
+			err := ctrlClient.Create(ctx, noManagerCluster)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Wait a bit to ensure controller has time to process
+			time.Sleep(3 * time.Second)
+
+			// Verify no AccessProvider is added (controller should skip it)
+			currentProfile := &cpv1alpha1.ClusterProfile{}
+			err = ctrlClient.Get(ctx, client.ObjectKeyFromObject(noManagerCluster), currentProfile)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(len(currentProfile.Status.AccessProviders)).To(Equal(0))
+
+			// Cleanup
+			err = ctrlClient.Delete(ctx, noManagerCluster)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("Should NOT reconcile ClusterProfile with wrong cluster manager label", func() {
+			// Create ClusterProfile with wrong cluster manager
+			wrongManagerCluster := &cpv1alpha1.ClusterProfile{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "cluster-wrong-manager",
+					Namespace: "default",
+					Labels: map[string]string{
+						cpv1alpha1.LabelClusterManagerKey: "other-cluster-manager",
+						clusterv1.ClusterNameLabelKey:     "cluster-wrong-manager",
+					},
+				},
+				Spec: cpv1alpha1.ClusterProfileSpec{
+					DisplayName: "Cluster With Wrong Manager",
+				},
+			}
+			err := ctrlClient.Create(ctx, wrongManagerCluster)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Wait a bit to ensure controller has time to process
+			time.Sleep(3 * time.Second)
+
+			// Verify no AccessProvider is added
+			currentProfile := &cpv1alpha1.ClusterProfile{}
+			err = ctrlClient.Get(ctx, client.ObjectKeyFromObject(wrongManagerCluster), currentProfile)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(len(currentProfile.Status.AccessProviders)).To(Equal(0))
+
+			// Cleanup
+			err = ctrlClient.Delete(ctx, wrongManagerCluster)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("Should NOT reconcile ClusterProfile without cluster name label", func() {
+			// Create ClusterProfile without cluster name label
+			noNameCluster := &cpv1alpha1.ClusterProfile{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "cluster-no-name-label",
+					Namespace: "default",
+					Labels: map[string]string{
+						cpv1alpha1.LabelClusterManagerKey: controllers.ClusterProfileManagerName,
+					},
+				},
+				Spec: cpv1alpha1.ClusterProfileSpec{
+					DisplayName: "Cluster Without Name Label",
+				},
+			}
+			err := ctrlClient.Create(ctx, noNameCluster)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Wait a bit to ensure controller has time to process
+			time.Sleep(3 * time.Second)
+
+			// Verify no AccessProvider is added
+			currentProfile := &cpv1alpha1.ClusterProfile{}
+			err = ctrlClient.Get(ctx, client.ObjectKeyFromObject(noNameCluster), currentProfile)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(len(currentProfile.Status.AccessProviders)).To(Equal(0))
+
+			// Cleanup
+			err = ctrlClient.Delete(ctx, noNameCluster)
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		It("Should reconcile ClusterProfile with both required labels", func() {
+			// Create ClusterProfile with both required labels
+			validCluster := &cpv1alpha1.ClusterProfile{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "cluster-valid-labels",
+					Namespace: "default",
+					Labels: map[string]string{
+						cpv1alpha1.LabelClusterManagerKey: controllers.ClusterProfileManagerName,
+						clusterv1.ClusterNameLabelKey:     "cluster-valid-labels",
+					},
+				},
+				Spec: cpv1alpha1.ClusterProfileSpec{
+					DisplayName: "Cluster With Valid Labels",
+				},
+			}
+			err := ctrlClient.Create(ctx, validCluster)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Wait for AccessProvider to be added
+			Eventually(func() int {
+				currentProfile := &cpv1alpha1.ClusterProfile{}
+				err := ctrlClient.Get(ctx, client.ObjectKeyFromObject(validCluster), currentProfile)
+				if err != nil {
+					return -1
+				}
+				return len(currentProfile.Status.AccessProviders)
+			}, timeout, interval).Should(BeNumerically(">", 0))
+
+			// Verify the AccessProvider was added
+			currentProfile := &cpv1alpha1.ClusterProfile{}
+			err = ctrlClient.Get(ctx, client.ObjectKeyFromObject(validCluster), currentProfile)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Find OCM provider
+			var ocmProvider *cpv1alpha1.AccessProvider
+			for i := range currentProfile.Status.AccessProviders {
+				if currentProfile.Status.AccessProviders[i].Name == controllers.OCMAccessProviderName {
+					ocmProvider = &currentProfile.Status.AccessProviders[i]
+					break
+				}
+			}
+			Expect(ocmProvider).ToNot(BeNil())
+
+			// Cleanup
+			err = ctrlClient.Delete(ctx, validCluster)
 			Expect(err).ToNot(HaveOccurred())
 		})
 	})
