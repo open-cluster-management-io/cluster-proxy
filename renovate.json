@@ -1,4 +1,4 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["github>stolostron/acm-config//teams/server-foundation/renovate.json"]
+  "extends": ["github>stolostron/acm-config//teams/server-foundation/renovate-with-upstream.json"]
 }
