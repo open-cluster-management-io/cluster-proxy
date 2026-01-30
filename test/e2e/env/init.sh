@@ -32,11 +32,18 @@ kubectl wait --for=condition=ManagedClusterConditionAvailable managedcluster/loo
 echo "✓ Loopback managed cluster registered and available"
 echo ""
 
-echo "[4] Deploying hello-world test service..."
+echo "[4] Deploying hello-world test services..."
 kubectl apply -f test/e2e/env/hello-world.yaml
 echo "Waiting for hello-world pod to be ready..."
 kubectl wait --for=condition=ready pod/hello-world -n default --timeout=60s
-echo "✓ hello-world test service deployed and ready"
+echo "✓ hello-world HTTP test service deployed and ready"
+echo ""
+
+echo "[5] Deploying hello-world-https test service..."
+kubectl apply -f test/e2e/env/hello-world-https.yaml
+echo "Waiting for hello-world-https pod to be ready..."
+kubectl wait --for=condition=ready pod/hello-world-https -n default --timeout=120s
+echo "✓ hello-world-https HTTPS test service deployed and ready"
 echo ""
 
 echo "=============================================="
