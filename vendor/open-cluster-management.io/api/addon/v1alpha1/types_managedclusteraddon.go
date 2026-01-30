@@ -160,6 +160,14 @@ type ManagedClusterAddOnStatus struct {
 	// set by each addon implementation, by default, the lease mode will be used.
 	// +optional
 	HealthCheck HealthCheck `json:"healthCheck,omitempty"`
+
+	// kubeClientDriver specifies the authentication driver used by the ManagedClusterAddOn
+	// for kubeClient registration when the signer name is `kubernetes.io/kube-apiserver-client`.
+	// Supported values are `csr` and `token`.
+	// The field is set by the agent to declare which authentication driver it is using.
+	// +optional
+	// +kubebuilder:validation:Enum=csr;token
+	KubeClientDriver string `json:"kubeClientDriver,omitempty"`
 }
 
 // ObjectReference contains enough information to let you inspect or modify the referred object.
