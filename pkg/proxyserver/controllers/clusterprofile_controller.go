@@ -12,13 +12,16 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	clientcmdapiv1 "k8s.io/client-go/tools/clientcmd/api/v1"
+	clusterv1 "open-cluster-management.io/api/cluster/v1"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 	"open-cluster-management.io/cluster-proxy/pkg/constant"
 	"open-cluster-management.io/cluster-proxy/pkg/proxyagent/agent"
 	cpv1alpha1 "sigs.k8s.io/cluster-inventory-api/apis/v1alpha1"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
@@ -26,7 +29,10 @@ var _ reconcile.Reconciler = &clusterProfileReconciler{}
 
 var logger = ctrl.Log.WithName("ClusterProfileReconciler")
 
-const OCMAccessProviderName = "open-cluster-management"
+const (
+	ClusterProfileManagerName = "open-cluster-management"
+	OCMAccessProviderName     = "open-cluster-management"
+)
 
 type clusterProfileReconciler struct {
 	client.Client
@@ -44,8 +50,20 @@ func SetupClusterProfileReconciler(mgr manager.Manager) error {
 }
 
 func (r *clusterProfileReconciler) SetupWithManager(mgr manager.Manager) error {
+	// Predicate to filter only ClusterProfiles managed by open-cluster-management
+	cpFilter := func(obj client.Object) bool {
+		if cp, ok := obj.(*cpv1alpha1.ClusterProfile); ok {
+			if cp.Labels[cpv1alpha1.LabelClusterManagerKey] != ClusterProfileManagerName {
+				return false
+			}
+			_, ok := cp.Labels[clusterv1.ClusterNameLabelKey]
+			return ok
+		}
+		return false
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&cpv1alpha1.ClusterProfile{}).
+		For(&cpv1alpha1.ClusterProfile{}, builder.WithPredicates(predicate.NewPredicateFuncs(cpFilter))).
 		Complete(r)
 }
 
