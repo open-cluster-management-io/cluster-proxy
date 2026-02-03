@@ -16,7 +16,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
@@ -26,13 +25,11 @@ import (
 	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
 	addonclient "open-cluster-management.io/api/client/addon/clientset/versioned"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
-	clusterv1beta2 "open-cluster-management.io/api/cluster/v1beta2"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 	"open-cluster-management.io/cluster-proxy/pkg/common"
 	"open-cluster-management.io/cluster-proxy/pkg/config"
 	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/operator/authentication/selfsigned"
 	"open-cluster-management.io/cluster-proxy/pkg/util"
-	clustersdkv1beta2 "open-cluster-management.io/sdk-go/pkg/apis/cluster/v1beta2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -269,30 +266,8 @@ func GetClusterProxyValueFunc(
 			namespace = addon.Status.Namespace
 		}
 
-		// Get agentIndentifiers and servicesToExpose.
-		// agetnIdentifiers is used in `--agent-identifiers` flag in addon-agent-deployment.yaml.
 		// servicesToExpose defines the services we want to expose to the hub.
-
-		// List all available managedClusterSets
-		managedClusterSetList := &clusterv1beta2.ManagedClusterSetList{}
-		err = runtimeClient.List(context.TODO(), managedClusterSetList)
-		if err != nil {
-			return nil, err
-		}
-
-		managedClusterSetMap, err := managedClusterSetsToFilteredMap(managedClusterSetList.Items, cluster.Labels)
-		if err != nil {
-			return nil, err
-		}
-
-		// List all available serviceResolvers
-		serviceResolverList := &proxyv1alpha1.ManagedProxyServiceResolverList{}
-		err = runtimeClient.List(context.TODO(), serviceResolverList)
-		if err != nil {
-			return nil, err
-		}
-
-		servicesToExpose := removeDupAndSortServices(managedProxyServiceResolverToFilterServiceToExpose(serviceResolverList.Items, managedClusterSetMap, cluster.Name))
+		servicesToExpose := []serviceToExpose{}
 
 		var aids []string
 
@@ -363,62 +338,6 @@ const (
 	AgentSecretName                 = "cluster-proxy-open-cluster-management.io-proxy-agent-signer-client-cert"
 	AgentCASecretName               = "cluster-proxy-ca"
 )
-
-func managedClusterSetsToFilteredMap(managedClusterSets []clusterv1beta2.ManagedClusterSet, clusterlabels map[string]string) (map[string]clusterv1beta2.ManagedClusterSet, error) {
-	managedClusterSetMap := map[string]clusterv1beta2.ManagedClusterSet{}
-	for i := range managedClusterSets {
-		mcs := managedClusterSets[i]
-
-		// deleted managedClusterSets are not included in the list
-		if !mcs.DeletionTimestamp.IsZero() {
-			continue
-		}
-
-		// only cluseterSet cover current cluster include in the list.
-		selector, err := clustersdkv1beta2.BuildClusterSelector(&mcs)
-		if err != nil {
-			return nil, err
-		}
-		if !selector.Matches(labels.Set(clusterlabels)) {
-			continue
-		}
-
-		managedClusterSetMap[mcs.Name] = mcs
-	}
-	return managedClusterSetMap, nil
-}
-
-func managedProxyServiceResolverToFilterServiceToExpose(serviceResolvers []proxyv1alpha1.ManagedProxyServiceResolver, managedClusterSetMap map[string]clusterv1beta2.ManagedClusterSet, clusterName string) []serviceToExpose {
-	servicesToExpose := []serviceToExpose{}
-	for i := range serviceResolvers {
-		sr := serviceResolvers[i]
-
-		// illegal serviceResolvers are not included in the list
-		if !util.IsServiceResolverLegal(&sr) {
-			continue
-		}
-
-		// deleted serviceResolvers are not included in the list
-		if !sr.DeletionTimestamp.IsZero() {
-			continue
-		}
-
-		// filter serviceResolvers by managedClusterSet
-		if _, ok := managedClusterSetMap[sr.Spec.ManagedClusterSelector.ManagedClusterSet.Name]; !ok {
-			continue
-		}
-
-		servicesToExpose = append(servicesToExpose, convertManagedProxyServiceResolverToService(clusterName, sr))
-	}
-	return servicesToExpose
-}
-
-func convertManagedProxyServiceResolverToService(clusterName string, sr proxyv1alpha1.ManagedProxyServiceResolver) serviceToExpose {
-	return serviceToExpose{
-		Host:         util.GenerateServiceURL(clusterName, sr.Spec.ServiceSelector.ServiceRef.Namespace, sr.Spec.ServiceSelector.ServiceRef.Name),
-		ExternalName: fmt.Sprintf("%s.%s", sr.Spec.ServiceSelector.ServiceRef.Name, sr.Spec.ServiceSelector.ServiceRef.Namespace),
-	}
-}
 
 func removeDupAndSortServices(services []serviceToExpose) []serviceToExpose {
 	newServices := []serviceToExpose{}
