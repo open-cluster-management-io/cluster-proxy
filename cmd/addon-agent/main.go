@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"sync/atomic"
+	"time"
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
@@ -22,14 +23,42 @@ import (
 )
 
 var (
-	hubKubeconfig          string
-	clusterName            string
-	proxyServerNamespace   string
-	enablePortForwardProxy bool
+	hubKubeconfig               string
+	clusterName                 string
+	proxyServerNamespace        string
+	enablePortForwardProxy      bool
+	enableProxyAgentHealthCheck bool
 )
 
 // envKeyPodNamespace represents the environment variable key for the addon agent namespace.
 const envKeyPodNamespace = "POD_NAMESPACE"
+
+// proxyAgentHealthAddr is the address of the proxy-agent health server.
+// The addon-agent and proxy-agent containers run in the same Pod and share the network namespace,
+// so we can access the proxy-agent's health server via localhost.
+const proxyAgentHealthAddr = "localhost:8093"
+
+// checkProxyAgentReadiness returns a health check function that checks if the proxy-agent
+// is connected to the proxy-server by querying the proxy-agent's /readyz endpoint.
+// Since both containers share the same network namespace within the Pod, this function
+// can reach the proxy-agent's health server at localhost:8093.
+func checkProxyAgentReadiness() func() bool {
+	client := &http.Client{Timeout: 5 * time.Second}
+	return func() bool {
+		resp, err := client.Get(fmt.Sprintf("http://%s/readyz", proxyAgentHealthAddr))
+		if err != nil {
+			klog.V(4).Infof("Failed to check proxy-agent readiness: %v", err)
+			return false
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode == http.StatusOK {
+			return true
+		}
+		klog.V(4).Infof("Proxy-agent not ready, status code: %d", resp.StatusCode)
+		return false
+	}
+}
 
 func main() {
 
@@ -44,6 +73,8 @@ func main() {
 		"The namespace where proxy-server pod lives")
 	flag.BoolVar(&enablePortForwardProxy, "enable-port-forward-proxy", false,
 		"If true, running a local server forwarding tunnel shakes to proxy-server pods")
+	flag.BoolVar(&enableProxyAgentHealthCheck, "enable-proxy-agent-health-check", true,
+		"If true, check proxy-agent connection status before updating lease")
 	flag.Parse()
 
 	// pipe controller-runtime logs to klog
@@ -63,8 +94,23 @@ func main() {
 	if len(addonAgentNamespace) == 0 {
 		panic(fmt.Sprintf("Pod namespace is empty, please set the ENV for %s", envKeyPodNamespace))
 	}
-	leaseUpdater := lease.NewLeaseUpdater(spokeClient, common.AddonName, addonAgentNamespace).
-		WithHubLeaseConfig(cfg, clusterName)
+
+	var leaseUpdater lease.LeaseUpdater
+	if enableProxyAgentHealthCheck {
+		klog.Infof("Proxy-agent health check enabled, lease will only update when proxy-agent is connected")
+		leaseUpdater = lease.NewLeaseUpdater(
+			spokeClient,
+			common.AddonName,
+			addonAgentNamespace,
+			checkProxyAgentReadiness(),
+		).WithHubLeaseConfig(cfg, clusterName)
+	} else {
+		leaseUpdater = lease.NewLeaseUpdater(
+			spokeClient,
+			common.AddonName,
+			addonAgentNamespace,
+		).WithHubLeaseConfig(cfg, clusterName)
+	}
 
 	ctx := context.Background()
 
