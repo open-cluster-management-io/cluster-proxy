@@ -87,7 +87,7 @@ func (s *serviceProxy) Run(ctx context.Context) error {
 	var err error
 	customChecks := []healthz.Checker{}
 
-	cc, err := addonutils.NewConfigChecker("cert", s.cert, s.key, rootCAFile)
+	cc, err := addonutils.NewConfigChecker("cert", s.cert, s.key, rootCAFile, s.hubKubeConfig)
 	if err != nil {
 		return err
 	}
