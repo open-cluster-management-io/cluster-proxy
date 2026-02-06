@@ -124,9 +124,6 @@ var _ = BeforeSuite(func() {
 	err = controllers.RegisterClusterManagementAddonReconciler(mgr, selfSigner, kubeClient, kubeInformer.Core().V1().Secrets(), string(corev1.PullIfNotPresent), nil)
 	Expect(err).NotTo(HaveOccurred())
 
-	err = controllers.RegisterServiceResolverReconciler(mgr)
-	Expect(err).NotTo(HaveOccurred())
-
 	err = controllers.SetupClusterProfileReconciler(mgr)
 	Expect(err).NotTo(HaveOccurred())
 
