@@ -35,11 +35,11 @@ enableImpersonation: true
 
 # Feature gates for alpha/experimental features
 # Format: key=value pairs separated by commas
-# Example: "clusterProfileAccessProvider=true,someOtherFeature=false"
+# Example: "clusterProfile=true,someOtherFeature=false"
 # Available feature gates:
-#   clusterProfileAccessProvider: Enable ClusterProfile controller for cluster-inventory-api integration (default: false)
+#   clusterProfile: Enable ClusterProfile controller for cluster-inventory-api integration (default: false)
 featureGates:
-  clusterProfileAccessProvider: false
+  clusterProfile: false
 
 # User server configuration for automatic certificate rotation
 # When enabled, certificates are automatically generated and rotated by the controller.

@@ -8,9 +8,9 @@ import (
 const (
 	// owner: @morvencao
 	// alpha: v0.1
-	// ClusterProfileAccessProvider enables the ClusterProfile controller to manage cluster
+	// ClusterProfile enables the ClusterProfile controller to manage cluster
 	// access providers for the cluster-inventory-api integration.
-	ClusterProfileAccessProvider featuregate.Feature = "ClusterProfileAccessProvider"
+	ClusterProfile featuregate.Feature = "ClusterProfile"
 )
 
 var (
@@ -26,5 +26,5 @@ func init() {
 
 // DefaultClusterProxyFeatureGates defines the default feature gates for cluster-proxy
 var DefaultClusterProxyFeatureGates = map[featuregate.Feature]featuregate.FeatureSpec{
-	ClusterProfileAccessProvider: {Default: false, PreRelease: featuregate.Alpha},
+	ClusterProfile: {Default: false, PreRelease: featuregate.Alpha},
 }
