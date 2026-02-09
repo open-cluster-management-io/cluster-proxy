@@ -175,8 +175,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	if features.FeatureGates.Enabled(features.ClusterProfileAccessProvider) {
-		setupLog.Info("ClusterProfileAccessProvider feature gate is enabled")
+	if features.FeatureGates.Enabled(features.ClusterProfile) {
+		setupLog.Info("ClusterProfile feature gate is enabled")
 		if err := controllers.SetupClusterProfileReconciler(mgr); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", "ClusterProfileReconciler")
 			os.Exit(1)

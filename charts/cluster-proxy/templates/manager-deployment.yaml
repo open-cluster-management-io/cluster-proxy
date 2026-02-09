@@ -31,7 +31,7 @@ spec:
             - --enable-service-proxy={{ .Values.enableServiceProxy }}
             - --image-pull-policy={{ .Values.proxyServer.imagePullPolicy }}
             {{- if .Values.featureGates }}
-            - --feature-gates=ClusterProfileAccessProvider={{ .Values.featureGates.clusterProfileAccessProvider | default false}}
+            - --feature-gates=ClusterProfile={{ .Values.featureGates.clusterProfile | default false}}
             {{- end}}
           securityContext:
             allowPrivilegeEscalation: false
