@@ -128,13 +128,13 @@ images-amd64:
 
 ## Integration Testing
 
-ENVTEST_ASSETS_DIR=$(shell pwd)/testbin
-test-integration: manifests generate fmt vet
-	mkdir -p ${ENVTEST_ASSETS_DIR}
-	test -f ${ENVTEST_ASSETS_DIR}/setup-envtest.sh || curl -sSLo ${ENVTEST_ASSETS_DIR}/setup-envtest.sh https://raw.githubusercontent.com/kubernetes-sigs/controller-runtime/v0.8.3/hack/setup-envtest.sh
-	source ${ENVTEST_ASSETS_DIR}/setup-envtest.sh; \
-		fetch_envtest_tools $(ENVTEST_ASSETS_DIR); \
-		setup_envtest_env $(ENVTEST_ASSETS_DIR); \
+ENVTEST = $(shell pwd)/bin/setup-envtest
+ENVTEST_K8S_VERSION = 1.31.0
+setup-envtest: ## Download setup-envtest locally if necessary.
+	$(call go-get-tool,$(ENVTEST),sigs.k8s.io/controller-runtime/tools/setup-envtest@latest)
+
+test-integration: manifests generate fmt vet setup-envtest
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(shell pwd)/testbin -p path)" \
 		go test ./test/integration/... -coverprofile cover.out
 
 ## E2E Testing
