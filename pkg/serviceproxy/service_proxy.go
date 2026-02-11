@@ -184,6 +184,15 @@ func (s *serviceProxy) ServeHTTP(wr http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	klog.V(4).InfoS("service proxy received request",
+		"targetHost", url.Host,
+		"targetScheme", url.Scheme,
+		"method", req.Method,
+		"path", req.URL.Path,
+		"enableImpersonation", s.enableImpersonation,
+		"isKubeAPIServer", url.Host == "kubernetes.default.svc",
+	)
+
 	if url.Host == "kubernetes.default.svc" {
 		if s.enableImpersonation {
 			if err := s.processAuthentication(req); err != nil {
@@ -193,6 +202,12 @@ func (s *serviceProxy) ServeHTTP(wr http.ResponseWriter, req *http.Request) {
 			}
 		}
 	}
+
+	klog.V(6).InfoS("forwarding request to reverse proxy",
+		"targetURL", url.String(),
+		"method", req.Method,
+		"path", req.URL.Path,
+	)
 
 	proxy := httputil.NewSingleHostReverseProxy(url)
 	proxy.Transport = &http.Transport{
@@ -227,6 +242,8 @@ func (s *serviceProxy) validate() error {
 }
 
 func (s *serviceProxy) hubUserAuthenticatedAndInfo(token string) (bool, *authenticationv1.UserInfo, error) {
+	klog.V(6).InfoS("creating TokenReview against hub cluster")
+
 	tokenReview, err := s.hubKubeClient.AuthenticationV1().TokenReviews().Create(context.Background(), &authenticationv1.TokenReview{
 		Spec: authenticationv1.TokenReviewSpec{
 			Token: token,
@@ -236,6 +253,13 @@ func (s *serviceProxy) hubUserAuthenticatedAndInfo(token string) (bool, *authent
 		return false, nil, err
 	}
 
+	klog.V(6).InfoS("hub cluster TokenReview completed",
+		"authenticated", tokenReview.Status.Authenticated,
+		"username", tokenReview.Status.User.Username,
+		"groups", tokenReview.Status.User.Groups,
+		"audiences", tokenReview.Status.Audiences,
+	)
+
 	if !tokenReview.Status.Authenticated {
 		return false, nil, nil
 	}
@@ -243,6 +267,8 @@ func (s *serviceProxy) hubUserAuthenticatedAndInfo(token string) (bool, *authent
 }
 
 func (s *serviceProxy) managedClusterUserAuthenticatedAndInfo(token string) (bool, *authenticationv1.UserInfo, error) {
+	klog.V(6).InfoS("creating TokenReview against managed cluster")
+
 	tokenReview, err := s.managedClusterKubeClient.AuthenticationV1().TokenReviews().Create(context.Background(), &authenticationv1.TokenReview{
 		Spec: authenticationv1.TokenReviewSpec{
 			Token: token,
@@ -251,6 +277,13 @@ func (s *serviceProxy) managedClusterUserAuthenticatedAndInfo(token string) (boo
 	if err != nil {
 		return false, nil, err
 	}
+
+	klog.V(6).InfoS("managed cluster TokenReview completed",
+		"authenticated", tokenReview.Status.Authenticated,
+		"username", tokenReview.Status.User.Username,
+		"groups", tokenReview.Status.User.Groups,
+		"audiences", tokenReview.Status.Audiences,
+	)
 
 	if !tokenReview.Status.Authenticated {
 		return false, nil, nil
@@ -271,12 +304,21 @@ func (s *serviceProxy) getImpersonateToken() (string, error) {
 func (s *serviceProxy) processAuthentication(req *http.Request) error {
 	token := strings.TrimPrefix(req.Header.Get("Authorization"), "Bearer ")
 
+	klog.V(6).InfoS("processing authentication for request",
+		"tokenPresent", token != "",
+		"tokenLength", len(token),
+	)
+
 	// determine if the token is a managed cluster user
 	managedClusterAuthenticated, _, err := s.managedClusterUserAuthenticatedAndInfo(token)
 	if err != nil {
 		klog.ErrorS(err, "managed cluster authentication failed")
 		return fmt.Errorf("managed cluster authentication failed: %v", err)
 	}
+
+	klog.V(4).InfoS("managed cluster authentication result",
+		"authenticated", managedClusterAuthenticated,
+	)
 
 	if !managedClusterAuthenticated {
 		// determine if the token is a hub user
@@ -285,6 +327,10 @@ func (s *serviceProxy) processAuthentication(req *http.Request) error {
 			klog.ErrorS(err, "hub cluster authentication failed")
 			return fmt.Errorf("authentication failed: managed cluster auth: not authenticated, hub cluster auth error: %v", err)
 		}
+		klog.V(4).InfoS("hub cluster authentication result",
+			"authenticated", hubAuthenticated,
+		)
+
 		if !hubAuthenticated {
 			klog.ErrorS(err, "authentication failed: token is neither valid for managed cluster nor hub cluster")
 			return fmt.Errorf("authentication failed: token is neither valid for managed cluster nor hub cluster")
@@ -294,6 +340,8 @@ func (s *serviceProxy) processAuthentication(req *http.Request) error {
 			klog.ErrorS(err, "failed to process hub user")
 			return fmt.Errorf("failed to process hub user: %v", err)
 		}
+
+		klog.V(6).InfoS("hub user processed successfully, impersonation headers applied")
 	}
 
 	return nil
@@ -314,6 +362,12 @@ func (s *serviceProxy) processHubUser(req *http.Request, hubUserInfo *authentica
 		req.Header.Set("Impersonate-User", hubUserInfo.Username)
 	}
 
+	klog.V(4).InfoS("impersonation headers set for hub user",
+		"impersonateUser", req.Header.Get("Impersonate-User"),
+		"impersonateGroups", hubUserInfo.Groups,
+		"isServiceAccount", strings.HasPrefix(hubUserInfo.Username, "system:serviceaccount:"),
+	)
+
 	// replace the original token with cluster-proxy service-account token which has impersonate permission
 	token, err := s.getImpersonateToken()
 	if err != nil {
@@ -321,5 +375,8 @@ func (s *serviceProxy) processHubUser(req *http.Request, hubUserInfo *authentica
 	}
 
 	req.Header.Set("Authorization", "Bearer "+token)
+
+	klog.V(6).InfoS("original bearer token replaced with service account impersonation token")
+
 	return nil
 }
