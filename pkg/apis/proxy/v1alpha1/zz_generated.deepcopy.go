@@ -281,6 +281,11 @@ func (in *ManagedProxyConfigurationProxyAgent) DeepCopyInto(out *ManagedProxyCon
 		*out = make([]string, len(*in))
 		copy(*out, *in)
 	}
+	if in.AdditionalServiceProxyArgs != nil {
+		in, out := &in.AdditionalServiceProxyArgs, &out.AdditionalServiceProxyArgs
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
 	if in.ImagePullSecrets != nil {
 		in, out := &in.ImagePullSecrets, &out.ImagePullSecrets
 		*out = make([]string, len(*in))
