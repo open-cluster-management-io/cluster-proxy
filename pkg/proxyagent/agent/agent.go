@@ -320,6 +320,7 @@ func GetClusterProxyValueFunc(
 			"includeNamespaceCreation":     true,
 			"spokeAddonNamespace":          addon.Spec.InstallNamespace,
 			"additionalProxyAgentArgs":     proxyConfig.Spec.ProxyAgent.AdditionalArgs,
+			"additionalServiceProxyArgs":   proxyConfig.Spec.ProxyAgent.AdditionalServiceProxyArgs,
 			"clusterName":                  cluster.Name,
 			"registry":                     registry,
 			"image":                        image,
