@@ -187,11 +187,17 @@ func (s *serviceProxy) ServeHTTP(wr http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	logger.V(4).Info("service proxy received request",
+	// Enrich logger with request-scoped fields so all downstream logs
+	// are traceable by request without repeating these values.
+	logger = logger.WithValues(
 		"targetHost", url.Host,
-		"targetScheme", url.Scheme,
 		"method", req.Method,
 		"path", req.URL.Path,
+	)
+	ctx = klog.NewContext(ctx, logger)
+
+	logger.V(4).Info("service proxy received request",
+		"targetScheme", url.Scheme,
 		"enableImpersonation", s.enableImpersonation,
 		"isKubeAPIServer", url.Host == "kubernetes.default.svc",
 	)
@@ -208,8 +214,6 @@ func (s *serviceProxy) ServeHTTP(wr http.ResponseWriter, req *http.Request) {
 
 	logger.V(6).Info("forwarding request to reverse proxy",
 		"targetURL", url.String(),
-		"method", req.Method,
-		"path", req.URL.Path,
 	)
 
 	proxy := httputil.NewSingleHostReverseProxy(url)
