@@ -168,6 +168,9 @@ func (s *serviceProxy) Run(ctx context.Context) error {
 }
 
 func (s *serviceProxy) ServeHTTP(wr http.ResponseWriter, req *http.Request) {
+	ctx := req.Context()
+	logger := klog.FromContext(ctx)
+
 	if klog.V(4).Enabled() {
 		dump, err := httputil.DumpRequest(req, true)
 		if err != nil {
@@ -180,11 +183,11 @@ func (s *serviceProxy) ServeHTTP(wr http.ResponseWriter, req *http.Request) {
 	url, err := utils.GetTargetServiceURLFromRequest(req)
 	if err != nil {
 		http.Error(wr, err.Error(), http.StatusBadRequest)
-		klog.Errorf("failed to get target service url from request: %v", err)
+		logger.Error(err, "failed to get target service url from request")
 		return
 	}
 
-	klog.V(4).InfoS("service proxy received request",
+	logger.V(4).Info("service proxy received request",
 		"targetHost", url.Host,
 		"targetScheme", url.Scheme,
 		"method", req.Method,
@@ -195,15 +198,15 @@ func (s *serviceProxy) ServeHTTP(wr http.ResponseWriter, req *http.Request) {
 
 	if url.Host == "kubernetes.default.svc" {
 		if s.enableImpersonation {
-			if err := s.processAuthentication(req); err != nil {
-				klog.ErrorS(err, "authentication failed")
+			if err := s.processAuthentication(ctx, req); err != nil {
+				logger.Error(err, "authentication failed")
 				http.Error(wr, err.Error(), http.StatusUnauthorized)
 				return
 			}
 		}
 	}
 
-	klog.V(6).InfoS("forwarding request to reverse proxy",
+	logger.V(6).Info("forwarding request to reverse proxy",
 		"targetURL", url.String(),
 		"method", req.Method,
 		"path", req.URL.Path,
@@ -241,10 +244,11 @@ func (s *serviceProxy) validate() error {
 	return nil
 }
 
-func (s *serviceProxy) hubUserAuthenticatedAndInfo(token string) (bool, *authenticationv1.UserInfo, error) {
-	klog.V(6).InfoS("creating TokenReview against hub cluster")
+func (s *serviceProxy) hubUserAuthenticatedAndInfo(ctx context.Context, token string) (bool, *authenticationv1.UserInfo, error) {
+	logger := klog.FromContext(ctx)
+	logger.V(6).Info("creating TokenReview against hub cluster")
 
-	tokenReview, err := s.hubKubeClient.AuthenticationV1().TokenReviews().Create(context.Background(), &authenticationv1.TokenReview{
+	tokenReview, err := s.hubKubeClient.AuthenticationV1().TokenReviews().Create(ctx, &authenticationv1.TokenReview{
 		Spec: authenticationv1.TokenReviewSpec{
 			Token: token,
 		},
@@ -253,7 +257,7 @@ func (s *serviceProxy) hubUserAuthenticatedAndInfo(token string) (bool, *authent
 		return false, nil, err
 	}
 
-	klog.V(6).InfoS("hub cluster TokenReview completed",
+	logger.V(6).Info("hub cluster TokenReview completed",
 		"authenticated", tokenReview.Status.Authenticated,
 		"username", tokenReview.Status.User.Username,
 		"groups", tokenReview.Status.User.Groups,
@@ -266,10 +270,11 @@ func (s *serviceProxy) hubUserAuthenticatedAndInfo(token string) (bool, *authent
 	return true, &tokenReview.Status.User, nil
 }
 
-func (s *serviceProxy) managedClusterUserAuthenticatedAndInfo(token string) (bool, *authenticationv1.UserInfo, error) {
-	klog.V(6).InfoS("creating TokenReview against managed cluster")
+func (s *serviceProxy) managedClusterUserAuthenticatedAndInfo(ctx context.Context, token string) (bool, *authenticationv1.UserInfo, error) {
+	logger := klog.FromContext(ctx)
+	logger.V(6).Info("creating TokenReview against managed cluster")
 
-	tokenReview, err := s.managedClusterKubeClient.AuthenticationV1().TokenReviews().Create(context.Background(), &authenticationv1.TokenReview{
+	tokenReview, err := s.managedClusterKubeClient.AuthenticationV1().TokenReviews().Create(ctx, &authenticationv1.TokenReview{
 		Spec: authenticationv1.TokenReviewSpec{
 			Token: token,
 		},
@@ -278,7 +283,7 @@ func (s *serviceProxy) managedClusterUserAuthenticatedAndInfo(token string) (boo
 		return false, nil, err
 	}
 
-	klog.V(6).InfoS("managed cluster TokenReview completed",
+	logger.V(6).Info("managed cluster TokenReview completed",
 		"authenticated", tokenReview.Status.Authenticated,
 		"username", tokenReview.Status.User.Username,
 		"groups", tokenReview.Status.User.Groups,
@@ -301,54 +306,57 @@ func (s *serviceProxy) getImpersonateToken() (string, error) {
 }
 
 // processAuthentication handles the authentication flow for both managed cluster and hub users
-func (s *serviceProxy) processAuthentication(req *http.Request) error {
+func (s *serviceProxy) processAuthentication(ctx context.Context, req *http.Request) error {
+	logger := klog.FromContext(ctx)
 	token := strings.TrimPrefix(req.Header.Get("Authorization"), "Bearer ")
 
-	klog.V(6).InfoS("processing authentication for request",
+	logger.V(6).Info("processing authentication for request",
 		"tokenPresent", token != "",
 		"tokenLength", len(token),
 	)
 
 	// determine if the token is a managed cluster user
-	managedClusterAuthenticated, _, err := s.managedClusterUserAuthenticatedAndInfo(token)
+	managedClusterAuthenticated, _, err := s.managedClusterUserAuthenticatedAndInfo(ctx, token)
 	if err != nil {
-		klog.ErrorS(err, "managed cluster authentication failed")
+		logger.Error(err, "managed cluster authentication failed")
 		return fmt.Errorf("managed cluster authentication failed: %v", err)
 	}
 
-	klog.V(4).InfoS("managed cluster authentication result",
+	logger.V(4).Info("managed cluster authentication result",
 		"authenticated", managedClusterAuthenticated,
 	)
 
 	if !managedClusterAuthenticated {
 		// determine if the token is a hub user
-		hubAuthenticated, hubUserInfo, err := s.hubUserAuthenticatedAndInfo(token)
+		hubAuthenticated, hubUserInfo, err := s.hubUserAuthenticatedAndInfo(ctx, token)
 		if err != nil {
-			klog.ErrorS(err, "hub cluster authentication failed")
+			logger.Error(err, "hub cluster authentication failed")
 			return fmt.Errorf("authentication failed: managed cluster auth: not authenticated, hub cluster auth error: %v", err)
 		}
-		klog.V(4).InfoS("hub cluster authentication result",
+		logger.V(4).Info("hub cluster authentication result",
 			"authenticated", hubAuthenticated,
 		)
 
 		if !hubAuthenticated {
-			klog.ErrorS(err, "authentication failed: token is neither valid for managed cluster nor hub cluster")
+			logger.Error(nil, "authentication failed: token is neither valid for managed cluster nor hub cluster")
 			return fmt.Errorf("authentication failed: token is neither valid for managed cluster nor hub cluster")
 		}
 
-		if err := s.processHubUser(req, hubUserInfo); err != nil {
-			klog.ErrorS(err, "failed to process hub user")
+		if err := s.processHubUser(ctx, req, hubUserInfo); err != nil {
+			logger.Error(err, "failed to process hub user")
 			return fmt.Errorf("failed to process hub user: %v", err)
 		}
 
-		klog.V(6).InfoS("hub user processed successfully, impersonation headers applied")
+		logger.V(6).Info("hub user processed successfully, impersonation headers applied")
 	}
 
 	return nil
 }
 
 // processHubUser handles the hub user specific operations including impersonation
-func (s *serviceProxy) processHubUser(req *http.Request, hubUserInfo *authenticationv1.UserInfo) error {
+func (s *serviceProxy) processHubUser(ctx context.Context, req *http.Request, hubUserInfo *authenticationv1.UserInfo) error {
+	logger := klog.FromContext(ctx)
+
 	// set impersonate group header
 	for _, group := range hubUserInfo.Groups {
 		// Here using `Add` instead of `Set` to support multiple groups
@@ -362,7 +370,7 @@ func (s *serviceProxy) processHubUser(req *http.Request, hubUserInfo *authentica
 		req.Header.Set("Impersonate-User", hubUserInfo.Username)
 	}
 
-	klog.V(4).InfoS("impersonation headers set for hub user",
+	logger.V(4).Info("impersonation headers set for hub user",
 		"impersonateUser", req.Header.Get("Impersonate-User"),
 		"impersonateGroups", hubUserInfo.Groups,
 		"isServiceAccount", strings.HasPrefix(hubUserInfo.Username, "system:serviceaccount:"),
@@ -376,7 +384,7 @@ func (s *serviceProxy) processHubUser(req *http.Request, hubUserInfo *authentica
 
 	req.Header.Set("Authorization", "Bearer "+token)
 
-	klog.V(6).InfoS("original bearer token replaced with service account impersonation token")
+	logger.V(6).Info("original bearer token replaced with service account impersonation token")
 
 	return nil
 }
