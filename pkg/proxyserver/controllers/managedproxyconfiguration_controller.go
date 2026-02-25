@@ -105,7 +105,7 @@ func (c *ManagedProxyConfigurationReconciler) Reconcile(ctx context.Context, req
 
 	// get the related proxy configuration
 	config := &proxyv1alpha1.ManagedProxyConfiguration{}
-	if err := c.Client.Get(ctx, types.NamespacedName{Name: request.Name}, config); err != nil {
+	if err := c.Get(ctx, types.NamespacedName{Name: request.Name}, config); err != nil {
 		return reconcile.Result{}, err
 	}
 
@@ -227,7 +227,7 @@ func (c *ManagedProxyConfigurationReconciler) ensure(incomingGeneration int64, g
 	// create if it doesn't exist
 	current := &unstructured.Unstructured{}
 	current.SetGroupVersionKind(gvk)
-	if err := c.Client.Get(
+	if err := c.Get(
 		context.TODO(),
 		types.NamespacedName{
 			Namespace: resource.GetNamespace(),
@@ -242,7 +242,7 @@ func (c *ManagedProxyConfigurationReconciler) ensure(incomingGeneration int64, g
 			)
 		}
 		// if not found, then create
-		if err := c.Client.Create(context.TODO(), resource); err != nil {
+		if err := c.Create(context.TODO(), resource); err != nil {
 			if !apierrors.IsAlreadyExists(err) {
 				return false, false, errors.Wrapf(err,
 					"failed to create resource kind: %s, namespace: %s, name %s",
@@ -273,7 +273,7 @@ func (c *ManagedProxyConfigurationReconciler) ensure(incomingGeneration int64, g
 	// update if generation bumped
 	if !created && int(incomingGeneration) > currentGeneration {
 		resource.SetResourceVersion(current.GetResourceVersion())
-		if err := c.Client.Update(context.TODO(), resource); err != nil {
+		if err := c.Update(context.TODO(), resource); err != nil {
 			if apierrors.IsConflict(err) {
 				return c.ensure(incomingGeneration, gvk, resource)
 			}
@@ -283,9 +283,8 @@ func (c *ManagedProxyConfigurationReconciler) ensure(incomingGeneration int64, g
 				resource.GetNamespace(),
 				resource.GetName(),
 			)
-		} else {
-			updated = true
 		}
+		updated = true
 	}
 	return created, updated, nil
 }
@@ -369,7 +368,7 @@ func (c *ManagedProxyConfigurationReconciler) ensureEntrypoint(config *proxyv1al
 				},
 			},
 		}
-		if err := c.Client.Create(context.TODO(), proxyService); err != nil {
+		if err := c.Create(context.TODO(), proxyService); err != nil {
 			if !apierrors.IsAlreadyExists(err) {
 				return "", errors.Wrapf(err, "failed to ensure entrypoint service for proxy-server")
 			}
@@ -497,11 +496,11 @@ func (c *ManagedProxyConfigurationReconciler) ensureBasicResources(config *proxy
 }
 
 func (c *ManagedProxyConfigurationReconciler) ensureNamespace(config *proxyv1alpha1.ManagedProxyConfiguration) error {
-	if err := c.Client.Get(context.TODO(), types.NamespacedName{
+	if err := c.Get(context.TODO(), types.NamespacedName{
 		Name: config.Spec.ProxyServer.Namespace,
 	}, &corev1.Namespace{}); err != nil {
 		if apierrors.IsNotFound(err) {
-			if err := c.Client.Create(context.TODO(), &corev1.Namespace{
+			if err := c.Create(context.TODO(), &corev1.Namespace{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: config.Spec.ProxyServer.Namespace,
 				},

@@ -20,6 +20,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
 	"open-cluster-management.io/addon-framework/pkg/addonfactory"
 	"open-cluster-management.io/addon-framework/pkg/agent"
 	"open-cluster-management.io/addon-framework/pkg/utils"
@@ -33,7 +35,6 @@ import (
 	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/operator/authentication/selfsigned"
 	"open-cluster-management.io/cluster-proxy/pkg/util"
 	clustersdkv1beta2 "open-cluster-management.io/sdk-go/pkg/apis/cluster/v1beta2"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 //go:embed manifests
@@ -44,7 +45,7 @@ const (
 
 	ProxyAgentSignerName = "open-cluster-management.io/proxy-agent-signer"
 
-	// serviceDomain must added because go dns client won't recursivly search CNAME.
+	// serviceDomain must added because go dns client won't recursively search CNAME.
 	// See more details: https://coredns.io/manual/setups/#recursive-resolver; https://github.com/golang/go/blob/6f445a9db55f65e55c5be29d3c506ecf3be37915/src/net/dnsclient_unix.go#L666
 	// The default value is "svc.cluster.local". We can also set a CustomizedVariables with key "serviceDomain" to overwrite it.
 	serviceDomain = "svc.cluster.local"
@@ -55,7 +56,7 @@ func NewAgentAddon(
 	signerNamespace string,
 	runtimeClient client.Client,
 	nativeClient kubernetes.Interface,
-	enableKubeApiProxy bool,
+	enableKubeAPIProxy bool,
 	enableServiceProxy bool,
 	addonClient addonclient.Interface) (agent.AgentAddon, error) {
 	caCertData, caKeyData, err := signer.CA().Config.GetPEMBytes()
@@ -63,17 +64,16 @@ func NewAgentAddon(
 		return nil, err
 	}
 
-	regConfigs := []addonv1alpha1.RegistrationConfig{
-		{
-			SignerName: csrv1.KubeAPIServerClientSignerName,
-			Subject: addonv1alpha1.Subject{
-				User: common.SubjectUserClusterAddonAgent,
-				Groups: []string{
-					common.SubjectGroupClusterProxy,
-				},
+	regConfigs := make([]addonv1alpha1.RegistrationConfig, 0, 2)
+	regConfigs = append(regConfigs, addonv1alpha1.RegistrationConfig{
+		SignerName: csrv1.KubeAPIServerClientSignerName,
+		Subject: addonv1alpha1.Subject{
+			User: common.SubjectUserClusterAddonAgent,
+			Groups: []string{
+				common.SubjectGroupClusterProxy,
 			},
 		},
-	}
+	})
 	// Register the custom signer CSR option if V1 csr is supported
 	// caculate a hash value of signer ca data and add it to the organizationUnits of the subject
 	signerHash := sha256.Sum256(signer.CAData())
@@ -168,7 +168,7 @@ func NewAgentAddon(
 		).
 		WithAgentDeployTriggerClusterFilter(utils.ClusterImageRegistriesAnnotationChanged).
 		WithGetValuesFuncs(
-			GetClusterProxyValueFunc(runtimeClient, nativeClient, signerNamespace, caCertData, enableKubeApiProxy),
+			GetClusterProxyValueFunc(runtimeClient, nativeClient, signerNamespace, caCertData, enableKubeAPIProxy),
 			GetClusterProxyAdditionalValueFunc(runtimeClient, nativeClient, signerNamespace, enableServiceProxy),
 			addonfactory.GetAddOnDeploymentConfigValues(
 				utils.NewAddOnDeploymentConfigGetter(addonClient),
@@ -202,7 +202,7 @@ func GetClusterProxyValueFunc(
 	nativeClient kubernetes.Interface,
 	signerNamespace string,
 	caCertData []byte,
-	enableKubeApiProxy bool,
+	enableKubeAPIProxy bool,
 ) addonfactory.GetValuesFunc {
 	return func(cluster *clusterv1.ManagedCluster,
 		addon *addonv1alpha1.ManagedClusterAddOn) (addonfactory.Values, error) {
@@ -304,7 +304,7 @@ func GetClusterProxyValueFunc(
 		aids = append(aids, fmt.Sprintf("host=%s", serviceProxyHost))
 
 		// add default kube-apiserver agentIdentifiers
-		if enableKubeApiProxy {
+		if enableKubeAPIProxy {
 			aids = append(aids, fmt.Sprintf("host=%s", cluster.Name))
 			aids = append(aids, fmt.Sprintf("host=%s.%s", cluster.Name, namespace))
 		}
@@ -318,7 +318,7 @@ func GetClusterProxyValueFunc(
 			"agentDeploymentName":          "cluster-proxy-proxy-agent",
 			"serviceDomain":                serviceDomain,
 			"includeNamespaceCreation":     true,
-			"spokeAddonNamespace":          addon.Spec.InstallNamespace,
+			"spokeAddonNamespace":          addon.Spec.InstallNamespace, //nolint:staticcheck // SA1019 deprecated field still needed for backward compatibility
 			"additionalProxyAgentArgs":     proxyConfig.Spec.ProxyAgent.AdditionalArgs,
 			"clusterName":                  cluster.Name,
 			"registry":                     registry,
@@ -337,7 +337,7 @@ func GetClusterProxyValueFunc(
 			"agentIdentifiers":   agentIdentifiers,
 			"serviceProxyHost":   serviceProxyHost,
 			"servicesToExpose":   servicesToExpose,
-			"enableKubeApiProxy": enableKubeApiProxy,
+			"enableKubeAPIProxy": enableKubeAPIProxy,
 		}
 
 		return values, nil
@@ -388,6 +388,7 @@ func managedClusterSetsToFilteredMap(managedClusterSets []clusterv1beta2.Managed
 	return managedClusterSetMap, nil
 }
 
+//nolint:staticcheck // SA1019 ManagedProxyServiceResolver is deprecated but still in use
 func managedProxyServiceResolverToFilterServiceToExpose(serviceResolvers []proxyv1alpha1.ManagedProxyServiceResolver, managedClusterSetMap map[string]clusterv1beta2.ManagedClusterSet, clusterName string) []serviceToExpose {
 	servicesToExpose := []serviceToExpose{}
 	for i := range serviceResolvers {
@@ -413,6 +414,7 @@ func managedProxyServiceResolverToFilterServiceToExpose(serviceResolvers []proxy
 	return servicesToExpose
 }
 
+//nolint:staticcheck // SA1019 ManagedProxyServiceResolver is deprecated but still in use
 func convertManagedProxyServiceResolverToService(clusterName string, sr proxyv1alpha1.ManagedProxyServiceResolver) serviceToExpose {
 	return serviceToExpose{
 		Host:         util.GenerateServiceURL(clusterName, sr.Spec.ServiceSelector.ServiceRef.Namespace, sr.Spec.ServiceSelector.ServiceRef.Name),

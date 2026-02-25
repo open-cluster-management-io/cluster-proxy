@@ -60,7 +60,10 @@ fmt: ## Run go fmt against code.
 vet: ## Run go vet against code.
 	go vet ./...
 
-verify: fmt vet
+lint: ## Run golangci-lint against code.
+	@curl -sSL https://raw.githubusercontent.com/open-cluster-management-io/sdk-go/main/ci/lint/run-lint.sh | bash
+
+verify: fmt vet lint
 
 test: manifests generate fmt vet ## Run tests.
 	go test ./pkg/... -coverprofile cover.out

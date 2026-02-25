@@ -108,7 +108,7 @@ func GetTargetServiceConfigForKubeAPIServer(requestURL string) (ts TargetService
 	return ts, nil
 }
 
-// GetTargetServiceURLFromRequest is used on the agent side, the service-proxy agent recived a request from the proxy-agent, and need to know the target service URL to do further proxy.
+// GetTargetServiceURLFromRequest is used on the agent side, the service-proxy agent received a request from the proxy-agent, and need to know the target service URL to do further proxy.
 func GetTargetServiceURLFromRequest(req *http.Request) (*url.URL, error) {
 	// get proto, namespace, service, and port from request headers
 	proto := req.Header.Get(HeaderClusterProxyProto)
