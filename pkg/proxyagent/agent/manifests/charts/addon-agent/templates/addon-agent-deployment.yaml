@@ -158,6 +158,9 @@ spec:
             - --cert=/server-cert/tls.crt
             - --key=/server-cert/tls.key
             - --hub-kubeconfig=/etc/kubeconfig/kubeconfig
+            {{- range .Values.additionalServiceProxyArgs }}
+            - {{ . }}
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /healthz

@@ -18,6 +18,7 @@ replicas: 1
 
 spokeAddonNamespace: "open-cluster-management-cluster-proxy"
 additionalProxyAgentArgs: []
+additionalServiceProxyArgs: []
 
 agentDeploymentAnnotations: {}
 

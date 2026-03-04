@@ -316,6 +316,9 @@ type ManagedProxyConfigurationProxyAgent struct {
 	// `additionalArgs` defines args used in proxy-agent.
 	// +optional
 	AdditionalArgs []string `json:"additionalArgs,omitempty"`
+	// `additionalServiceProxyArgs` defines additional args used in proxy-agent for proxying services.
+	// +optional
+	AdditionalServiceProxyArgs []string `json:"additionalServiceProxyArgs,omitempty"`
 	// `imagePullSecrets` defines the imagePullSecrets used by proxy-agent
 	// +optional
 	ImagePullSecrets []string `json:"imagePullSecrets,omitempty"`
