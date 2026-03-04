@@ -19,10 +19,12 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
+
+	"sigs.k8s.io/controller-runtime/pkg/healthz"
+
 	addonutils "open-cluster-management.io/addon-framework/pkg/utils"
 	"open-cluster-management.io/cluster-proxy/pkg/constant"
 	"open-cluster-management.io/cluster-proxy/pkg/utils"
-	"sigs.k8s.io/controller-runtime/pkg/healthz"
 )
 
 func NewServiceProxyCommand() *cobra.Command {
@@ -230,7 +232,7 @@ func (s *serviceProxy) ServeHTTP(wr http.ResponseWriter, req *http.Request) {
 			RootCAs:    s.rootCAs,
 			MinVersion: tls.VersionTLS12,
 		},
-		// golang http pkg automaticly upgrade http connection to http2 connection, but http2 can not upgrade to SPDY which used in "kubectl exec".
+		// golang http pkg automatically upgrade http connection to http2 connection, but http2 can not upgrade to SPDY which used in "kubectl exec".
 		// set ForceAttemptHTTP2 = false to prevent auto http2 upgration
 		ForceAttemptHTTP2: false,
 	}

@@ -12,10 +12,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	clientcmdapiv1 "k8s.io/client-go/tools/clientcmd/api/v1"
-	clusterv1 "open-cluster-management.io/api/cluster/v1"
-	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
-	"open-cluster-management.io/cluster-proxy/pkg/constant"
-	"open-cluster-management.io/cluster-proxy/pkg/proxyagent/agent"
 	cpv1alpha1 "sigs.k8s.io/cluster-inventory-api/apis/v1alpha1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -23,6 +19,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+
+	clusterv1 "open-cluster-management.io/api/cluster/v1"
+	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
+	"open-cluster-management.io/cluster-proxy/pkg/constant"
+	"open-cluster-management.io/cluster-proxy/pkg/proxyagent/agent"
 )
 
 var _ reconcile.Reconciler = &clusterProfileReconciler{}

@@ -13,20 +13,22 @@ import (
 	"k8s.io/client-go/kubernetes"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/klog/v2"
-	"k8s.io/klog/v2/klogr"
-	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/operator/authentication/selfsigned"
+	"k8s.io/klog/v2/textlogger"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	proxyclient "open-cluster-management.io/cluster-proxy/pkg/generated/clientset/versioned"
+	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/operator/authentication/selfsigned"
+
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+
+	proxyclient "open-cluster-management.io/cluster-proxy/pkg/generated/clientset/versioned"
 )
 
 func init() {
-	logger := klogr.New()
+	logger := textlogger.NewLogger(textlogger.NewConfig())
 	log.SetLogger(logger)
 
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))

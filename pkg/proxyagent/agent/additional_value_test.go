@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
 	"open-cluster-management.io/cluster-proxy/pkg/common"
 )

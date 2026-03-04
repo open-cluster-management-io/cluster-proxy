@@ -5,6 +5,7 @@ package fake
 import (
 	rest "k8s.io/client-go/rest"
 	testing "k8s.io/client-go/testing"
+
 	v1alpha1 "open-cluster-management.io/cluster-proxy/pkg/generated/clientset/versioned/typed/proxy/v1alpha1"
 )
 

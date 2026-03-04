@@ -37,6 +37,12 @@ import (
 	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/klog/v2"
 	"k8s.io/klog/v2/textlogger"
+
+	cpv1alpha1 "sigs.k8s.io/cluster-inventory-api/apis/v1alpha1"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/healthz"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+
 	"open-cluster-management.io/addon-framework/pkg/addonmanager"
 	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
 	addonclient "open-cluster-management.io/api/client/addon/clientset/versioned"
@@ -48,10 +54,6 @@ import (
 	"open-cluster-management.io/cluster-proxy/pkg/proxyagent/agent"
 	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/controllers"
 	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/operator/authentication/selfsigned"
-	cpv1alpha1 "sigs.k8s.io/cluster-inventory-api/apis/v1alpha1"
-	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/healthz"
-	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -75,7 +77,7 @@ func main() {
 	var enableLeaderElection bool
 	var probeAddr string
 	var signerSecretNamespace, signerSecretName string
-	var enableKubeApiProxy bool
+	var enableKubeAPIProxy bool
 	var enableServiceProxy bool
 	var imagePullPolicy string
 	var featureGates map[string]bool
@@ -95,7 +97,7 @@ func main() {
 	flag.StringVar(&config.AgentImageName, "agent-image-name",
 		config.AgentImageName,
 		"The name of the addon agent's image")
-	flag.BoolVar(&enableKubeApiProxy, "enable-kube-api-proxy", true, "Enable proxy to agent kube-apiserver")
+	flag.BoolVar(&enableKubeAPIProxy, "enable-kube-api-proxy", true, "Enable proxy to agent kube-apiserver")
 	flag.BoolVar(&enableServiceProxy, "enable-service-proxy", true, "Enable service proxy")
 	flag.StringVar(&config.DefaultAddonInstallNamespace, "agent-install-namespace", config.DefaultAddonInstallNamespace,
 		"The default namespace to install the addon agents.")
@@ -209,7 +211,7 @@ func main() {
 		signerSecretNamespace,
 		mgr.GetClient(),
 		nativeClient,
-		enableKubeApiProxy,
+		enableKubeAPIProxy,
 		enableServiceProxy,
 		addonClient,
 	)
