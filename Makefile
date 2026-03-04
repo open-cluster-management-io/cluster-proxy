@@ -20,10 +20,11 @@ GOBIN=$(shell go env GOBIN)
 endif
 
 # Setting SHELL to bash allows bash commands to be executed by recipes.
-# This is a requirement for 'setup-envtest.sh' in the test target.
 # Options are set to exit when a recipe line exits non-zero or a piped command fails.
 SHELL = /usr/bin/env bash -o pipefail
 .SHELLFLAGS = -ec
+
+ENSURE_ENVTEST_SCRIPT := https://raw.githubusercontent.com/open-cluster-management-io/sdk-go/main/ci/envtest/ensure-envtest.sh
 
 all: build
 
@@ -62,7 +63,12 @@ vet: ## Run go vet against code.
 
 verify: fmt vet
 
-test: manifests generate fmt vet ## Run tests.
+.PHONY: envtest-setup
+envtest-setup:
+	$(eval export KUBEBUILDER_ASSETS=$(shell curl -fsSL $(ENSURE_ENVTEST_SCRIPT) | bash))
+	@echo "KUBEBUILDER_ASSETS=$(KUBEBUILDER_ASSETS)"
+
+test: manifests generate fmt vet envtest-setup ## Run tests.
 	go test ./pkg/... -coverprofile cover.out
 
 ##@ Build
@@ -128,14 +134,8 @@ images-amd64:
 
 ## Integration Testing
 
-ENVTEST = $(shell pwd)/bin/setup-envtest
-ENVTEST_K8S_VERSION = 1.31.0
-setup-envtest: ## Download setup-envtest locally if necessary.
-	$(call go-get-tool,$(ENVTEST),sigs.k8s.io/controller-runtime/tools/setup-envtest@latest)
-
-test-integration: manifests generate fmt vet setup-envtest
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(shell pwd)/testbin -p path)" \
-		go test ./test/integration/... -coverprofile cover.out
+test-integration: manifests generate fmt vet envtest-setup
+	go test ./test/integration/... -coverprofile cover.out
 
 ## E2E Testing
 
