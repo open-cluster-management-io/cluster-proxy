@@ -9,6 +9,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
+
 	"open-cluster-management.io/addon-framework/pkg/addonfactory"
 	"open-cluster-management.io/addon-framework/pkg/utils"
 	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
@@ -17,6 +18,7 @@ import (
 	"open-cluster-management.io/cluster-proxy/pkg/common"
 	"open-cluster-management.io/cluster-proxy/pkg/config"
 	"open-cluster-management.io/cluster-proxy/pkg/constant"
+
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -112,7 +114,7 @@ func getNodeSelector(managedCluster *clusterv1.ManagedCluster) (map[string]strin
 func getServerCertificatesFromSecret(nativeClient kubernetes.Interface, secretNamespace string) ([]byte, []byte, error) {
 	secret, err := nativeClient.CoreV1().Secrets(secretNamespace).Get(context.TODO(), constant.ServerCertSecretName, metav1.GetOptions{})
 	if err != nil {
-		return nil, nil, fmt.Errorf("Failed to get secret %s in the namespace %s: %v", constant.ServerCertSecretName, secretNamespace, err)
+		return nil, nil, fmt.Errorf("failed to get secret %s in the namespace %s: %v", constant.ServerCertSecretName, secretNamespace, err)
 
 	}
 	cert, ok := secret.Data["tls.crt"]

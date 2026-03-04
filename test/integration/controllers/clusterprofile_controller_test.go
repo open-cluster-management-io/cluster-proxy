@@ -11,13 +11,14 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientcmdapiv1 "k8s.io/client-go/tools/clientcmd/api/v1"
+	cpv1alpha1 "sigs.k8s.io/cluster-inventory-api/apis/v1alpha1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 	"open-cluster-management.io/cluster-proxy/pkg/constant"
 	"open-cluster-management.io/cluster-proxy/pkg/proxyagent/agent"
 	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/controllers"
-	cpv1alpha1 "sigs.k8s.io/cluster-inventory-api/apis/v1alpha1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 var _ = Describe("ClusterProfileReconciler Test", func() {

@@ -10,6 +10,7 @@ import (
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	watch "k8s.io/apimachinery/pkg/watch"
 	cache "k8s.io/client-go/tools/cache"
+
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 	versioned "open-cluster-management.io/cluster-proxy/pkg/generated/clientset/versioned"
 	internalinterfaces "open-cluster-management.io/cluster-proxy/pkg/generated/informers/externalversions/internalinterfaces"

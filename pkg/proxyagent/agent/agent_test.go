@@ -31,6 +31,9 @@ import (
 
 	openshiftcrypto "github.com/openshift/library-go/pkg/crypto"
 	"github.com/stretchr/testify/assert"
+	runtimeclient "sigs.k8s.io/controller-runtime/pkg/client"
+	fakeruntime "sigs.k8s.io/controller-runtime/pkg/client/fake"
+
 	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
 	fakeaddon "open-cluster-management.io/api/client/addon/clientset/versioned/fake"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
@@ -38,8 +41,6 @@ import (
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/operator/authentication/selfsigned"
 	"open-cluster-management.io/cluster-proxy/pkg/util"
-	runtimeclient "sigs.k8s.io/controller-runtime/pkg/client"
-	fakeruntime "sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
 var (

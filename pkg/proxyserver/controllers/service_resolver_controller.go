@@ -8,13 +8,14 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
-	clusterv1beta2 "open-cluster-management.io/api/cluster/v1beta2"
-	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
-	"open-cluster-management.io/cluster-proxy/pkg/util"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+
+	clusterv1beta2 "open-cluster-management.io/api/cluster/v1beta2"
+	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
+	"open-cluster-management.io/cluster-proxy/pkg/util"
 )
 
 var _ reconcile.Reconciler = &ServiceResolverReconciler{}
@@ -32,9 +33,9 @@ func RegisterServiceResolverReconciler(mgr ctrl.Manager) error {
 
 func (c *ServiceResolverReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&proxyv1alpha1.ManagedProxyServiceResolver{}).
+		For(&proxyv1alpha1.ManagedProxyServiceResolver{}). //nolint:staticcheck // deprecated but still needed
 		Watches(
-			&proxyv1alpha1.ManagedProxyServiceResolver{},
+			&proxyv1alpha1.ManagedProxyServiceResolver{}, //nolint:staticcheck // deprecated but still needed
 			handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, object client.Object) []reconcile.Request {
 				return []reconcile.Request{
 					{NamespacedName: types.NamespacedName{Name: object.GetName()}},
@@ -77,7 +78,7 @@ func (c *ServiceResolverReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 func (c *ServiceResolverReconciler) refreshManageProxyServiceResolversStatus() error {
 	// list ManagedProxyServiceResolvers
 	resolvers := &proxyv1alpha1.ManagedProxyServiceResolverList{}
-	if err := c.Client.List(context.TODO(), resolvers); err != nil {
+	if err := c.List(context.TODO(), resolvers); err != nil {
 		return err
 	}
 
@@ -100,7 +101,7 @@ func (c *ServiceResolverReconciler) refreshManageProxyServiceResolversStatus() e
 		} else {
 			// get managedclusterset
 			managedClusterSet := &clusterv1beta2.ManagedClusterSet{}
-			if err := c.Client.Get(context.TODO(), types.NamespacedName{
+			if err := c.Get(context.TODO(), types.NamespacedName{
 				Name: resolver.Spec.ManagedClusterSelector.ManagedClusterSet.Name,
 			}, managedClusterSet); err != nil {
 				if apierrors.IsNotFound(err) {
@@ -135,7 +136,7 @@ func (c *ServiceResolverReconciler) refreshManageProxyServiceResolversStatus() e
 		}
 
 		meta.SetStatusCondition(&editing.Status.Conditions, expectingCondition)
-		errs = append(errs, c.Client.Status().Update(context.TODO(), editing))
+		errs = append(errs, c.Status().Update(context.TODO(), editing))
 	}
 
 	return utilerrors.NewAggregate(errs)

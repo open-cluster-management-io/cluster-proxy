@@ -11,13 +11,15 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
 	corev1listers "k8s.io/client-go/listers/core/v1"
-	"open-cluster-management.io/cluster-proxy/pkg/constant"
-	certrotation "open-cluster-management.io/sdk-go/pkg/certrotation"
+
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	predicate "sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+
+	"open-cluster-management.io/cluster-proxy/pkg/constant"
+	certrotation "open-cluster-management.io/sdk-go/pkg/certrotation"
 )
 
 var _ reconcile.Reconciler = &reconcileServerCertificates{}

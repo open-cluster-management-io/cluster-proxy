@@ -8,6 +8,7 @@ import (
 	"k8s.io/client-go/discovery"
 	fakediscovery "k8s.io/client-go/discovery/fake"
 	"k8s.io/client-go/testing"
+
 	clientset "open-cluster-management.io/cluster-proxy/pkg/generated/clientset/versioned"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/generated/clientset/versioned/typed/proxy/v1alpha1"
 	fakeproxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/generated/clientset/versioned/typed/proxy/v1alpha1/fake"

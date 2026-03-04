@@ -6,6 +6,7 @@ import (
 
 	openshiftcrypto "github.com/openshift/library-go/pkg/crypto"
 	"github.com/stretchr/testify/assert"
+
 	"open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/operator/authentication/selfsigned"
 )

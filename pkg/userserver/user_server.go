@@ -18,16 +18,17 @@ import (
 	grpccredentials "google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/keepalive"
 	"k8s.io/klog/v2"
-	addonutils "open-cluster-management.io/addon-framework/pkg/utils"
-	"open-cluster-management.io/cluster-proxy/pkg/constant"
-	clusterproxyutil "open-cluster-management.io/cluster-proxy/pkg/util"
-	"open-cluster-management.io/cluster-proxy/pkg/utils"
-	konnectivity "sigs.k8s.io/apiserver-network-proxy/konnectivity-client/pkg/client"
-	"sigs.k8s.io/apiserver-network-proxy/pkg/util"
 
+	addonutils "open-cluster-management.io/addon-framework/pkg/utils"
 	addonclient "open-cluster-management.io/api/client/addon/clientset/versioned"
 	addoninformers "open-cluster-management.io/api/client/addon/informers/externalversions"
 	addonlisterv1alpha1 "open-cluster-management.io/api/client/addon/listers/addon/v1alpha1"
+	"open-cluster-management.io/cluster-proxy/pkg/constant"
+	clusterproxyutil "open-cluster-management.io/cluster-proxy/pkg/util"
+	"open-cluster-management.io/cluster-proxy/pkg/utils"
+
+	konnectivity "sigs.k8s.io/apiserver-network-proxy/konnectivity-client/pkg/client"
+	"sigs.k8s.io/apiserver-network-proxy/pkg/util"
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
@@ -89,19 +90,19 @@ func (k *userServer) AddFlags(cmd *cobra.Command) {
 
 func (k *userServer) Validate() error {
 	if k.serverCert == "" {
-		return fmt.Errorf("The server-cert is required")
+		return fmt.Errorf("the server-cert is required")
 	}
 
 	if k.serverKey == "" {
-		return fmt.Errorf("The server-key is required")
+		return fmt.Errorf("the server-key is required")
 	}
 
 	if k.serverPort == 0 {
-		return fmt.Errorf("The server-port is required")
+		return fmt.Errorf("the server-port is required")
 	}
 
 	if k.serviceProxyCACertPath == "" {
-		return fmt.Errorf("The serviceproxy-ca-cert is required")
+		return fmt.Errorf("the serviceproxy-ca-cert is required")
 	}
 
 	return nil
@@ -117,7 +118,7 @@ func (k *userServer) init(ctx context.Context) error {
 		return err
 	}
 
-	// prepare ca for sevice proxy server
+	// prepare ca for service proxy server
 	serviceProxyCaCert, err := os.ReadFile(k.serviceProxyCACertPath)
 	if err != nil {
 		return err
@@ -201,7 +202,7 @@ func (k *userServer) ServeHTTP(wr http.ResponseWriter, req *http.Request) {
 			RootCAs:    serviceProxyRootCA,
 			MinVersion: tls.VersionTLS12,
 		},
-		// golang http pkg automaticly upgrade http connection to http2 connection, but http2 can not upgrade to SPDY which used in "kubectl exec".
+		// golang http pkg automatically upgrade http connection to http2 connection, but http2 can not upgrade to SPDY which used in "kubectl exec".
 		// set ForceAttemptHTTP2 = false to prevent auto http2 upgration
 		ForceAttemptHTTP2: false,
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {

@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	rest "k8s.io/client-go/rest"
+
 	v1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 	"open-cluster-management.io/cluster-proxy/pkg/generated/clientset/versioned/scheme"
 )

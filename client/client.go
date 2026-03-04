@@ -7,6 +7,7 @@ import (
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/rest"
+
 	clusterv1client "open-cluster-management.io/api/client/cluster/clientset/versioned"
 	"open-cluster-management.io/cluster-proxy/pkg/generated/clientset/versioned"
 	"open-cluster-management.io/cluster-proxy/pkg/util"
@@ -55,5 +56,5 @@ func GetProxyHost(ctx context.Context, kubeconfig *rest.Config, clusterName stri
 		return util.GenerateServiceURL(clusterName, namespace, serviceName), nil
 	}
 
-	return "", fmt.Errorf("Not found any suitable ManagedProxyServiceResolver for (cluster:%s, namespace: %s, service: %s)", clusterName, namespace, serviceName)
+	return "", fmt.Errorf("not found any suitable ManagedProxyServiceResolver for (cluster:%s, namespace: %s, service: %s)", clusterName, namespace, serviceName)
 }

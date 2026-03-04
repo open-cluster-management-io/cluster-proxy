@@ -34,17 +34,18 @@ import (
 	"k8s.io/client-go/kubernetes"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/util/cert"
-	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
-	clusterv1beta2 "open-cluster-management.io/api/cluster/v1beta2"
-	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
-	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/controllers"
-	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/operator/authentication/selfsigned"
 	cpv1alpha1 "sigs.k8s.io/cluster-inventory-api/apis/v1alpha1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+
+	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
+	clusterv1beta2 "open-cluster-management.io/api/cluster/v1beta2"
+	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
+	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/controllers"
+	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/operator/authentication/selfsigned"
 	//+kubebuilder:scaffold:imports
 )
 
