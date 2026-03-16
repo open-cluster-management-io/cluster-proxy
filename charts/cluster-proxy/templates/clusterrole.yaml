@@ -42,9 +42,6 @@ rules:
       - managedproxyconfigurations
       - managedproxyconfigurations/status
       - managedproxyconfigurations/finalizers
-      - managedproxyserviceresolvers
-      - managedproxyserviceresolvers/status
-      - managedproxyserviceresolvers/finalizers
     verbs:
       - '*'
   - apiGroups:
