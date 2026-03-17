@@ -96,7 +96,7 @@ func NewAgentAddon(
 				return cluster.Spec.HubAcceptsClient
 			},
 			PermissionConfig: utils.NewRBACPermissionConfigBuilder(nativeClient).
-				WithStaticRole(&rbacv1.Role{
+				BindKubeClientRole(&rbacv1.Role{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "cluster-proxy-addon-agent",
 					},
@@ -108,23 +108,7 @@ func NewAgentAddon(
 						},
 					},
 				}).
-				WithStaticRoleBinding(&rbacv1.RoleBinding{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: "cluster-proxy-addon-agent",
-					},
-					RoleRef: rbacv1.RoleRef{
-						Kind: "Role",
-						Name: "cluster-proxy-addon-agent",
-					},
-					Subjects: []rbacv1.Subject{
-						{
-							Kind:     rbacv1.GroupKind,
-							Name:     common.SubjectGroupClusterProxy,
-							APIGroup: rbacv1.GroupName,
-						},
-					},
-				}).
-				WithStaticClusterRole(&rbacv1.ClusterRole{
+				BindKubeClientClusterRole(&rbacv1.ClusterRole{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "cluster-proxy-addon-agent-tokenreview",
 					},
@@ -133,22 +117,6 @@ func NewAgentAddon(
 							APIGroups: []string{"authentication.k8s.io"},
 							Verbs:     []string{"create"},
 							Resources: []string{"tokenreviews"},
-						},
-					},
-				}).
-				WithStaticClusterRoleBinding(&rbacv1.ClusterRoleBinding{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: "cluster-proxy-addon-agent-tokenreview",
-					},
-					RoleRef: rbacv1.RoleRef{
-						Kind: "ClusterRole",
-						Name: "cluster-proxy-addon-agent-tokenreview",
-					},
-					Subjects: []rbacv1.Subject{
-						{
-							Kind:     rbacv1.GroupKind,
-							Name:     common.SubjectGroupClusterProxy,
-							APIGroup: rbacv1.GroupName,
 						},
 					},
 				}).

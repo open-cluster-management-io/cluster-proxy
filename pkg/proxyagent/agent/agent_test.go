@@ -166,10 +166,70 @@ func TestAgentAddonRegistrationOption(t *testing.T) {
 			assert.NoError(t, err)
 			actions := fakeKubeClient.Actions()
 			assert.Len(t, actions, 8)
-			role := actions[1].(clienttesting.CreateAction).GetObject().(*rbacv1.Role)
+
+			// Extract RBAC resources from actions
+			var role *rbacv1.Role
+			var roleBinding *rbacv1.RoleBinding
+			var clusterRole *rbacv1.ClusterRole
+			var clusterRoleBinding *rbacv1.ClusterRoleBinding
+
+			for _, action := range actions {
+				if action.GetVerb() == "create" {
+					switch obj := action.(clienttesting.CreateAction).GetObject().(type) {
+					case *rbacv1.Role:
+						role = obj
+					case *rbacv1.RoleBinding:
+						roleBinding = obj
+					case *rbacv1.ClusterRole:
+						clusterRole = obj
+					case *rbacv1.ClusterRoleBinding:
+						clusterRoleBinding = obj
+					}
+				}
+			}
+
+			// Verify Role was created with correct name and permissions
+			assert.NotNil(t, role)
 			assert.Equal(t, "cluster-proxy-addon-agent", role.Name)
-			rolebinding := actions[3].(clienttesting.CreateAction).GetObject().(*rbacv1.RoleBinding)
-			assert.Equal(t, "cluster-proxy-addon-agent", rolebinding.Name)
+			assert.Equal(t, []rbacv1.PolicyRule{
+				{
+					APIGroups: []string{"coordination.k8s.io"},
+					Verbs:     []string{"*"},
+					Resources: []string{"leases"},
+				},
+			}, role.Rules)
+
+			// Verify RoleBinding was created and references the correct subjects
+			assert.NotNil(t, roleBinding)
+			assert.Equal(t, "cluster-proxy-addon-agent", roleBinding.Name)
+			assert.Equal(t, rbacv1.RoleRef{
+				Kind:     "Role",
+				Name:     "cluster-proxy-addon-agent",
+				APIGroup: rbacv1.GroupName,
+			}, roleBinding.RoleRef)
+			// For token-based registration, subjects come from addon.Status.Registrations
+			assert.NotEmpty(t, roleBinding.Subjects)
+
+			// Verify ClusterRole was created with correct permissions
+			assert.NotNil(t, clusterRole)
+			assert.Equal(t, "cluster-proxy-addon-agent-tokenreview", clusterRole.Name)
+			assert.Equal(t, []rbacv1.PolicyRule{
+				{
+					APIGroups: []string{"authentication.k8s.io"},
+					Verbs:     []string{"create"},
+					Resources: []string{"tokenreviews"},
+				},
+			}, clusterRole.Rules)
+
+			// Verify ClusterRoleBinding was created
+			assert.NotNil(t, clusterRoleBinding)
+			assert.Equal(t, "cluster-proxy-addon-agent-tokenreview", clusterRoleBinding.Name)
+			assert.Equal(t, rbacv1.RoleRef{
+				Kind:     "ClusterRole",
+				Name:     "cluster-proxy-addon-agent-tokenreview",
+				APIGroup: rbacv1.GroupName,
+			}, clusterRoleBinding.RoleRef)
+			assert.NotEmpty(t, clusterRoleBinding.Subjects)
 
 			cert, err := options.Registration.CSRSign(nil, nil, newCSR(c.signerName))
 			assert.NoError(t, err)
@@ -765,6 +825,17 @@ func newAddOn(name, namespace string) *addonv1alpha1.ManagedClusterAddOn {
 		},
 		Spec: addonv1alpha1.ManagedClusterAddOnSpec{
 			InstallNamespace: name,
+		},
+		Status: addonv1alpha1.ManagedClusterAddOnStatus{
+			Registrations: []addonv1alpha1.RegistrationConfig{
+				{
+					SignerName: csrv1.KubeAPIServerClientSignerName,
+					Subject: addonv1alpha1.Subject{
+						User:   "system:serviceaccount:" + name + ":cluster-proxy",
+						Groups: []string{"system:serviceaccounts:" + name},
+					},
+				},
+			},
 		},
 	}
 }
