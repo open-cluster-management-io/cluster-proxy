@@ -171,8 +171,8 @@ func (s *serviceProxy) Run(ctx context.Context) error {
 
 	// initialize token review caches
 	if s.tokenReviewCacheTTL > 0 {
-		s.managedClusterTokenCache = tokenreviewcache.New(s.tokenReviewCacheTTL)
-		s.hubTokenCache = tokenreviewcache.New(s.tokenReviewCacheTTL)
+		s.managedClusterTokenCache = tokenreviewcache.New(ctx, s.tokenReviewCacheTTL)
+		s.hubTokenCache = tokenreviewcache.New(ctx, s.tokenReviewCacheTTL)
 		klog.Infof("TokenReview cache enabled with TTL %v", s.tokenReviewCacheTTL)
 	} else {
 		klog.Infof("TokenReview cache disabled")
@@ -279,11 +279,11 @@ func (s *serviceProxy) validate() error {
 func (s *serviceProxy) hubUserAuthenticatedAndInfo(ctx context.Context, token string) (bool, *authenticationv1.UserInfo, error) {
 	logger := klog.FromContext(ctx)
 
-	// check cache first
+	// check cache first (only authenticated results are cached)
 	if s.hubTokenCache != nil {
-		if auth, user, found := s.hubTokenCache.Get(token); found {
-			logger.V(4).Info("hub TokenReview cache hit", "authenticated", auth)
-			return auth, user, nil
+		if user, found := s.hubTokenCache.Get(token); found {
+			logger.V(4).Info("hub TokenReview cache hit", "username", user.Username)
+			return true, user, nil
 		}
 	}
 
@@ -306,14 +306,11 @@ func (s *serviceProxy) hubUserAuthenticatedAndInfo(ctx context.Context, token st
 	)
 
 	if !tokenReview.Status.Authenticated {
-		if s.hubTokenCache != nil {
-			s.hubTokenCache.Set(token, false, &authenticationv1.UserInfo{})
-		}
 		return false, nil, nil
 	}
 
 	if s.hubTokenCache != nil {
-		s.hubTokenCache.Set(token, true, &tokenReview.Status.User)
+		s.hubTokenCache.Set(token, &tokenReview.Status.User)
 	}
 	return true, &tokenReview.Status.User, nil
 }
@@ -321,11 +318,11 @@ func (s *serviceProxy) hubUserAuthenticatedAndInfo(ctx context.Context, token st
 func (s *serviceProxy) managedClusterUserAuthenticatedAndInfo(ctx context.Context, token string) (bool, *authenticationv1.UserInfo, error) {
 	logger := klog.FromContext(ctx)
 
-	// check cache first
+	// check cache first (only authenticated results are cached)
 	if s.managedClusterTokenCache != nil {
-		if auth, user, found := s.managedClusterTokenCache.Get(token); found {
-			logger.V(4).Info("managed cluster TokenReview cache hit", "authenticated", auth)
-			return auth, user, nil
+		if user, found := s.managedClusterTokenCache.Get(token); found {
+			logger.V(4).Info("managed cluster TokenReview cache hit", "username", user.Username)
+			return true, user, nil
 		}
 	}
 
@@ -348,14 +345,11 @@ func (s *serviceProxy) managedClusterUserAuthenticatedAndInfo(ctx context.Contex
 	)
 
 	if !tokenReview.Status.Authenticated {
-		if s.managedClusterTokenCache != nil {
-			s.managedClusterTokenCache.Set(token, false, &authenticationv1.UserInfo{})
-		}
 		return false, nil, nil
 	}
 
 	if s.managedClusterTokenCache != nil {
-		s.managedClusterTokenCache.Set(token, true, &tokenReview.Status.User)
+		s.managedClusterTokenCache.Set(token, &tokenReview.Status.User)
 	}
 	return true, &tokenReview.Status.User, nil
 }

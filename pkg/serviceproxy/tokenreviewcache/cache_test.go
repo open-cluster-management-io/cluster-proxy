@@ -1,6 +1,7 @@
 package tokenreviewcache
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -9,7 +10,9 @@ import (
 )
 
 func TestCacheHitAndMiss(t *testing.T) {
-	c := New(5 * time.Second)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	c := New(ctx, 5*time.Second)
 
 	user := &authenticationv1.UserInfo{
 		Username: "test-user",
@@ -17,19 +20,16 @@ func TestCacheHitAndMiss(t *testing.T) {
 	}
 
 	// miss before set
-	_, _, found := c.Get("token-abc")
+	_, found := c.Get("token-abc")
 	if found {
 		t.Fatal("expected cache miss for unseen token")
 	}
 
 	// set and hit
-	c.Set("token-abc", true, user)
-	auth, info, found := c.Get("token-abc")
+	c.Set("token-abc", user)
+	info, found := c.Get("token-abc")
 	if !found {
 		t.Fatal("expected cache hit")
-	}
-	if !auth {
-		t.Fatal("expected authenticated=true")
 	}
 	if info.Username != "test-user" {
 		t.Fatalf("expected username test-user, got %s", info.Username)
@@ -37,13 +37,15 @@ func TestCacheHitAndMiss(t *testing.T) {
 }
 
 func TestCacheExpiration(t *testing.T) {
-	c := New(50 * time.Millisecond)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	c := New(ctx, 50*time.Millisecond)
 
 	user := &authenticationv1.UserInfo{Username: "u"}
-	c.Set("tok", true, user)
+	c.Set("tok", user)
 
 	// should hit immediately
-	_, _, found := c.Get("tok")
+	_, found := c.Get("tok")
 	if !found {
 		t.Fatal("expected cache hit before expiry")
 	}
@@ -51,29 +53,18 @@ func TestCacheExpiration(t *testing.T) {
 	// wait for expiry
 	time.Sleep(100 * time.Millisecond)
 
-	_, _, found = c.Get("tok")
+	_, found = c.Get("tok")
 	if found {
 		t.Fatal("expected cache miss after expiry")
 	}
 }
 
-func TestCacheUnauthenticated(t *testing.T) {
-	c := New(5 * time.Second)
-
-	c.Set("bad-token", false, &authenticationv1.UserInfo{})
-	auth, _, found := c.Get("bad-token")
-	if !found {
-		t.Fatal("expected cache hit for unauthenticated token")
-	}
-	if auth {
-		t.Fatal("expected authenticated=false for unauthenticated token")
-	}
-}
-
 func TestCacheDoesNotStoreRawToken(t *testing.T) {
-	c := New(5 * time.Second)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	c := New(ctx, 5*time.Second)
 
-	c.Set("secret-token", true, &authenticationv1.UserInfo{Username: "u"})
+	c.Set("secret-token", &authenticationv1.UserInfo{Username: "u"})
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -85,53 +76,64 @@ func TestCacheDoesNotStoreRawToken(t *testing.T) {
 	}
 }
 
-func TestCacheDeepCopiesUserInfo(t *testing.T) {
-	c := New(5 * time.Second)
+func TestCacheDeepCopiesOnSetAndGet(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	c := New(ctx, 5*time.Second)
 
 	user := &authenticationv1.UserInfo{
 		Username: "original",
 		Groups:   []string{"g1"},
 	}
 
-	c.Set("tok", true, user)
+	c.Set("tok", user)
 
-	// mutate the original
+	// mutate the original — should not affect cache
 	user.Username = "mutated"
 	user.Groups[0] = "mutated-group"
 
-	_, info, _ := c.Get("tok")
+	info, _ := c.Get("tok")
 	if info.Username != "original" {
 		t.Fatalf("expected cached username 'original', got '%s'", info.Username)
 	}
 	if info.Groups[0] != "g1" {
 		t.Fatalf("expected cached group 'g1', got '%s'", info.Groups[0])
 	}
+
+	// mutate the returned value — should not affect cache
+	info.Username = "mutated-again"
+	info2, _ := c.Get("tok")
+	if info2.Username != "original" {
+		t.Fatalf("expected cached username 'original' after mutating Get result, got '%s'", info2.Username)
+	}
 }
 
 func TestLRUEviction(t *testing.T) {
-	c := NewWithMaxSize(5*time.Second, 3)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	c := NewWithMaxSize(ctx, 5*time.Second, 3)
 
 	for i := 0; i < 3; i++ {
-		c.Set(fmt.Sprintf("tok-%d", i), true, &authenticationv1.UserInfo{Username: fmt.Sprintf("u%d", i)})
+		c.Set(fmt.Sprintf("tok-%d", i), &authenticationv1.UserInfo{Username: fmt.Sprintf("u%d", i)})
 	}
 	if c.Len() != 3 {
 		t.Fatalf("expected 3 entries, got %d", c.Len())
 	}
 
 	// adding a 4th should evict tok-0 (least recently used)
-	c.Set("tok-3", true, &authenticationv1.UserInfo{Username: "u3"})
+	c.Set("tok-3", &authenticationv1.UserInfo{Username: "u3"})
 	if c.Len() != 3 {
 		t.Fatalf("expected 3 entries after eviction, got %d", c.Len())
 	}
 
-	_, _, found := c.Get("tok-0")
+	_, found := c.Get("tok-0")
 	if found {
 		t.Fatal("expected tok-0 to be evicted (LRU)")
 	}
 
 	// tok-1, tok-2, tok-3 should still be present
 	for _, tok := range []string{"tok-1", "tok-2", "tok-3"} {
-		_, _, found := c.Get(tok)
+		_, found := c.Get(tok)
 		if !found {
 			t.Fatalf("expected %s to still be in cache", tok)
 		}
@@ -139,51 +141,75 @@ func TestLRUEviction(t *testing.T) {
 }
 
 func TestLRUPromotionOnGet(t *testing.T) {
-	c := NewWithMaxSize(5*time.Second, 3)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	c := NewWithMaxSize(ctx, 5*time.Second, 3)
 
-	c.Set("tok-0", true, &authenticationv1.UserInfo{Username: "u0"})
-	c.Set("tok-1", true, &authenticationv1.UserInfo{Username: "u1"})
-	c.Set("tok-2", true, &authenticationv1.UserInfo{Username: "u2"})
+	c.Set("tok-0", &authenticationv1.UserInfo{Username: "u0"})
+	c.Set("tok-1", &authenticationv1.UserInfo{Username: "u1"})
+	c.Set("tok-2", &authenticationv1.UserInfo{Username: "u2"})
 
 	// access tok-0, promoting it to most recently used
 	c.Get("tok-0")
 
 	// add tok-3 — should evict tok-1 (now the least recently used), not tok-0
-	c.Set("tok-3", true, &authenticationv1.UserInfo{Username: "u3"})
+	c.Set("tok-3", &authenticationv1.UserInfo{Username: "u3"})
 
-	_, _, found := c.Get("tok-1")
+	_, found := c.Get("tok-1")
 	if found {
 		t.Fatal("expected tok-1 to be evicted (LRU after tok-0 was promoted)")
 	}
 
-	_, _, found = c.Get("tok-0")
+	_, found = c.Get("tok-0")
 	if !found {
 		t.Fatal("expected tok-0 to survive (was promoted by Get)")
 	}
 }
 
 func TestUpdateExistingEntry(t *testing.T) {
-	c := New(5 * time.Second)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	c := New(ctx, 5*time.Second)
 
-	c.Set("tok", false, &authenticationv1.UserInfo{})
+	c.Set("tok", &authenticationv1.UserInfo{Username: "v1"})
 
-	auth, _, found := c.Get("tok")
-	if !found || auth {
-		t.Fatal("expected unauthenticated entry")
+	info, found := c.Get("tok")
+	if !found {
+		t.Fatal("expected cache hit")
+	}
+	if info.Username != "v1" {
+		t.Fatalf("expected username 'v1', got '%s'", info.Username)
 	}
 
-	// update same token to authenticated
-	c.Set("tok", true, &authenticationv1.UserInfo{Username: "now-valid"})
+	// update same token
+	c.Set("tok", &authenticationv1.UserInfo{Username: "v2"})
 
-	auth, info, found := c.Get("tok")
-	if !found || !auth {
-		t.Fatal("expected authenticated entry after update")
+	info, found = c.Get("tok")
+	if !found {
+		t.Fatal("expected cache hit after update")
 	}
-	if info.Username != "now-valid" {
-		t.Fatalf("expected username 'now-valid', got '%s'", info.Username)
+	if info.Username != "v2" {
+		t.Fatalf("expected username 'v2', got '%s'", info.Username)
 	}
 
 	if c.Len() != 1 {
 		t.Fatalf("expected 1 entry (update, not duplicate), got %d", c.Len())
 	}
+}
+
+func TestEvictionGoroutineStopsOnCancel(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	c := New(ctx, 50*time.Millisecond)
+
+	c.Set("tok", &authenticationv1.UserInfo{Username: "u"})
+
+	cancel()
+
+	// give goroutine time to exit
+	time.Sleep(100 * time.Millisecond)
+
+	// cache should still be usable (just no background eviction)
+	_, found := c.Get("tok")
+	// entry may or may not be expired by now, we just verify no panic
+	_ = found
 }

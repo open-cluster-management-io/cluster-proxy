@@ -2,6 +2,7 @@ package tokenreviewcache
 
 import (
 	"container/list"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"sync"
@@ -14,16 +15,19 @@ const defaultMaxSize = 1000
 
 // entry holds a cached TokenReview result with an expiration time.
 type entry struct {
-	key           string
-	authenticated bool
-	user          *authenticationv1.UserInfo
-	expiresAt     time.Time
+	key       string
+	user      *authenticationv1.UserInfo
+	expiresAt time.Time
 }
 
-// Cache provides a thread-safe LRU+TTL cache for TokenReview results.
+// Cache provides a thread-safe LRU+TTL cache for authenticated TokenReview results.
 // Entries are evicted when they expire (TTL) or when the cache exceeds
 // its maximum size (LRU — least recently used entries are evicted first).
 // Token hashes (SHA-256) are used as keys to avoid storing raw tokens.
+//
+// Only authenticated results are cached. Unauthenticated results are never
+// stored to prevent cache pollution attacks where an attacker floods the cache
+// with invalid tokens to evict legitimate entries.
 type Cache struct {
 	mu      sync.Mutex
 	items   map[string]*list.Element
@@ -32,27 +36,29 @@ type Cache struct {
 	maxSize int
 }
 
-// New creates a new TokenReview cache with the given TTL and default max size (1000).
-func New(ttl time.Duration) *Cache {
-	return NewWithMaxSize(ttl, defaultMaxSize)
+// New creates a new TokenReview cache with the given context, TTL, and default max size (1000).
+func New(ctx context.Context, ttl time.Duration) *Cache {
+	return NewWithMaxSize(ctx, ttl, defaultMaxSize)
 }
 
-// NewWithMaxSize creates a new TokenReview cache with the given TTL and max size.
-func NewWithMaxSize(ttl time.Duration, maxSize int) *Cache {
+// NewWithMaxSize creates a new TokenReview cache with the given context, TTL, and max size.
+// The eviction goroutine is stopped when the context is cancelled.
+func NewWithMaxSize(ctx context.Context, ttl time.Duration, maxSize int) *Cache {
 	c := &Cache{
 		items:   make(map[string]*list.Element),
 		order:   list.New(),
 		ttl:     ttl,
 		maxSize: maxSize,
 	}
-	go c.startEviction()
+	go c.startEviction(ctx)
 	return c
 }
 
 // Get looks up a cached TokenReview result by token.
 // On cache hit, the entry is promoted to the front (most recently used).
-// Returns (authenticated, userInfo, found).
-func (c *Cache) Get(token string) (bool, *authenticationv1.UserInfo, bool) {
+// Returns (userInfo, found). Only authenticated tokens are cached, so
+// a cache hit always means the token was authenticated.
+func (c *Cache) Get(token string) (*authenticationv1.UserInfo, bool) {
 	key := hashToken(token)
 
 	c.mu.Lock()
@@ -60,24 +66,24 @@ func (c *Cache) Get(token string) (bool, *authenticationv1.UserInfo, bool) {
 
 	elem, ok := c.items[key]
 	if !ok {
-		return false, nil, false
+		return nil, false
 	}
 
 	e := elem.Value.(*entry)
 	if time.Now().After(e.expiresAt) {
 		c.removeLocked(elem)
-		return false, nil, false
+		return nil, false
 	}
 
 	// promote to front (most recently used)
 	c.order.MoveToFront(elem)
 
-	return e.authenticated, e.user, true
+	return e.user.DeepCopy(), true
 }
 
-// Set stores a TokenReview result in the cache.
+// Set stores an authenticated TokenReview result in the cache.
 // If the cache is full, the least recently used entry is evicted.
-func (c *Cache) Set(token string, authenticated bool, user *authenticationv1.UserInfo) {
+func (c *Cache) Set(token string, user *authenticationv1.UserInfo) {
 	key := hashToken(token)
 
 	c.mu.Lock()
@@ -86,7 +92,6 @@ func (c *Cache) Set(token string, authenticated bool, user *authenticationv1.Use
 	// update existing entry
 	if elem, ok := c.items[key]; ok {
 		e := elem.Value.(*entry)
-		e.authenticated = authenticated
 		e.user = user.DeepCopy()
 		e.expiresAt = time.Now().Add(c.ttl)
 		c.order.MoveToFront(elem)
@@ -99,10 +104,9 @@ func (c *Cache) Set(token string, authenticated bool, user *authenticationv1.Use
 	}
 
 	e := &entry{
-		key:           key,
-		authenticated: authenticated,
-		user:          user.DeepCopy(),
-		expiresAt:     time.Now().Add(c.ttl),
+		key:       key,
+		user:      user.DeepCopy(),
+		expiresAt: time.Now().Add(c.ttl),
 	}
 	elem := c.order.PushFront(e)
 	c.items[key] = elem
@@ -116,12 +120,18 @@ func (c *Cache) removeLocked(elem *list.Element) {
 }
 
 // startEviction periodically removes expired entries to prevent memory leaks.
-func (c *Cache) startEviction() {
+// It stops when the context is cancelled.
+func (c *Cache) startEviction(ctx context.Context) {
 	ticker := time.NewTicker(c.ttl)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		c.evict()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			c.evict()
+		}
 	}
 }
 
@@ -131,7 +141,8 @@ func (c *Cache) evict() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	// iterate from back (oldest) and remove expired entries
+	// Iterate all entries and remove expired ones.
+	// LRU order != TTL order (access-time vs insert-time), so we cannot short-circuit.
 	for elem := c.order.Back(); elem != nil; {
 		e := elem.Value.(*entry)
 		prev := elem.Prev()
