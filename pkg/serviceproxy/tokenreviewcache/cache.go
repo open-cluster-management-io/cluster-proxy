@@ -42,7 +42,7 @@ func New(ctx context.Context, ttl time.Duration) *Cache {
 }
 
 // NewWithMaxSize creates a new TokenReview cache with the given context, TTL, and max size.
-// The eviction goroutine is stopped when the context is cancelled.
+// The eviction goroutine is stopped when the context is canceled.
 func NewWithMaxSize(ctx context.Context, ttl time.Duration, maxSize int) *Cache {
 	c := &Cache{
 		items:   make(map[string]*list.Element),
@@ -120,7 +120,7 @@ func (c *Cache) removeLocked(elem *list.Element) {
 }
 
 // startEviction periodically removes expired entries to prevent memory leaks.
-// It stops when the context is cancelled.
+// It stops when the context is canceled.
 func (c *Cache) startEviction(ctx context.Context) {
 	ticker := time.NewTicker(c.ttl)
 	defer ticker.Stop()
