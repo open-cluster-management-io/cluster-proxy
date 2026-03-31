@@ -48,6 +48,14 @@ const (
 	// defaultTokenReviewCacheTTL is the default TTL for cached TokenReview results.
 	// Cached entries expire after this duration, forcing a fresh TokenReview API call.
 	defaultTokenReviewCacheTTL = 5 * time.Minute
+
+	// defaultKubeClientQPS is the default QPS for kube clients used by service-proxy.
+	// The default client-go value (5) is too low for high-concurrency TokenReview workloads,
+	// causing client-side throttling delays of 1min+ when many requests are proxied simultaneously.
+	defaultKubeClientQPS = 50.0
+
+	// defaultKubeClientBurst is the default burst for kube clients used by service-proxy.
+	defaultKubeClientBurst = 100
 )
 
 type serviceProxy struct {
@@ -61,6 +69,8 @@ type serviceProxy struct {
 	expectContinueTimeout time.Duration
 
 	tokenReviewCacheTTL time.Duration
+	kubeClientQPS       float32
+	kubeClientBurst     int
 
 	hubKubeConfig            string
 	hubKubeClient            kubernetes.Interface
@@ -75,6 +85,8 @@ type serviceProxy struct {
 func newServiceProxy() *serviceProxy {
 	return &serviceProxy{
 		tokenReviewCacheTTL: defaultTokenReviewCacheTTL,
+		kubeClientQPS:       defaultKubeClientQPS,
+		kubeClientBurst:     defaultKubeClientBurst,
 	}
 }
 
@@ -97,6 +109,10 @@ func (s *serviceProxy) AddFlags(cmd *cobra.Command) {
 
 	// token review cache flags
 	flags.DurationVar(&s.tokenReviewCacheTTL, "token-review-cache-ttl", defaultTokenReviewCacheTTL, "TTL for cached TokenReview results. Set to 0 to disable caching.")
+
+	// kube client rate limiting flags
+	flags.Float32Var(&s.kubeClientQPS, "kube-api-qps", defaultKubeClientQPS, "QPS for kube API clients (managed cluster and hub). Increase if client-side throttling is observed under high concurrency.")
+	flags.IntVar(&s.kubeClientBurst, "kube-api-burst", defaultKubeClientBurst, "Burst for kube API clients (managed cluster and hub).")
 }
 
 func (s *serviceProxy) Run(ctx context.Context) error {
@@ -153,6 +169,8 @@ func (s *serviceProxy) Run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to get in-cluster config: %v", err)
 	}
+	config.QPS = s.kubeClientQPS
+	config.Burst = s.kubeClientBurst
 
 	s.managedClusterKubeClient, err = kubernetes.NewForConfig(config)
 	if err != nil {
@@ -164,6 +182,8 @@ func (s *serviceProxy) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	hubConfig.QPS = s.kubeClientQPS
+	hubConfig.Burst = s.kubeClientBurst
 	s.hubKubeClient, err = kubernetes.NewForConfig(hubConfig)
 	if err != nil {
 		return err
