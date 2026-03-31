@@ -175,6 +175,7 @@ rules:
       - get
       - list
       - watch
+      - update
       - delete
   - apiGroups:
       - authentication.k8s.io
