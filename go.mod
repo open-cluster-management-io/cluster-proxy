@@ -24,6 +24,7 @@ require (
 require (
 	github.com/spf13/cobra v1.10.1
 	github.com/spf13/pflag v1.0.10
+	k8s.io/apiserver v0.34.2
 	k8s.io/component-base v0.34.2
 	sigs.k8s.io/apiserver-network-proxy v0.33.0
 	sigs.k8s.io/cluster-inventory-api v0.0.0-20251124125836-445319b6307a
@@ -103,7 +104,6 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	helm.sh/helm/v3 v3.19.4 // indirect
 	k8s.io/apiextensions-apiserver v0.34.2 // indirect
-	k8s.io/apiserver v0.34.2 // indirect
 	k8s.io/kube-openapi v0.0.0-20250710124328-f3f2b991d03b // indirect
 	sigs.k8s.io/json v0.0.0-20241014173422-cfa47c3a1cc8 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
