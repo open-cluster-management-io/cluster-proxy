@@ -201,9 +201,13 @@ func (s *serviceProxy) Run(ctx context.Context) error {
 
 	if s.tokenReviewCacheTTL > 0 {
 		// cacheErrs=false: don't cache API errors (network issues, etc.)
-		// failureTTL=0: don't cache unauthenticated results
-		s.managedClusterAuthenticator = cache.New(managedClusterAuthn, false, s.tokenReviewCacheTTL, 0)
-		s.hubAuthenticator = cache.New(hubAuthn, false, s.tokenReviewCacheTTL, 0)
+		// failureTTL=successTTL: cache unauthenticated results too, matching kube-apiserver
+		// best practice (see k8s.io/apiserver/pkg/authentication/authenticatorfactory/delegating.go).
+		// This is critical for impersonation mode where hub tokens always fail managed cluster
+		// auth — without failure caching, each singleflight group completion triggers a new
+		// API call, causing latency spikes under high concurrency.
+		s.managedClusterAuthenticator = cache.New(managedClusterAuthn, false, s.tokenReviewCacheTTL, s.tokenReviewCacheTTL)
+		s.hubAuthenticator = cache.New(hubAuthn, false, s.tokenReviewCacheTTL, s.tokenReviewCacheTTL)
 		klog.Infof("TokenReview cache enabled with TTL %v", s.tokenReviewCacheTTL)
 	} else {
 		s.managedClusterAuthenticator = managedClusterAuthn
