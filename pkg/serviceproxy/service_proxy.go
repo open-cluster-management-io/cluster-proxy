@@ -82,14 +82,21 @@ type serviceProxy struct {
 
 	managedClusterAuthenticator authenticator.Token
 	hubAuthenticator            authenticator.Token
+
+	// getImpersonateTokenFunc reads the service account token used for impersonation.
+	// Defaults to reading from the mounted service account token file.
+	// Can be overridden in tests.
+	getImpersonateTokenFunc func() (string, error)
 }
 
 func newServiceProxy() *serviceProxy {
-	return &serviceProxy{
+	s := &serviceProxy{
 		tokenReviewCacheTTL: defaultTokenReviewCacheTTL,
 		kubeClientQPS:       defaultKubeClientQPS,
 		kubeClientBurst:     defaultKubeClientBurst,
 	}
+	s.getImpersonateTokenFunc = s.readImpersonateTokenFromFile
+	return s
 }
 
 func (s *serviceProxy) AddFlags(cmd *cobra.Command) {
@@ -313,7 +320,7 @@ func (s *serviceProxy) validate() error {
 	return nil
 }
 
-func (s *serviceProxy) getImpersonateToken() (string, error) {
+func (s *serviceProxy) readImpersonateTokenFromFile() (string, error) {
 	// Read the latest token from the mounted file
 	token, err := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/token")
 	if err != nil {
@@ -402,7 +409,7 @@ func (s *serviceProxy) processHubUser(ctx context.Context, req *http.Request, hu
 	)
 
 	// replace the original token with cluster-proxy service-account token which has impersonate permission
-	token, err := s.getImpersonateToken()
+	token, err := s.getImpersonateTokenFunc()
 	if err != nil {
 		return fmt.Errorf("failed to get impersonate token: %v", err)
 	}

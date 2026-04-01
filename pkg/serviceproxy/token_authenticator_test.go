@@ -109,28 +109,27 @@ func TestProcessAuthentication_HubServiceAccountToken(t *testing.T) {
 				},
 			}, true, nil
 		}),
+		getImpersonateTokenFunc: func() (string, error) {
+			return "fake-sa-token", nil
+		},
 	}
-
-	// Write a fake SA token file for getImpersonateToken
-	origGetToken := s.getImpersonateToken
-	_ = origGetToken // use the method directly but we need to mock it
 
 	req, _ := http.NewRequest("GET", "https://example.com/api", nil)
 	req.Header.Set("Authorization", "Bearer hub-token")
 
-	// processAuthentication will fail on getImpersonateToken (no SA token file),
-	// but we can verify the error message to confirm the flow reached processHubUser
 	err := s.processAuthentication(context.Background(), req)
-	if err == nil {
-		t.Fatal("expected error from getImpersonateToken (no SA token file in test)")
-	}
-	if got := err.Error(); !strings.Contains(got, "failed to get impersonate token") {
-		t.Fatalf("expected impersonate token error, got: %v", err)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Verify impersonation headers were set before the token file error
+	// Verify impersonation headers were set
 	if req.Header.Get("Impersonate-User") != "cluster:hub:system:serviceaccount:ns:my-sa" {
 		t.Fatalf("expected impersonate user with cluster:hub: prefix, got '%s'", req.Header.Get("Impersonate-User"))
+	}
+
+	// Verify the original token was replaced with the impersonation token
+	if req.Header.Get("Authorization") != "Bearer fake-sa-token" {
+		t.Fatalf("expected authorization header to use impersonation token, got '%s'", req.Header.Get("Authorization"))
 	}
 }
 
@@ -158,7 +157,11 @@ func TestProcessAuthentication_UnauthenticatedToken(t *testing.T) {
 }
 
 func TestProcessHubUser_RegularUser(t *testing.T) {
-	s := &serviceProxy{}
+	s := &serviceProxy{
+		getImpersonateTokenFunc: func() (string, error) {
+			return "fake-sa-token", nil
+		},
+	}
 	req, _ := http.NewRequest("GET", "https://example.com/api", nil)
 
 	hubUser := &user.DefaultInfo{
@@ -166,8 +169,9 @@ func TestProcessHubUser_RegularUser(t *testing.T) {
 		Groups: []string{"system:authenticated", "admins"},
 	}
 
-	// Will fail on getImpersonateToken, but we can check headers were set
-	_ = s.processHubUser(context.Background(), req, hubUser)
+	if err := s.processHubUser(context.Background(), req, hubUser); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	// Regular user should NOT get cluster:hub: prefix
 	if req.Header.Get("Impersonate-User") != "admin@example.com" {
@@ -181,7 +185,11 @@ func TestProcessHubUser_RegularUser(t *testing.T) {
 }
 
 func TestProcessHubUser_ServiceAccount(t *testing.T) {
-	s := &serviceProxy{}
+	s := &serviceProxy{
+		getImpersonateTokenFunc: func() (string, error) {
+			return "fake-sa-token", nil
+		},
+	}
 	req, _ := http.NewRequest("GET", "https://example.com/api", nil)
 
 	hubUser := &user.DefaultInfo{
@@ -189,7 +197,9 @@ func TestProcessHubUser_ServiceAccount(t *testing.T) {
 		Groups: []string{"system:serviceaccounts", "system:authenticated"},
 	}
 
-	_ = s.processHubUser(context.Background(), req, hubUser)
+	if err := s.processHubUser(context.Background(), req, hubUser); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	expected := "cluster:hub:system:serviceaccount:proxy-test:proxy-bench"
 	if req.Header.Get("Impersonate-User") != expected {
@@ -268,6 +278,64 @@ func TestTokenReviewAuthenticator_APIError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "connection refused") {
 		t.Fatalf("expected 'connection refused' in error, got: %v", err)
+	}
+}
+
+func TestTokenReviewAuthenticator_StatusError(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	client.PrependReactor("create", "tokenreviews", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		return true, &authenticationv1.TokenReview{
+			Status: authenticationv1.TokenReviewStatus{
+				Authenticated: false,
+				Error:         "Credentials are expired",
+			},
+		}, nil
+	})
+
+	authn := &tokenReviewAuthenticator{client: client, name: "test"}
+	resp, ok, err := authn.AuthenticateToken(context.Background(), "expired-token")
+	if err == nil {
+		t.Fatal("expected error when Status.Error is set")
+	}
+	if ok {
+		t.Fatal("expected authenticated=false")
+	}
+	if resp != nil {
+		t.Fatal("expected nil response")
+	}
+	if !strings.Contains(err.Error(), "Credentials are expired") {
+		t.Fatalf("expected Status.Error in error message, got: %v", err)
+	}
+}
+
+func TestProcessAuthentication_GetImpersonateTokenError(t *testing.T) {
+	s := &serviceProxy{
+		enableImpersonation: true,
+		managedClusterAuthenticator: authenticator.TokenFunc(func(ctx context.Context, token string) (*authenticator.Response, bool, error) {
+			return nil, false, nil
+		}),
+		hubAuthenticator: authenticator.TokenFunc(func(ctx context.Context, token string) (*authenticator.Response, bool, error) {
+			return &authenticator.Response{
+				User: &user.DefaultInfo{
+					Name:   "system:serviceaccount:ns:my-sa",
+					Groups: []string{"system:authenticated"},
+				},
+			}, true, nil
+		}),
+		getImpersonateTokenFunc: func() (string, error) {
+			return "", fmt.Errorf("token file not found")
+		},
+	}
+
+	req, _ := http.NewRequest("GET", "https://example.com/api", nil)
+	req.Header.Set("Authorization", "Bearer hub-token")
+
+	err := s.processAuthentication(context.Background(), req)
+	if err == nil {
+		t.Fatal("expected error from getImpersonateTokenFunc")
+	}
+	if !strings.Contains(err.Error(), "failed to get impersonate token") {
+		t.Fatalf("expected impersonate token error, got: %v", err)
 	}
 }
 

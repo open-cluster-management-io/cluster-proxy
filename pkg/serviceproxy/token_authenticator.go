@@ -2,6 +2,7 @@ package serviceproxy
 
 import (
 	"context"
+	"fmt"
 
 	authenticationv1 "k8s.io/api/authentication/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -40,6 +41,9 @@ func (a *tokenReviewAuthenticator) AuthenticateToken(ctx context.Context, token 
 	)
 
 	if !tokenReview.Status.Authenticated {
+		if tokenReview.Status.Error != "" {
+			return nil, false, fmt.Errorf("%s TokenReview error: %s", a.name, tokenReview.Status.Error)
+		}
 		return nil, false, nil
 	}
 
