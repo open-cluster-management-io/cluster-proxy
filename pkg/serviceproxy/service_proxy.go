@@ -26,6 +26,7 @@ import (
 	addonutils "open-cluster-management.io/addon-framework/pkg/utils"
 	"open-cluster-management.io/cluster-proxy/pkg/constant"
 	"open-cluster-management.io/cluster-proxy/pkg/utils"
+	sdktls "open-cluster-management.io/sdk-go/pkg/tls"
 )
 
 func NewServiceProxyCommand() *cobra.Command {
@@ -80,6 +81,10 @@ type serviceProxy struct {
 
 	enableImpersonation bool
 
+	tlsMinVersion   string
+	tlsCipherSuites string
+	tlsProfileCfg   *sdktls.TLSConfig
+
 	managedClusterAuthenticator authenticator.Token
 	hubAuthenticator            authenticator.Token
 
@@ -122,6 +127,10 @@ func (s *serviceProxy) AddFlags(cmd *cobra.Command) {
 	// kube client rate limiting flags
 	flags.Float32Var(&s.kubeClientQPS, "kube-api-qps", defaultKubeClientQPS, "QPS for kube API clients (managed cluster and hub). Increase if client-side throttling is observed under high concurrency.")
 	flags.IntVar(&s.kubeClientBurst, "kube-api-burst", defaultKubeClientBurst, "Burst for kube API clients (managed cluster and hub).")
+
+	// TLS profile flags
+	flags.StringVar(&s.tlsMinVersion, "tls-min-version", s.tlsMinVersion, "Minimum TLS version for HTTPS servers (e.g. VersionTLS12, VersionTLS13)")
+	flags.StringVar(&s.tlsCipherSuites, "tls-cipher-suites", s.tlsCipherSuites, "Comma-separated list of IANA cipher suite names for TLS 1.2 connections")
 }
 
 func (s *serviceProxy) Run(ctx context.Context) error {
@@ -140,6 +149,17 @@ func (s *serviceProxy) Run(ctx context.Context) error {
 	if err := s.validate(); err != nil {
 		return err
 	}
+
+	// Parse TLS profile flags
+	s.tlsProfileCfg, err = sdktls.ConfigFromFlags(s.tlsMinVersion, s.tlsCipherSuites)
+	if err != nil {
+		return fmt.Errorf("failed to parse TLS profile flags: %v", err)
+	}
+	if s.tlsProfileCfg == nil {
+		s.tlsProfileCfg = sdktls.GetDefaultTLSConfig()
+	}
+	klog.Infof("TLS profile: minVersion=%s, cipherSuites=%d configured",
+		sdktls.VersionToString(s.tlsProfileCfg.MinVersion), len(s.tlsProfileCfg.CipherSuites))
 
 	// get root CAs
 	s.rootCAs = x509.NewCertPool()
@@ -228,12 +248,13 @@ func (s *serviceProxy) Run(ctx context.Context) error {
 		}
 	}()
 
+	serverTLSConfig := &tls.Config{}
+	sdktls.ConfigToFunc(s.tlsProfileCfg)(serverTLSConfig)
+
 	httpserver := &http.Server{
-		Addr: fmt.Sprintf(":%d", constant.ServiceProxyPort),
-		TLSConfig: &tls.Config{
-			MinVersion: tls.VersionTLS12,
-		},
-		Handler: s,
+		Addr:      fmt.Sprintf(":%d", constant.ServiceProxyPort),
+		TLSConfig: serverTLSConfig,
+		Handler:   s,
 	}
 
 	return httpserver.ListenAndServeTLS(s.cert, s.key)
@@ -289,6 +310,11 @@ func (s *serviceProxy) ServeHTTP(wr http.ResponseWriter, req *http.Request) {
 	)
 
 	proxy := httputil.NewSingleHostReverseProxy(url)
+	transportTLSConfig := &tls.Config{
+		RootCAs: s.rootCAs,
+	}
+	sdktls.ConfigToFunc(s.tlsProfileCfg)(transportTLSConfig)
+
 	proxy.Transport = &http.Transport{
 		DialContext: (&net.Dialer{
 			Timeout:   30 * time.Second,
@@ -298,10 +324,7 @@ func (s *serviceProxy) ServeHTTP(wr http.ResponseWriter, req *http.Request) {
 		IdleConnTimeout:       s.idleConnTimeout,
 		TLSHandshakeTimeout:   s.tLSHandshakeTimeout,
 		ExpectContinueTimeout: s.expectContinueTimeout,
-		TLSClientConfig: &tls.Config{
-			RootCAs:    s.rootCAs,
-			MinVersion: tls.VersionTLS12,
-		},
+		TLSClientConfig:       transportTLSConfig,
 		// golang http pkg automatically upgrade http connection to http2 connection, but http2 can not upgrade to SPDY which used in "kubectl exec".
 		// set ForceAttemptHTTP2 = false to prevent auto http2 upgration
 		ForceAttemptHTTP2: false,

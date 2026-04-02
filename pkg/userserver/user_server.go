@@ -26,6 +26,7 @@ import (
 	"open-cluster-management.io/cluster-proxy/pkg/constant"
 	clusterproxyutil "open-cluster-management.io/cluster-proxy/pkg/util"
 	"open-cluster-management.io/cluster-proxy/pkg/utils"
+	sdktls "open-cluster-management.io/sdk-go/pkg/tls"
 
 	konnectivity "sigs.k8s.io/apiserver-network-proxy/konnectivity-client/pkg/client"
 	"sigs.k8s.io/apiserver-network-proxy/pkg/util"
@@ -66,6 +67,10 @@ type userServer struct {
 	serviceProxyCACertPath string
 	agentInstallNamespace  string
 
+	tlsMinVersion   string
+	tlsCipherSuites string
+	tlsProfileCfg   *sdktls.TLSConfig
+
 	addonLister addonlisterv1alpha1.ManagedClusterAddOnLister
 }
 
@@ -86,6 +91,9 @@ func (k *userServer) AddFlags(cmd *cobra.Command) {
 	flags.StringVar(&k.serviceProxyCACertPath, "service-proxy-ca-cert", k.serviceProxyCACertPath, "The path to the CA certificate of the service proxy server")
 
 	flags.StringVar(&k.agentInstallNamespace, "agent-install-namespace", k.agentInstallNamespace, "The namespace of the agent install")
+
+	flags.StringVar(&k.tlsMinVersion, "tls-min-version", k.tlsMinVersion, "Minimum TLS version for HTTPS servers (e.g. VersionTLS12, VersionTLS13)")
+	flags.StringVar(&k.tlsCipherSuites, "tls-cipher-suites", k.tlsCipherSuites, "Comma-separated list of IANA cipher suite names for TLS 1.2 connections")
 }
 
 func (k *userServer) Validate() error {
@@ -193,15 +201,17 @@ func (k *userServer) ServeHTTP(wr http.ResponseWriter, req *http.Request) {
 	}
 
 	proxy := httputil.NewSingleHostReverseProxy(targetURL)
+	transportTLSConfig := &tls.Config{
+		RootCAs: serviceProxyRootCA,
+	}
+	sdktls.ConfigToFunc(k.tlsProfileCfg)(transportTLSConfig)
+
 	proxy.Transport = &http.Transport{
 		MaxIdleConns:          100,
 		IdleConnTimeout:       90 * time.Second,
 		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
-		TLSClientConfig: &tls.Config{
-			RootCAs:    serviceProxyRootCA,
-			MinVersion: tls.VersionTLS12,
-		},
+		TLSClientConfig:       transportTLSConfig,
 		// golang http pkg automatically upgrade http connection to http2 connection, but http2 can not upgrade to SPDY which used in "kubectl exec".
 		// set ForceAttemptHTTP2 = false to prevent auto http2 upgration
 		ForceAttemptHTTP2: false,
@@ -231,6 +241,17 @@ func (k *userServer) Run(ctx context.Context) error {
 		klog.Fatal(err)
 	}
 
+	// Parse TLS profile flags
+	k.tlsProfileCfg, err = sdktls.ConfigFromFlags(k.tlsMinVersion, k.tlsCipherSuites)
+	if err != nil {
+		klog.Fatal(err)
+	}
+	if k.tlsProfileCfg == nil {
+		k.tlsProfileCfg = sdktls.GetDefaultTLSConfig()
+	}
+	klog.Infof("TLS profile: minVersion=%s, cipherSuites=%d configured",
+		sdktls.VersionToString(k.tlsProfileCfg.MinVersion), len(k.tlsProfileCfg.CipherSuites))
+
 	if err = k.init(ctx); err != nil {
 		klog.Fatal(err)
 	}
@@ -248,9 +269,12 @@ func (k *userServer) Run(ctx context.Context) error {
 
 	klog.Infof("start https server on %d", k.serverPort)
 
+	serverTLSConfig := &tls.Config{}
+	sdktls.ConfigToFunc(k.tlsProfileCfg)(serverTLSConfig)
+
 	s := &http.Server{
 		Addr:      fmt.Sprintf(":%d", k.serverPort),
-		TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12},
+		TLSConfig: serverTLSConfig,
 		Handler:   k,
 	}
 
