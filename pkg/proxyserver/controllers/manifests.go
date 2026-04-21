@@ -117,6 +117,8 @@ func newProxyServerDeployment(config *proxyv1alpha1.ManagedProxyConfiguration, i
 							Command: []string{
 								"/proxy-server",
 							},
+							// TODO(ocm#1447): Inject --tls-min-version and --tls-cipher-suites
+							// flags from the ocm-tls-profile ConfigMap once anp-server supports them.
 							Args: append([]string{
 								"--server-count=" + strconv.Itoa(int(config.Spec.ProxyServer.Replicas)),
 								"--proxy-strategies=destHost",

@@ -55,6 +55,11 @@ spec:
             - --server-cert=/user-tls/tls.crt
             - --service-proxy-ca-cert=/proxy-ca/ca.crt
             - --agent-install-namespace=open-cluster-management-agent-addon
+          env:
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
