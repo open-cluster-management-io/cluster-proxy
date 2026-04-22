@@ -54,6 +54,7 @@ import (
 	"open-cluster-management.io/cluster-proxy/pkg/proxyagent/agent"
 	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/controllers"
 	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/operator/authentication/selfsigned"
+	sdktls "open-cluster-management.io/sdk-go/pkg/tls"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -165,6 +166,30 @@ func main() {
 		os.Exit(1)
 	}
 
+	ctx, cancel := context.WithCancel(ctrl.SetupSignalHandler())
+	defer cancel()
+
+	podNamespace := os.Getenv("POD_NAMESPACE")
+	if len(podNamespace) == 0 {
+		klog.Fatalf("Pod namespace is empty, please set the ENV for POD_NAMESPACE")
+	}
+
+	// Using common code to watch for the TLS Profile configmap and restart.
+	// Note that technically this addon-manager does not serve any thing with tls directly and only
+	// updates the configuration in the proxyServer via the RegisterClusterManagementAddonReconciler.
+	// So we could alternatively add a watch there on the configmap and simply reconcile.
+	// This way keeps it simpler with common code, but does restart when the configmap changes
+	sdkTLSConfig, err := sdktls.StartTLSConfigMapWatcher(ctx, nativeClient, podNamespace, func() {
+		klog.Info("TLS ConfigMap changed, restarting")
+		os.Exit(0)
+	})
+	if err != nil {
+		setupLog.Error(err, "failed to start TLS ConfigMap watcher")
+		os.Exit(1)
+	}
+	klog.Infof("TLS config loaded: minVersion=%s, ciphersuites=%s", sdktls.VersionToString(sdkTLSConfig.MinVersion),
+		sdktls.CipherSuitesToString(sdkTLSConfig.CipherSuites))
+
 	if err := controllers.RegisterClusterManagementAddonReconciler(
 		mgr,
 		selfSigner,
@@ -172,6 +197,7 @@ func main() {
 		nativeInformer.Core().V1().Secrets(),
 		imagePullPolicy,
 		ownerRef,
+		sdkTLSConfig,
 	); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ClusterManagementAddonReconciler")
 		os.Exit(1)
@@ -220,8 +246,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	ctx, cancel := context.WithCancel(ctrl.SetupSignalHandler())
-	defer cancel()
 	go nativeInformer.Start(ctx.Done())
 	go func() {
 		<-mgr.Elected()

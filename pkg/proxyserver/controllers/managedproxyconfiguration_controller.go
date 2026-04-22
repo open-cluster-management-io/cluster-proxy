@@ -14,6 +14,7 @@ import (
 	"open-cluster-management.io/cluster-proxy/pkg/constant"
 	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/operator/authentication/selfsigned"
 	"open-cluster-management.io/sdk-go/pkg/certrotation"
+	sdktls "open-cluster-management.io/sdk-go/pkg/tls"
 
 	"github.com/openshift/library-go/pkg/crypto"
 	"github.com/openshift/library-go/pkg/operator/events"
@@ -53,6 +54,7 @@ func RegisterClusterManagementAddonReconciler(
 	secretInformer informercorev1.SecretInformer,
 	imagePullPolicy string,
 	ownerReference *metav1.OwnerReference,
+	tlsConfig *sdktls.TLSConfig,
 ) error {
 	r := &ManagedProxyConfigurationReconciler{
 		Client:     mgr.GetClient(),
@@ -75,6 +77,7 @@ func RegisterClusterManagementAddonReconciler(
 		DeploymentGetter: nativeClient.AppsV1(),
 		EventRecorder:    events.NewInMemoryRecorder("ClusterManagementAddonReconciler", clock.RealClock{}),
 		imagePullPolicy:  imagePullPolicy,
+		tlsConfig:        tlsConfig,
 	}
 	return r.SetupWithManager(mgr)
 }
@@ -91,6 +94,7 @@ type ManagedProxyConfigurationReconciler struct {
 
 	newCertRotatorFunc func(namespace, name string, sans ...string) selfsigned.CertRotation
 	imagePullPolicy    string
+	tlsConfig          *sdktls.TLSConfig
 }
 
 func (c *ManagedProxyConfigurationReconciler) SetupWithManager(mgr ctrl.Manager) error {
@@ -127,7 +131,7 @@ func (c *ManagedProxyConfigurationReconciler) Reconcile(ctx context.Context, req
 	}
 
 	// deploying central proxy server instances into the hub cluster.
-	isModified, err := c.deployProxyServer(config)
+	isModified, err := c.deployProxyServer(config, c.tlsConfig)
 	if err != nil {
 		return reconcile.Result{}, errors.Wrapf(err, "fails to deploy proxy server")
 	}
@@ -165,12 +169,12 @@ func (c *ManagedProxyConfigurationReconciler) refreshStatus(isModified bool, con
 	return c.Client.Status().Update(context.TODO(), editingConfig)
 }
 
-func (c *ManagedProxyConfigurationReconciler) deployProxyServer(config *proxyv1alpha1.ManagedProxyConfiguration) (bool, error) {
+func (c *ManagedProxyConfigurationReconciler) deployProxyServer(config *proxyv1alpha1.ManagedProxyConfiguration, tlsConfig *sdktls.TLSConfig) (bool, error) {
 	resources := []client.Object{
 		newServiceAccount(config),
 		newProxyService(config),
 		newProxySecret(config, c.SelfSigner.CAData()),
-		newProxyServerDeployment(config, c.imagePullPolicy),
+		newProxyServerDeployment(config, c.imagePullPolicy, tlsConfig),
 		newProxyServerRole(config),
 		newProxyServerRoleBinding(config),
 	}
