@@ -223,7 +223,7 @@ func (s *serviceProxy) Run(ctx context.Context) error {
 	}
 
 	go func() {
-		if err = utils.ServeHealthProbes(":8000", customChecks...); err != nil {
+		if err = utils.ServeHealthProbes(":8000", nil, customChecks...); err != nil {
 			klog.Fatal(err)
 		}
 	}()

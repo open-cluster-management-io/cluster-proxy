@@ -258,15 +258,23 @@ func (k *userServer) Run(ctx context.Context) error {
 	if err != nil {
 		klog.Fatalf("failed to start TLS ConfigMap watcher: %v", err)
 	}
-	klog.Infof("TLS config loaded: minVersion=%s", sdktls.VersionToString(k.tlsConfig.MinVersion))
+	klog.Infof("TLS config loaded: minVersion=%s, ciphersuites=%s", sdktls.VersionToString(k.tlsConfig.MinVersion),
+		sdktls.CipherSuitesToString(k.tlsConfig.CipherSuites))
 
 	cc, err := addonutils.NewConfigChecker("user-server", k.proxyCACertPath, k.proxyCertPath, k.proxyKeyPath, k.serverCert, k.serverKey, k.serviceProxyCACertPath)
 	if err != nil {
 		klog.Fatal(err)
 	}
 
+	tlsConfig := &tls.Config{
+		MinVersion:   k.tlsConfig.MinVersion,
+		CipherSuites: k.tlsConfig.CipherSuites,
+	}
+
 	go func() {
-		if err = utils.ServeHealthProbes(":8000", cc.Check); err != nil {
+		// Currently ServeHealthProbes uses HTTP so our tlsConfig is not needed, however passing through for
+		// consistency and in case it's ever updated to use HTTPS in the future
+		if err = utils.ServeHealthProbes(":8000", tlsConfig, cc.Check); err != nil {
 			klog.Fatal(err)
 		}
 	}()
@@ -274,12 +282,9 @@ func (k *userServer) Run(ctx context.Context) error {
 	klog.Infof("start https server on %d", k.serverPort)
 
 	s := &http.Server{
-		Addr: fmt.Sprintf(":%d", k.serverPort),
-		TLSConfig: &tls.Config{
-			MinVersion:   k.tlsConfig.MinVersion,
-			CipherSuites: k.tlsConfig.CipherSuites,
-		},
-		Handler: k,
+		Addr:      fmt.Sprintf(":%d", k.serverPort),
+		TLSConfig: tlsConfig,
+		Handler:   k,
 	}
 
 	err = s.ListenAndServeTLS(k.serverCert, k.serverKey)
