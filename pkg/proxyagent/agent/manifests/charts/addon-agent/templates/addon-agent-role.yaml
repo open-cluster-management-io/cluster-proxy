@@ -10,3 +10,11 @@ rules:
       - leases
     verbs:
       - '*'
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+    verbs:
+      - get
+      - list
+      - watch

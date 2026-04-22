@@ -70,8 +70,6 @@ type userServer struct {
 	agentInstallNamespace  string
 
 	addonLister addonlisterv1alpha1.ManagedClusterAddOnLister
-
-	tlsConfig *sdktls.TLSConfig
 }
 
 func (k *userServer) AddFlags(cmd *cobra.Command) {
@@ -203,8 +201,7 @@ func (k *userServer) ServeHTTP(wr http.ResponseWriter, req *http.Request) {
 		IdleConnTimeout:       90 * time.Second,
 		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
-		// TODO(ocm#1447): Apply ocm-tls-profile to outbound TLS once service-proxy
-		// also supports TLS profile configuration.
+		// Not using our global TLSConfig for outbound will rely on server settings
 		TLSClientConfig: &tls.Config{
 			RootCAs:    serviceProxyRootCA,
 			MinVersion: tls.VersionTLS12,
@@ -251,15 +248,15 @@ func (k *userServer) Run(ctx context.Context) error {
 	if err != nil {
 		klog.Fatalf("failed to create kube client for TLS watcher: %v", err)
 	}
-	k.tlsConfig, err = sdktls.StartTLSConfigMapWatcher(ctx, kubeClient, podNamespace, func() {
+	sdkTLSConfig, err := sdktls.StartTLSConfigMapWatcher(ctx, kubeClient, podNamespace, func() {
 		klog.Info("TLS ConfigMap changed, restarting")
 		os.Exit(0)
 	})
 	if err != nil {
 		klog.Fatalf("failed to start TLS ConfigMap watcher: %v", err)
 	}
-	klog.Infof("TLS config loaded: minVersion=%s, ciphersuites=%s", sdktls.VersionToString(k.tlsConfig.MinVersion),
-		sdktls.CipherSuitesToString(k.tlsConfig.CipherSuites))
+	klog.Infof("TLS config loaded: minVersion=%s, ciphersuites=%s", sdktls.VersionToString(sdkTLSConfig.MinVersion),
+		sdktls.CipherSuitesToString(sdkTLSConfig.CipherSuites))
 
 	cc, err := addonutils.NewConfigChecker("user-server", k.proxyCACertPath, k.proxyCertPath, k.proxyKeyPath, k.serverCert, k.serverKey, k.serviceProxyCACertPath)
 	if err != nil {
@@ -267,8 +264,8 @@ func (k *userServer) Run(ctx context.Context) error {
 	}
 
 	tlsConfig := &tls.Config{
-		MinVersion:   k.tlsConfig.MinVersion,
-		CipherSuites: k.tlsConfig.CipherSuites,
+		MinVersion:   sdkTLSConfig.MinVersion,
+		CipherSuites: sdkTLSConfig.CipherSuites,
 	}
 
 	go func() {
