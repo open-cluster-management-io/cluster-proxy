@@ -1,6 +1,8 @@
 package controllers
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"strconv"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -81,6 +83,11 @@ func newProxyService(config *proxyv1alpha1.ManagedProxyConfiguration) *corev1.Se
 }
 
 func newProxyServerDeployment(config *proxyv1alpha1.ManagedProxyConfiguration, imagePullPolicy string, tlsConfig *sdktls.TLSConfig) *appsv1.Deployment {
+	deployAnnotations := map[string]string{}
+	if hash := tlsConfigHash(tlsConfig); hash != "" {
+		deployAnnotations[common.AnnotationKeyTLSConfigHash] = hash
+	}
+
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: config.Spec.ProxyServer.Namespace,
@@ -91,6 +98,7 @@ func newProxyServerDeployment(config *proxyv1alpha1.ManagedProxyConfiguration, i
 			Labels: map[string]string{
 				common.AnnotationKeyConfigurationGeneration: strconv.Itoa(int(config.Generation)),
 			},
+			Annotations: deployAnnotations,
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: &config.Spec.ProxyServer.Replicas,
@@ -249,4 +257,14 @@ func proxyServerArgs(config *proxyv1alpha1.ManagedProxyConfiguration, tlsConfig 
 	}
 
 	return args
+}
+
+func tlsConfigHash(tlsConfig *sdktls.TLSConfig) string {
+	if tlsConfig == nil {
+		return ""
+	}
+	h := sha256.New()
+	h.Write([]byte(sdktls.CipherSuitesToString(tlsConfig.CipherSuites)))
+	h.Write([]byte(sdktls.VersionToString(tlsConfig.MinVersion)))
+	return fmt.Sprintf("%x", h.Sum(nil))[:16]
 }

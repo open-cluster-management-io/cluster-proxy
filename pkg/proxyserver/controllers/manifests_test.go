@@ -78,3 +78,37 @@ func TestProxyServerArgs_WithAdditionalArgsAndCipherSuites(t *testing.T) {
 	)
 	assert.Equal(t, expected, args)
 }
+
+func TestTLSConfigHash_Nil(t *testing.T) {
+	assert.Equal(t, "", tlsConfigHash(nil))
+}
+
+func TestTLSConfigHash_Deterministic(t *testing.T) {
+	tlsConfig := &sdktls.TLSConfig{
+		CipherSuites: []uint16{
+			tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+			tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+		},
+		MinVersion: tls.VersionTLS12,
+	}
+	hash1 := tlsConfigHash(tlsConfig)
+	hash2 := tlsConfigHash(tlsConfig)
+	assert.Equal(t, hash1, hash2)
+	assert.Len(t, hash1, 16)
+}
+
+func TestTLSConfigHash_DiffersOnChange(t *testing.T) {
+	config1 := &sdktls.TLSConfig{
+		CipherSuites: []uint16{tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256},
+	}
+	config2 := &sdktls.TLSConfig{
+		CipherSuites: []uint16{tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384},
+	}
+	assert.NotEqual(t, tlsConfigHash(config1), tlsConfigHash(config2))
+}
+
+func TestTLSConfigHash_EmptyConfig(t *testing.T) {
+	hash := tlsConfigHash(&sdktls.TLSConfig{})
+	assert.NotEmpty(t, hash)
+	assert.Len(t, hash, 16)
+}

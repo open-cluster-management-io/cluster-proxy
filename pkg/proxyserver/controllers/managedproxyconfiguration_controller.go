@@ -274,8 +274,10 @@ func (c *ManagedProxyConfigurationReconciler) ensure(incomingGeneration int64, g
 		return created, false, nil
 	}
 
-	// update if generation bumped
-	if !created && int(incomingGeneration) > currentGeneration {
+	// update if generation bumped or TLS config changed
+	tlsHashChanged := resource.GetAnnotations()[common.AnnotationKeyTLSConfigHash] !=
+		current.GetAnnotations()[common.AnnotationKeyTLSConfigHash]
+	if !created && (int(incomingGeneration) > currentGeneration || tlsHashChanged) {
 		resource.SetResourceVersion(current.GetResourceVersion())
 		if err := c.Update(context.TODO(), resource); err != nil {
 			if apierrors.IsConflict(err) {
