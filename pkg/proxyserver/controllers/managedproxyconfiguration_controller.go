@@ -131,7 +131,7 @@ func (c *ManagedProxyConfigurationReconciler) Reconcile(ctx context.Context, req
 	}
 
 	// deploying central proxy server instances into the hub cluster.
-	isModified, err := c.deployProxyServer(config, c.tlsConfig)
+	isModified, err := c.deployProxyServer(config)
 	if err != nil {
 		return reconcile.Result{}, errors.Wrapf(err, "fails to deploy proxy server")
 	}
@@ -169,12 +169,12 @@ func (c *ManagedProxyConfigurationReconciler) refreshStatus(isModified bool, con
 	return c.Client.Status().Update(context.TODO(), editingConfig)
 }
 
-func (c *ManagedProxyConfigurationReconciler) deployProxyServer(config *proxyv1alpha1.ManagedProxyConfiguration, tlsConfig *sdktls.TLSConfig) (bool, error) {
+func (c *ManagedProxyConfigurationReconciler) deployProxyServer(config *proxyv1alpha1.ManagedProxyConfiguration) (bool, error) {
 	resources := []client.Object{
 		newServiceAccount(config),
 		newProxyService(config),
 		newProxySecret(config, c.SelfSigner.CAData()),
-		newProxyServerDeployment(config, c.imagePullPolicy, tlsConfig),
+		newProxyServerDeployment(config, c.imagePullPolicy, c.tlsConfig),
 		newProxyServerRole(config),
 		newProxyServerRoleBinding(config),
 	}

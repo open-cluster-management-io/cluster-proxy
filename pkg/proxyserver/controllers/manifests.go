@@ -265,6 +265,7 @@ func tlsConfigHash(tlsConfig *sdktls.TLSConfig) string {
 	}
 	h := sha256.New()
 	h.Write([]byte(sdktls.CipherSuitesToString(tlsConfig.CipherSuites)))
+	h.Write([]byte{0})
 	h.Write([]byte(sdktls.VersionToString(tlsConfig.MinVersion)))
 	return fmt.Sprintf("%x", h.Sum(nil))[:16]
 }
