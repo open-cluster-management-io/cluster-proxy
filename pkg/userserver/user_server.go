@@ -17,12 +17,15 @@ import (
 	"google.golang.org/grpc"
 	grpccredentials "google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/keepalive"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 
 	addonutils "open-cluster-management.io/addon-framework/pkg/utils"
 	addonclient "open-cluster-management.io/api/client/addon/clientset/versioned"
 	addoninformers "open-cluster-management.io/api/client/addon/informers/externalversions"
 	addonlisterv1alpha1 "open-cluster-management.io/api/client/addon/listers/addon/v1alpha1"
+	sdktls "open-cluster-management.io/sdk-go/pkg/tls"
+
 	"open-cluster-management.io/cluster-proxy/pkg/constant"
 	clusterproxyutil "open-cluster-management.io/cluster-proxy/pkg/util"
 	"open-cluster-management.io/cluster-proxy/pkg/utils"
@@ -198,6 +201,7 @@ func (k *userServer) ServeHTTP(wr http.ResponseWriter, req *http.Request) {
 		IdleConnTimeout:       90 * time.Second,
 		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
+		// Not using our global TLSConfig for outbound will rely on server settings
 		TLSClientConfig: &tls.Config{
 			RootCAs:    serviceProxyRootCA,
 			MinVersion: tls.VersionTLS12,
@@ -235,13 +239,39 @@ func (k *userServer) Run(ctx context.Context) error {
 		klog.Fatal(err)
 	}
 
+	podNamespace := os.Getenv("POD_NAMESPACE")
+	if len(podNamespace) == 0 {
+		klog.Fatalf("Pod namespace is empty, please set the ENV for POD_NAMESPACE")
+	}
+
+	kubeClient, err := kubernetes.NewForConfig(ctrl.GetConfigOrDie())
+	if err != nil {
+		klog.Fatalf("failed to create kube client for TLS watcher: %v", err)
+	}
+	sdkTLSConfig, err := sdktls.StartTLSConfigMapWatcher(ctx, kubeClient, podNamespace, func() {
+		klog.Info("TLS ConfigMap changed, restarting")
+		os.Exit(0)
+	})
+	if err != nil {
+		klog.Fatalf("failed to start TLS ConfigMap watcher: %v", err)
+	}
+	klog.Infof("TLS config loaded: minVersion=%s, ciphersuites=%s", sdktls.VersionToString(sdkTLSConfig.MinVersion),
+		sdktls.CipherSuitesToString(sdkTLSConfig.CipherSuites))
+
 	cc, err := addonutils.NewConfigChecker("user-server", k.proxyCACertPath, k.proxyCertPath, k.proxyKeyPath, k.serverCert, k.serverKey, k.serviceProxyCACertPath)
 	if err != nil {
 		klog.Fatal(err)
 	}
 
+	tlsConfig := &tls.Config{
+		MinVersion:   sdkTLSConfig.MinVersion,
+		CipherSuites: sdkTLSConfig.CipherSuites,
+	}
+
 	go func() {
-		if err = utils.ServeHealthProbes(":8000", cc.Check); err != nil {
+		// Currently ServeHealthProbes uses HTTP so our tlsConfig is not needed, however passing through for
+		// consistency and in case it's ever updated to use HTTPS in the future
+		if err = utils.ServeHealthProbes(":8000", tlsConfig, cc.Check); err != nil {
 			klog.Fatal(err)
 		}
 	}()
@@ -250,7 +280,7 @@ func (k *userServer) Run(ctx context.Context) error {
 
 	s := &http.Server{
 		Addr:      fmt.Sprintf(":%d", k.serverPort),
-		TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12},
+		TLSConfig: tlsConfig,
 		Handler:   k,
 	}
 

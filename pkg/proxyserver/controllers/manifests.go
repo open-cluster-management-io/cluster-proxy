@@ -1,6 +1,8 @@
 package controllers
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"strconv"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -11,6 +13,7 @@ import (
 
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 	"open-cluster-management.io/cluster-proxy/pkg/common"
+	sdktls "open-cluster-management.io/sdk-go/pkg/tls"
 )
 
 const signerSecretName = "proxy-server-ca"
@@ -79,7 +82,12 @@ func newProxyService(config *proxyv1alpha1.ManagedProxyConfiguration) *corev1.Se
 	}
 }
 
-func newProxyServerDeployment(config *proxyv1alpha1.ManagedProxyConfiguration, imagePullPolicy string) *appsv1.Deployment {
+func newProxyServerDeployment(config *proxyv1alpha1.ManagedProxyConfiguration, imagePullPolicy string, tlsConfig *sdktls.TLSConfig) *appsv1.Deployment {
+	deployAnnotations := map[string]string{}
+	if hash := tlsConfigHash(tlsConfig); hash != "" {
+		deployAnnotations[common.AnnotationKeyTLSConfigHash] = hash
+	}
+
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: config.Spec.ProxyServer.Namespace,
@@ -90,6 +98,7 @@ func newProxyServerDeployment(config *proxyv1alpha1.ManagedProxyConfiguration, i
 			Labels: map[string]string{
 				common.AnnotationKeyConfigurationGeneration: strconv.Itoa(int(config.Generation)),
 			},
+			Annotations: deployAnnotations,
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: &config.Spec.ProxyServer.Replicas,
@@ -117,16 +126,9 @@ func newProxyServerDeployment(config *proxyv1alpha1.ManagedProxyConfiguration, i
 							Command: []string{
 								"/proxy-server",
 							},
-							Args: append([]string{
-								"--server-count=" + strconv.Itoa(int(config.Spec.ProxyServer.Replicas)),
-								"--proxy-strategies=destHost",
-								"--server-ca-cert=/etc/server-ca-pki/ca.crt",
-								"--server-cert=/etc/server-pki/tls.crt",
-								"--server-key=/etc/server-pki/tls.key",
-								"--cluster-ca-cert=/etc/server-ca-pki/ca.crt",
-								"--cluster-cert=/etc/agent-pki/tls.crt",
-								"--cluster-key=/etc/agent-pki/tls.key",
-							}, config.Spec.ProxyServer.AdditionalArgs...),
+							// TODO(ocm#1447): Inject --tls-min-version from the ocm-tls-profile
+							// ConfigMap once anp-server supports the flag (upstream PR needed).
+							Args: proxyServerArgs(config, tlsConfig),
 							SecurityContext: &corev1.SecurityContext{
 								Capabilities: &corev1.Capabilities{
 									Drop: []corev1.Capability{"ALL"},
@@ -229,4 +231,41 @@ func newProxyServerRoleBinding(config *proxyv1alpha1.ManagedProxyConfiguration) 
 		},
 	}
 
+}
+
+func proxyServerArgs(config *proxyv1alpha1.ManagedProxyConfiguration, tlsConfig *sdktls.TLSConfig) []string {
+	args := append([]string{
+		"--server-count=" + strconv.Itoa(int(config.Spec.ProxyServer.Replicas)),
+		"--proxy-strategies=destHost",
+		"--server-ca-cert=/etc/server-ca-pki/ca.crt",
+		"--server-cert=/etc/server-pki/tls.crt",
+		"--server-key=/etc/server-pki/tls.key",
+		"--cluster-ca-cert=/etc/server-ca-pki/ca.crt",
+		"--cluster-cert=/etc/agent-pki/tls.crt",
+		"--cluster-key=/etc/agent-pki/tls.key",
+	}, config.Spec.ProxyServer.AdditionalArgs...)
+
+	if tlsConfig != nil {
+		if len(tlsConfig.CipherSuites) > 0 {
+			args = append(args, "--cipher-suites="+sdktls.CipherSuitesToString(tlsConfig.CipherSuites))
+		}
+
+		// Uncomment once --tls-min-version is supported by the apiserver-network-proxy
+		//if tlsConfig.MinVersion != 0 {
+		//	args = append(args, "--tls-min-version="+sdktls.VersionToString(tlsConfig.MinVersion))
+		//}
+	}
+
+	return args
+}
+
+func tlsConfigHash(tlsConfig *sdktls.TLSConfig) string {
+	if tlsConfig == nil {
+		return ""
+	}
+	h := sha256.New()
+	h.Write([]byte(sdktls.CipherSuitesToString(tlsConfig.CipherSuites)))
+	h.Write([]byte{0})
+	h.Write([]byte(sdktls.VersionToString(tlsConfig.MinVersion)))
+	return fmt.Sprintf("%x", h.Sum(nil))[:16]
 }

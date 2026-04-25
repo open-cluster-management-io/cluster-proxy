@@ -33,6 +33,11 @@ spec:
             {{- if .Values.featureGates }}
             - --feature-gates=ClusterProfile={{ .Values.featureGates.clusterProfile | default false}}
             {{- end}}
+          env:
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:

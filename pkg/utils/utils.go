@@ -154,7 +154,7 @@ func GetProxyType(reqURI string) int {
 }
 
 // ServeHealthProbes serves health probes and configchecker.
-func ServeHealthProbes(healthProbeBindAddress string, customChecks ...healthz.Checker) error {
+func ServeHealthProbes(healthProbeBindAddress string, tlsConfig *tls.Config, customChecks ...healthz.Checker) error {
 	mux := http.NewServeMux()
 
 	checks := map[string]healthz.Checker{
@@ -170,9 +170,8 @@ func ServeHealthProbes(healthProbeBindAddress string, customChecks ...healthz.Ch
 		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second,
 		Addr:              healthProbeBindAddress,
-		TLSConfig: &tls.Config{
-			MinVersion: tls.VersionTLS12,
-		},
+		// TLS config is currently unused, as below we are using ListenAndServe() which will serve HTTP
+		TLSConfig: tlsConfig,
 	}
 	klog.Infof("heath probes server is running...")
 	return server.ListenAndServe()

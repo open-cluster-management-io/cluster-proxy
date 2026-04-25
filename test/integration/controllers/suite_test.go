@@ -122,7 +122,7 @@ var _ = BeforeSuite(func() {
 	selfSigner, err := selfsigned.NewSelfSignerFromSecretOrGenerate(kubeClient, "default", "test-ca", nil)
 	Expect(err).NotTo(HaveOccurred())
 
-	err = controllers.RegisterClusterManagementAddonReconciler(mgr, selfSigner, kubeClient, kubeInformer.Core().V1().Secrets(), string(corev1.PullIfNotPresent), nil)
+	err = controllers.RegisterClusterManagementAddonReconciler(mgr, selfSigner, kubeClient, kubeInformer.Core().V1().Secrets(), string(corev1.PullIfNotPresent), nil, nil)
 	Expect(err).NotTo(HaveOccurred())
 
 	err = controllers.SetupClusterProfileReconciler(mgr)

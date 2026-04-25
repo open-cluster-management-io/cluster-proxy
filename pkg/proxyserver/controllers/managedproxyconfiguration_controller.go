@@ -14,6 +14,7 @@ import (
 	"open-cluster-management.io/cluster-proxy/pkg/constant"
 	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/operator/authentication/selfsigned"
 	"open-cluster-management.io/sdk-go/pkg/certrotation"
+	sdktls "open-cluster-management.io/sdk-go/pkg/tls"
 
 	"github.com/openshift/library-go/pkg/crypto"
 	"github.com/openshift/library-go/pkg/operator/events"
@@ -53,6 +54,7 @@ func RegisterClusterManagementAddonReconciler(
 	secretInformer informercorev1.SecretInformer,
 	imagePullPolicy string,
 	ownerReference *metav1.OwnerReference,
+	tlsConfig *sdktls.TLSConfig,
 ) error {
 	r := &ManagedProxyConfigurationReconciler{
 		Client:     mgr.GetClient(),
@@ -75,6 +77,7 @@ func RegisterClusterManagementAddonReconciler(
 		DeploymentGetter: nativeClient.AppsV1(),
 		EventRecorder:    events.NewInMemoryRecorder("ClusterManagementAddonReconciler", clock.RealClock{}),
 		imagePullPolicy:  imagePullPolicy,
+		tlsConfig:        tlsConfig,
 	}
 	return r.SetupWithManager(mgr)
 }
@@ -91,6 +94,7 @@ type ManagedProxyConfigurationReconciler struct {
 
 	newCertRotatorFunc func(namespace, name string, sans ...string) selfsigned.CertRotation
 	imagePullPolicy    string
+	tlsConfig          *sdktls.TLSConfig
 }
 
 func (c *ManagedProxyConfigurationReconciler) SetupWithManager(mgr ctrl.Manager) error {
@@ -170,7 +174,7 @@ func (c *ManagedProxyConfigurationReconciler) deployProxyServer(config *proxyv1a
 		newServiceAccount(config),
 		newProxyService(config),
 		newProxySecret(config, c.SelfSigner.CAData()),
-		newProxyServerDeployment(config, c.imagePullPolicy),
+		newProxyServerDeployment(config, c.imagePullPolicy, c.tlsConfig),
 		newProxyServerRole(config),
 		newProxyServerRoleBinding(config),
 	}
@@ -270,8 +274,10 @@ func (c *ManagedProxyConfigurationReconciler) ensure(incomingGeneration int64, g
 		return created, false, nil
 	}
 
-	// update if generation bumped
-	if !created && int(incomingGeneration) > currentGeneration {
+	// update if generation bumped or TLS config changed
+	tlsHashChanged := resource.GetAnnotations()[common.AnnotationKeyTLSConfigHash] !=
+		current.GetAnnotations()[common.AnnotationKeyTLSConfigHash]
+	if !created && (int(incomingGeneration) > currentGeneration || tlsHashChanged) {
 		resource.SetResourceVersion(current.GetResourceVersion())
 		if err := c.Update(context.TODO(), resource); err != nil {
 			if apierrors.IsConflict(err) {

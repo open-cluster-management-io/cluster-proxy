@@ -190,6 +190,11 @@ spec:
             - name: service-proxy-server-cert
               mountPath: /server-cert
               readOnly: true
+          env:
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
         {{- end }}
       volumes:
         - name: ca
