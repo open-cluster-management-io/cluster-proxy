@@ -2,6 +2,7 @@ package serviceproxy
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	authenticationv1 "k8s.io/api/authentication/v1"
@@ -11,6 +12,11 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 )
+
+// ErrTokenNotAuthenticated is returned when a TokenReview explicitly rejects a
+// token (Status.Error is non-empty). Callers use errors.Is to distinguish this
+// from infrastructure errors (network, TLS, etc.).
+var ErrTokenNotAuthenticated = errors.New("token not authenticated")
 
 // tokenReviewAuthenticator implements authenticator.Token by calling the
 // Kubernetes TokenReview API against a specific cluster.
@@ -40,10 +46,11 @@ func (a *tokenReviewAuthenticator) AuthenticateToken(ctx context.Context, token 
 		"groups", tokenReview.Status.User.Groups,
 	)
 
+	if tokenReview.Status.Error != "" {
+		return nil, false, fmt.Errorf("%s TokenReview: %s: %w", a.name, tokenReview.Status.Error, ErrTokenNotAuthenticated)
+	}
+
 	if !tokenReview.Status.Authenticated {
-		if tokenReview.Status.Error != "" {
-			return nil, false, fmt.Errorf("%s TokenReview error: %s", a.name, tokenReview.Status.Error)
-		}
 		return nil, false, nil
 	}
 
