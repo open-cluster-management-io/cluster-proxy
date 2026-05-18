@@ -282,19 +282,66 @@ func TestTokenReviewAuthenticator_APIError(t *testing.T) {
 	}
 }
 
-func TestTokenReviewAuthenticator_StatusError(t *testing.T) {
+func TestTokenReviewAuthenticator_StatusError_KnownRejection(t *testing.T) {
+	tests := []struct {
+		name        string
+		statusError string
+	}{
+		{
+			name:        "Kubernetes: invalid bearer token",
+			statusError: "invalid bearer token",
+		},
+		{
+			name:        "OpenShift: invalid bearer token with token lookup failed",
+			statusError: "[invalid bearer token, token lookup failed]",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := fake.NewSimpleClientset()
+			client.PrependReactor("create", "tokenreviews", func(action k8stesting.Action) (bool, runtime.Object, error) {
+				return true, &authenticationv1.TokenReview{
+					Status: authenticationv1.TokenReviewStatus{
+						Authenticated: false,
+						Error:         tt.statusError,
+					},
+				}, nil
+			})
+
+			authn := &tokenReviewAuthenticator{client: client, name: "test"}
+			resp, ok, err := authn.AuthenticateToken(context.Background(), "bad-token")
+			if err == nil {
+				t.Fatal("expected error when Status.Error is set")
+			}
+			if ok {
+				t.Fatal("expected authenticated=false")
+			}
+			if resp != nil {
+				t.Fatal("expected nil response")
+			}
+			if !errors.Is(err, ErrTokenNotAuthenticated) {
+				t.Fatalf("expected ErrTokenNotAuthenticated, got: %v", err)
+			}
+			if !strings.Contains(err.Error(), tt.statusError) {
+				t.Fatalf("expected Status.Error in error message, got: %v", err)
+			}
+		})
+	}
+}
+
+func TestTokenReviewAuthenticator_StatusError_UnknownError(t *testing.T) {
 	client := fake.NewSimpleClientset()
 	client.PrependReactor("create", "tokenreviews", func(action k8stesting.Action) (bool, runtime.Object, error) {
 		return true, &authenticationv1.TokenReview{
 			Status: authenticationv1.TokenReviewStatus{
 				Authenticated: false,
-				Error:         "Credentials are expired",
+				Error:         "webhook authenticator connection reset",
 			},
 		}, nil
 	})
 
 	authn := &tokenReviewAuthenticator{client: client, name: "test"}
-	resp, ok, err := authn.AuthenticateToken(context.Background(), "expired-token")
+	resp, ok, err := authn.AuthenticateToken(context.Background(), "some-token")
 	if err == nil {
 		t.Fatal("expected error when Status.Error is set")
 	}
@@ -304,10 +351,10 @@ func TestTokenReviewAuthenticator_StatusError(t *testing.T) {
 	if resp != nil {
 		t.Fatal("expected nil response")
 	}
-	if !errors.Is(err, ErrTokenNotAuthenticated) {
-		t.Fatalf("expected ErrTokenNotAuthenticated, got: %v", err)
+	if errors.Is(err, ErrTokenNotAuthenticated) {
+		t.Fatal("unknown Status.Error should NOT be wrapped with ErrTokenNotAuthenticated")
 	}
-	if !strings.Contains(err.Error(), "Credentials are expired") {
+	if !strings.Contains(err.Error(), "webhook authenticator connection reset") {
 		t.Fatalf("expected Status.Error in error message, got: %v", err)
 	}
 }
