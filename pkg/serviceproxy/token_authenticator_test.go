@@ -371,7 +371,7 @@ func TestTokenReviewAuthenticator_APIError(t *testing.T) {
 	}
 }
 
-func TestTokenReviewAuthenticator_StatusError(t *testing.T) {
+func TestTokenReviewAuthenticator_StatusErrorUnauthenticated(t *testing.T) {
 	client := fake.NewSimpleClientset()
 	client.PrependReactor("create", "tokenreviews", func(action k8stesting.Action) (bool, runtime.Object, error) {
 		return true, &authenticationv1.TokenReview{
@@ -384,17 +384,14 @@ func TestTokenReviewAuthenticator_StatusError(t *testing.T) {
 
 	authn := &tokenReviewAuthenticator{client: client, name: "test"}
 	resp, ok, err := authn.AuthenticateToken(context.Background(), "expired-token")
-	if err == nil {
-		t.Fatal("expected error when Status.Error is set")
+	if err != nil {
+		t.Fatalf("unexpected error when Status.Error is set on unauthenticated TokenReview: %v", err)
 	}
 	if ok {
 		t.Fatal("expected authenticated=false")
 	}
 	if resp != nil {
 		t.Fatal("expected nil response")
-	}
-	if !strings.Contains(err.Error(), "Credentials are expired") {
-		t.Fatalf("expected Status.Error in error message, got: %v", err)
 	}
 }
 

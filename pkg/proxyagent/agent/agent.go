@@ -107,6 +107,16 @@ func NewAgentAddon(
 							Verbs:     []string{"*"},
 							Resources: []string{"leases"},
 						},
+						{
+							APIGroups: []string{"addon.open-cluster-management.io"},
+							Verbs:     []string{"get"},
+							Resources: []string{"managedclusteraddons"},
+						},
+						{
+							APIGroups: []string{"addon.open-cluster-management.io"},
+							Verbs:     []string{"update"},
+							Resources: []string{"managedclusteraddons/status"},
+						},
 					},
 				}).
 				BindKubeClientClusterRole(&rbacv1.ClusterRole{

@@ -26,6 +26,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	k8sscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 
 	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
 	addonclient "open-cluster-management.io/api/client/addon/clientset/versioned"
@@ -54,19 +55,33 @@ func init() {
 }
 
 var (
-	managedClusterName       string
-	hubRESTConfig            *rest.Config
-	hubKubeClient            kubernetes.Interface
-	hubRuntimeClient         client.Client
-	clusterProxyKubeClient   kubernetes.Interface
-	clusterProxyWrongClient  kubernetes.Interface
-	clusterProxyUnAuthClient kubernetes.Interface
-	clusterProxyHttpClient   *http.Client
-	hubAddOnClient           addonclient.Interface
-	hubClusterClient         clusterclient.Interface
-	clusterProxyCfg          *rest.Config
-	serviceAccountToken      string
-	podName                  string
+	managedClusterName         string
+	hubRESTConfig              *rest.Config
+	hostingRESTConfig          *rest.Config
+	managedRESTConfig          *rest.Config
+	hubKubeClient              kubernetes.Interface
+	hostingKubeClient          kubernetes.Interface
+	managedKubeClient          kubernetes.Interface
+	hubRuntimeClient           client.Client
+	hostingRuntimeClient       client.Client
+	managedRuntimeClient       client.Client
+	clusterProxyKubeClient     kubernetes.Interface
+	clusterProxyManagedClient  kubernetes.Interface
+	clusterProxyWrongClient    kubernetes.Interface
+	clusterProxyUnAuthClient   kubernetes.Interface
+	clusterProxyHttpClient     *http.Client
+	hubAddOnClient             addonclient.Interface
+	hubClusterClient           clusterclient.Interface
+	clusterProxyCfg            *rest.Config
+	serviceAccountToken        string
+	managedServiceAccountToken string
+	podName                    string
+	podContainerName           string
+	podPort                    int
+	hostedMode                 bool
+	targetNamespace            string
+	targetKubeClient           kubernetes.Interface
+	targetRuntimeClient        client.Client
 )
 
 const (
@@ -75,6 +90,10 @@ const (
 	hubInstallNamespace            = "open-cluster-management-addon"
 	managedClusterInstallNamespace = "open-cluster-management-cluster-proxy"
 	serviceAccountName             = "cluster-proxy-test"
+	managedServiceAccountName      = "cluster-proxy-managed-test"
+	hostedTestPodName              = "hello-world"
+	hostedTestPodContainerName     = "hello-world"
+	hostedTestPodPort              = 8000
 )
 
 var _ = BeforeSuite(func() {
@@ -87,7 +106,9 @@ var _ = BeforeSuite(func() {
 	By("Init clients")
 	err = func() error {
 		var err error
-		hubRESTConfig, err = rest.InClusterConfig()
+		hostedMode = os.Getenv("E2E_HOSTING_KUBECONFIG") != "" || os.Getenv("E2E_MANAGED_KUBECONFIG") != ""
+
+		hubRESTConfig, err = configFromEnvOrInCluster("E2E_HUB_KUBECONFIG")
 		if err != nil {
 			return err
 		}
@@ -110,6 +131,47 @@ var _ = BeforeSuite(func() {
 		}
 
 		hubClusterClient, err = clusterclient.NewForConfig(hubRESTConfig)
+		if err != nil {
+			return err
+		}
+
+		targetNamespace = hubInstallNamespace
+		targetKubeClient = hubKubeClient
+		targetRuntimeClient = hubRuntimeClient
+		podContainerName = "manager"
+
+		if hostedMode {
+			hostingRESTConfig, err = configFromEnv("E2E_HOSTING_KUBECONFIG")
+			if err != nil {
+				return err
+			}
+			managedRESTConfig, err = configFromEnv("E2E_MANAGED_KUBECONFIG")
+			if err != nil {
+				return err
+			}
+			hostingKubeClient, err = kubernetes.NewForConfig(hostingRESTConfig)
+			if err != nil {
+				return err
+			}
+			managedKubeClient, err = kubernetes.NewForConfig(managedRESTConfig)
+			if err != nil {
+				return err
+			}
+			hostingRuntimeClient, err = client.New(hostingRESTConfig, client.Options{Scheme: scheme})
+			if err != nil {
+				return err
+			}
+			managedRuntimeClient, err = client.New(managedRESTConfig, client.Options{Scheme: scheme})
+			if err != nil {
+				return err
+			}
+			targetNamespace = "default"
+			targetKubeClient = managedKubeClient
+			targetRuntimeClient = managedRuntimeClient
+			podName = hostedTestPodName
+			podContainerName = hostedTestPodContainerName
+			podPort = hostedTestPodPort
+		}
 
 		return err
 	}()
@@ -123,6 +185,22 @@ var _ = BeforeSuite(func() {
 
 	prepareClusterProxyClient()
 })
+
+func configFromEnv(envName string) (*rest.Config, error) {
+	kubeconfig := os.Getenv(envName)
+	if kubeconfig == "" {
+		return nil, fmt.Errorf("%s is required", envName)
+	}
+	return clientcmd.BuildConfigFromFlags("", kubeconfig)
+}
+
+func configFromEnvOrInCluster(envName string) (*rest.Config, error) {
+	kubeconfig := os.Getenv(envName)
+	if kubeconfig != "" {
+		return clientcmd.BuildConfigFromFlags("", kubeconfig)
+	}
+	return rest.InClusterConfig()
+}
 
 func checkAddonStatus() {
 	var err error
@@ -161,29 +239,47 @@ func checkAddonStatus() {
 		}
 		fmt.Fprintf(GinkgoWriter, "[SUCCESS] Service cluster-proxy-addon-user exists\n")
 
-		// deployment on managedcluster is running
-		fmt.Fprintf(GinkgoWriter, "[DEBUG] Checking deployment: cluster-proxy-proxy-agent in namespace: %s\n", managedClusterInstallNamespace)
-		anpAgent, err := hubKubeClient.AppsV1().Deployments(managedClusterInstallNamespace).Get(context.Background(), "cluster-proxy-proxy-agent", metav1.GetOptions{})
-		if err != nil {
-			fmt.Fprintf(GinkgoWriter, "[ERROR] Failed to get deployment cluster-proxy-proxy-agent: %v\n", err)
-			return err
+		if hostedMode {
+			if err := deploymentAvailable(hostingKubeClient, managedClusterInstallNamespace, "cluster-proxy-proxy-agent"); err != nil {
+				return err
+			}
+			if err := deploymentAvailable(hostingKubeClient, managedClusterInstallNamespace, "cluster-proxy-managed-kubeconfig-provisioner"); err != nil {
+				return err
+			}
+			if err := deploymentAvailable(managedKubeClient, managedClusterInstallNamespace, "cluster-proxy-service-relay"); err != nil {
+				return err
+			}
+		} else {
+			// deployment on managedcluster is running
+			fmt.Fprintf(GinkgoWriter, "[DEBUG] Checking deployment: cluster-proxy-proxy-agent in namespace: %s\n", managedClusterInstallNamespace)
+			if err := deploymentAvailable(hubKubeClient, managedClusterInstallNamespace, "cluster-proxy-proxy-agent"); err != nil {
+				return err
+			}
+			fmt.Fprintf(GinkgoWriter, "[SUCCESS] Deployment cluster-proxy-proxy-agent is ready\n")
 		}
-		fmt.Fprintf(GinkgoWriter, "[DEBUG] Deployment cluster-proxy-proxy-agent status - Replicas: %d, Available: %d, Ready: %d, Updated: %d\n",
-			anpAgent.Status.Replicas, anpAgent.Status.AvailableReplicas, anpAgent.Status.ReadyReplicas, anpAgent.Status.UpdatedReplicas)
-		if anpAgent.Status.AvailableReplicas < 1 {
-			errMsg := fmt.Errorf("available replicas for %s should be more than 1, but get %d", "anp-agent", anpAgent.Status.AvailableReplicas)
-			fmt.Fprintf(GinkgoWriter, "[ERROR] %v\n", errMsg)
-			return errMsg
-		}
-		fmt.Fprintf(GinkgoWriter, "[SUCCESS] Deployment cluster-proxy-proxy-agent is ready\n")
 
 		fmt.Fprintf(GinkgoWriter, "[SUCCESS] All resources are running\n")
 		return nil
 	}, eventuallyTimeout, eventuallyInterval).ShouldNot(HaveOccurred())
 }
 
+func deploymentAvailable(kubeClient kubernetes.Interface, namespace, name string) error {
+	fmt.Fprintf(GinkgoWriter, "[DEBUG] Checking deployment: %s in namespace: %s\n", name, namespace)
+	deploy, err := kubeClient.AppsV1().Deployments(namespace).Get(context.Background(), name, metav1.GetOptions{})
+	if err != nil {
+		fmt.Fprintf(GinkgoWriter, "[ERROR] Failed to get deployment %s: %v\n", name, err)
+		return err
+	}
+	fmt.Fprintf(GinkgoWriter, "[DEBUG] Deployment %s status - Replicas: %d, Available: %d, Ready: %d, Updated: %d\n",
+		name, deploy.Status.Replicas, deploy.Status.AvailableReplicas, deploy.Status.ReadyReplicas, deploy.Status.UpdatedReplicas)
+	if deploy.Status.AvailableReplicas < 1 {
+		return fmt.Errorf("available replicas for %s should >= 1, but get %d", name, deploy.Status.AvailableReplicas)
+	}
+	return nil
+}
+
 func prepareTestServiceAccount() {
-	By("Create a serviceaccount on managedcluster")
+	By("Create a hub serviceaccount for cluster-proxy requests")
 	_, err := hubKubeClient.CoreV1().ServiceAccounts(hubInstallNamespace).Create(context.Background(), &corev1.ServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      serviceAccountName,
@@ -208,6 +304,11 @@ func prepareTestServiceAccount() {
 			}, {
 				APIGroups: []string{""},
 				Resources: []string{"pods/exec"},
+				Verbs:     []string{"create"},
+			},
+			{
+				APIGroups: []string{""},
+				Resources: []string{"pods/portforward"},
 				Verbs:     []string{"create"},
 			},
 			{
@@ -242,9 +343,100 @@ func prepareTestServiceAccount() {
 	if !apierrors.IsAlreadyExists(err) {
 		Expect(err).To(BeNil())
 	}
+
+	if hostedMode {
+		prepareHostedTargetRBAC()
+	}
+}
+
+func prepareHostedTargetRBAC() {
+	hubUser := fmt.Sprintf("cluster:hub:system:serviceaccount:%s:%s", hubInstallNamespace, serviceAccountName)
+	createTargetRoleBinding("cluster-proxy-hub-user", v1.Subject{
+		Kind: v1.UserKind,
+		Name: hubUser,
+	})
+
+	By("Create a managed serviceaccount for managed-token authentication")
+	_, err := managedKubeClient.CoreV1().ServiceAccounts(targetNamespace).Create(context.Background(), &corev1.ServiceAccount{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      managedServiceAccountName,
+			Namespace: targetNamespace,
+		},
+	}, metav1.CreateOptions{})
+	if !apierrors.IsAlreadyExists(err) {
+		Expect(err).To(BeNil())
+	}
+
+	createTargetRoleBinding("cluster-proxy-managed-user", v1.Subject{
+		Kind:      v1.ServiceAccountKind,
+		Name:      managedServiceAccountName,
+		Namespace: targetNamespace,
+	})
+}
+
+func createTargetRoleBinding(name string, subject v1.Subject) {
+	By("Create target role for cluster-proxy access")
+	_, err := targetKubeClient.RbacV1().Roles(targetNamespace).Create(context.Background(), &v1.Role{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: targetNamespace,
+		},
+		Rules: []v1.PolicyRule{
+			{
+				APIGroups: []string{""},
+				Resources: []string{"pods", "pods/log"},
+				Verbs:     []string{"get", "list"},
+			},
+			{
+				APIGroups: []string{""},
+				Resources: []string{"pods/exec", "pods/portforward"},
+				Verbs:     []string{"create"},
+			},
+			{
+				APIGroups: []string{""},
+				Resources: []string{"configmaps"},
+				Verbs:     []string{"watch"},
+			},
+		},
+	}, metav1.CreateOptions{})
+	if !apierrors.IsAlreadyExists(err) {
+		Expect(err).To(BeNil())
+	}
+
+	By("Create target rolebinding for cluster-proxy access")
+	_, err = targetKubeClient.RbacV1().RoleBindings(targetNamespace).Create(context.Background(), &v1.RoleBinding{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: targetNamespace,
+		},
+		RoleRef: v1.RoleRef{
+			APIGroup: "rbac.authorization.k8s.io",
+			Kind:     "Role",
+			Name:     name,
+		},
+		Subjects: []v1.Subject{subject},
+	}, metav1.CreateOptions{})
+	if !apierrors.IsAlreadyExists(err) {
+		Expect(err).To(BeNil())
+	}
 }
 
 func preparePodFortest() {
+	if hostedMode {
+		By("Use the hosted hello-world pod for kube-apiserver proxy tests")
+		Eventually(func() error {
+			pod, err := managedKubeClient.CoreV1().Pods(targetNamespace).Get(context.Background(), podName, metav1.GetOptions{})
+			if err != nil {
+				return err
+			}
+			if pod.Status.Phase != corev1.PodRunning {
+				return fmt.Errorf("pod %s/%s is not running: %s", targetNamespace, podName, pod.Status.Phase)
+			}
+			return nil
+		}, eventuallyTimeout, eventuallyInterval).ShouldNot(HaveOccurred())
+		return
+	}
+
 	pods, err := hubKubeClient.CoreV1().Pods(hubInstallNamespace).List(context.Background(), metav1.ListOptions{})
 	Expect(err).To(BeNil())
 	for _, pod := range pods.Items {
@@ -261,11 +453,14 @@ var (
 
 func prepareClusterProxyClient() {
 	var err error
-	kubeconfig, err := rest.InClusterConfig()
+	kubeconfig, err := configFromEnvOrInCluster("E2E_HUB_KUBECONFIG")
 	if err != nil {
 		Expect(err).To(BeNil())
 	}
-	userServerServiceAddress = "cluster-proxy-addon-user." + hubInstallNamespace + ".svc:9092"
+	userServerServiceAddress = os.Getenv("CLUSTER_PROXY_USER_SERVER_ADDRESS")
+	if userServerServiceAddress == "" {
+		userServerServiceAddress = "cluster-proxy-addon-user." + hubInstallNamespace + ".svc:9092"
+	}
 
 	By("Get RootCA of the cluster-proxy")
 	// Get the CA certificate from the proxy-server-ca secret that is used to sign all certificates
@@ -298,6 +493,8 @@ func prepareClusterProxyClient() {
 		clusterProxyCfg.TLSClientConfig.CAData = []byte(rootCA)
 		clusterProxyCfg.TLSClientConfig.CertData = nil
 		clusterProxyCfg.TLSClientConfig.KeyData = nil
+		clusterProxyCfg.TLSClientConfig.CertFile = ""
+		clusterProxyCfg.TLSClientConfig.KeyFile = ""
 		clusterProxyCfg.BearerToken = serviceAccountToken
 		clusterProxyCfg.BearerTokenFile = "" // Clear the default token file path from InClusterConfig
 
@@ -315,6 +512,8 @@ func prepareClusterProxyClient() {
 		clusterWrongProxyCfg.TLSClientConfig.CAData = []byte(rootCA)
 		clusterWrongProxyCfg.TLSClientConfig.CertData = nil
 		clusterWrongProxyCfg.TLSClientConfig.KeyData = nil
+		clusterWrongProxyCfg.TLSClientConfig.CertFile = ""
+		clusterWrongProxyCfg.TLSClientConfig.KeyFile = ""
 		clusterWrongProxyCfg.BearerToken = serviceAccountToken
 		clusterWrongProxyCfg.BearerTokenFile = "" // Clear the default token file path from InClusterConfig
 
@@ -330,12 +529,45 @@ func prepareClusterProxyClient() {
 		clusterUnAuthProxyCfg.TLSClientConfig.CAData = []byte(rootCA)
 		clusterUnAuthProxyCfg.TLSClientConfig.CertData = nil
 		clusterUnAuthProxyCfg.TLSClientConfig.KeyData = nil
+		clusterUnAuthProxyCfg.TLSClientConfig.CertFile = ""
+		clusterUnAuthProxyCfg.TLSClientConfig.KeyFile = ""
 		clusterUnAuthProxyCfg.BearerToken = serviceAccountToken + "wrong token"
 		clusterUnAuthProxyCfg.BearerTokenFile = "" // Clear the default token file path from InClusterConfig
 
 		clusterProxyUnAuthClient, err = kubernetes.NewForConfig(clusterUnAuthProxyCfg)
 		if err != nil {
 			return err
+		}
+
+		if hostedMode {
+			By("Create managed serviceAccount token using TokenRequest API")
+			tokenRequest, err := managedKubeClient.CoreV1().ServiceAccounts(targetNamespace).CreateToken(
+				context.Background(),
+				managedServiceAccountName,
+				&authenticationv1.TokenRequest{
+					Spec: authenticationv1.TokenRequestSpec{
+						ExpirationSeconds: func(i int64) *int64 { return &i }(3600),
+					},
+				},
+				metav1.CreateOptions{},
+			)
+			if err != nil {
+				return err
+			}
+			managedServiceAccountToken = tokenRequest.Status.Token
+
+			managedTokenProxyCfg := rest.CopyConfig(clusterProxyCfg)
+			managedTokenProxyCfg.TLSClientConfig.CAData = []byte(rootCA)
+			managedTokenProxyCfg.TLSClientConfig.CertData = nil
+			managedTokenProxyCfg.TLSClientConfig.KeyData = nil
+			managedTokenProxyCfg.TLSClientConfig.CertFile = ""
+			managedTokenProxyCfg.TLSClientConfig.KeyFile = ""
+			managedTokenProxyCfg.BearerToken = managedServiceAccountToken
+			managedTokenProxyCfg.BearerTokenFile = ""
+			clusterProxyManagedClient, err = kubernetes.NewForConfig(managedTokenProxyCfg)
+			if err != nil {
+				return err
+			}
 		}
 
 		// clusterProxyHttpClient

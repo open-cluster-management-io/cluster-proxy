@@ -197,6 +197,16 @@ func TestAgentAddonRegistrationOption(t *testing.T) {
 					Verbs:     []string{"*"},
 					Resources: []string{"leases"},
 				},
+				{
+					APIGroups: []string{"addon.open-cluster-management.io"},
+					Verbs:     []string{"get"},
+					Resources: []string{"managedclusteraddons"},
+				},
+				{
+					APIGroups: []string{"addon.open-cluster-management.io"},
+					Verbs:     []string{"update"},
+					Resources: []string{"managedclusteraddons/status"},
+				},
 			}, role.Rules)
 
 			// Verify RoleBinding was created and references the correct subjects
@@ -797,9 +807,9 @@ func TestNewAgentAddonHostedModeManifests(t *testing.T) {
 	assert.Equal(t, corev1.ServiceTypeClusterIP, kubeAPIService.Spec.Type)
 	assert.Equal(t, "hosting", kubeAPIService.Annotations[addonv1alpha1.HostedManifestLocationAnnotationKey])
 
-	managedRole := getRoleByName(manifests, "cluster-proxy-addon-agent")
-	assert.NotNil(t, managedRole)
-	assert.NotContains(t, managedRole.Annotations, addonv1alpha1.HostedManifestLocationAnnotationKey)
+	addonAgentRole := getRoleByName(manifests, "cluster-proxy-addon-agent")
+	assert.NotNil(t, addonAgentRole)
+	assert.Equal(t, "hosting", addonAgentRole.Annotations[addonv1alpha1.HostedManifestLocationAnnotationKey])
 }
 
 func TestNewAgentAddonDefaultModeDoesNotRenderHostedResources(t *testing.T) {

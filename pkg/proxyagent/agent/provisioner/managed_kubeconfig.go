@@ -377,18 +377,31 @@ func (p *Provisioner) recordEvent(ctx context.Context, eventType, reason, messag
 			Namespace:  p.options.TargetNamespace,
 			Name:       p.options.TargetName,
 		},
-		Reason:         reason,
-		Message:        message,
-		Type:           eventType,
-		Source:         corev1.EventSource{Component: "cluster-proxy-managed-kubeconfig-provisioner"},
-		FirstTimestamp: now,
-		LastTimestamp:  now,
-		EventTime:      metav1.MicroTime(now),
-		Count:          1,
+		Reason:              reason,
+		Message:             message,
+		Type:                eventType,
+		Source:              corev1.EventSource{Component: "cluster-proxy-managed-kubeconfig-provisioner"},
+		FirstTimestamp:      now,
+		LastTimestamp:       now,
+		EventTime:           metav1.MicroTime(now),
+		Count:               1,
+		Action:              reason,
+		ReportingController: "cluster-proxy-managed-kubeconfig-provisioner",
+		ReportingInstance:   p.reportingInstance(),
 	}
 	if _, err := p.hostingClient.CoreV1().Events(p.options.TargetNamespace).Create(ctx, event, metav1.CreateOptions{}); err != nil {
 		klog.Errorf("failed to record managed kubeconfig event %s: %v", reason, err)
 	}
+}
+
+func (p *Provisioner) reportingInstance() string {
+	if hostname := os.Getenv("HOSTNAME"); hostname != "" {
+		return hostname
+	}
+	if p.options.TargetNamespace != "" && p.options.TargetName != "" {
+		return p.options.TargetNamespace + "/" + p.options.TargetName
+	}
+	return "cluster-proxy-managed-kubeconfig-provisioner"
 }
 
 func (p *Provisioner) setManagedKubeconfigCondition(ctx context.Context, status metav1.ConditionStatus, reason, message string) error {

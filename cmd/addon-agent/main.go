@@ -112,21 +112,36 @@ func main() {
 		panic(fmt.Sprintf("Pod namespace is empty, please set the ENV for %s", envKeyPodNamespace))
 	}
 
+	leaseClient := spokeClient
+	leaseNamespace := addonAgentNamespace
+	useManagementLease := spokeKubeconfig != ""
+	if useManagementLease {
+		managementConfig := ctrl.GetConfigOrDie()
+		managementConfig.UserAgent = "proxy-agent-addon-agent-management"
+		leaseClient, err = kubernetes.NewForConfig(managementConfig)
+		if err != nil {
+			panic(fmt.Errorf("failed to create management client, err: %w", err))
+		}
+	}
+
 	var leaseUpdater lease.LeaseUpdater
 	if enableProxyAgentHealthCheck {
 		klog.Infof("Proxy-agent health check enabled, lease will only update when proxy-agent is connected")
 		leaseUpdater = lease.NewLeaseUpdater(
-			spokeClient,
+			leaseClient,
 			common.AddonName,
-			addonAgentNamespace,
+			leaseNamespace,
 			checkProxyAgentReadiness(),
-		).WithHubLeaseConfig(cfg, clusterName)
+		)
 	} else {
 		leaseUpdater = lease.NewLeaseUpdater(
-			spokeClient,
+			leaseClient,
 			common.AddonName,
-			addonAgentNamespace,
-		).WithHubLeaseConfig(cfg, clusterName)
+			leaseNamespace,
+		)
+	}
+	if !useManagementLease {
+		leaseUpdater = leaseUpdater.WithHubLeaseConfig(cfg, clusterName)
 	}
 
 	ctx := context.Background()

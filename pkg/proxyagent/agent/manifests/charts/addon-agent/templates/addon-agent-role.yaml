@@ -3,6 +3,10 @@ kind: Role
 metadata:
   name: cluster-proxy-addon-agent
   namespace: {{ .Release.Namespace }}
+{{ if eq .Values.installMode "Hosted" }}
+  annotations:
+    addon.open-cluster-management.io/hosted-manifest-location: hosting
+{{ end }}
 rules:
   - apiGroups:
       - coordination.k8s.io
