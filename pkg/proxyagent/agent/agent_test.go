@@ -732,6 +732,305 @@ func TestNewAgentAddon(t *testing.T) {
 	}
 }
 
+func TestNewAgentAddonHostedModeManifests(t *testing.T) {
+	clusterName := "cluster"
+	addOnName := "open-cluster-management-cluster-proxy"
+	managedProxyConfigName := "cluster-proxy"
+
+	addon := newAddOn(addOnName, clusterName)
+	addon.Annotations = map[string]string{
+		addonv1alpha1.HostingClusterNameAnnotationKey: "hosting-cluster",
+	}
+	addon.Status.ConfigReferences = []addonv1alpha1.ConfigReference{newManagedProxyConfigReference(managedProxyConfigName)}
+
+	fakeKubeClient := fakekube.NewSimpleClientset(&corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "cluster-proxy-service-proxy-server-cert",
+			Namespace: "test",
+		},
+		Data: map[string][]byte{
+			"tls.crt": []byte("testcrt"),
+			"tls.key": []byte("testkey"),
+		},
+	})
+	fakeRuntimeClient := fakeruntime.NewClientBuilder().
+		WithObjects(newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypeHostname)).
+		Build()
+
+	agentAddOn, err := NewAgentAddon(
+		&fakeSelfSigner{t: t},
+		"test",
+		fakeRuntimeClient,
+		fakeKubeClient,
+		true,
+		true,
+		fakeaddon.NewSimpleClientset(),
+	)
+	assert.NoError(t, err)
+	assert.True(t, agentAddOn.GetAgentAddonOptions().HostedModeEnabled)
+
+	manifests, err := agentAddOn.Manifests(newCluster(clusterName, true), addon)
+	assert.NoError(t, err)
+
+	agentDeploy := getDeploymentByName(manifests, "cluster-proxy-proxy-agent")
+	assert.NotNil(t, agentDeploy)
+	assert.Equal(t, "hosting", agentDeploy.Annotations[addonv1alpha1.HostedManifestLocationAnnotationKey])
+	assert.True(t, deploymentHasVolume(agentDeploy, "managed-kubeconfig"))
+
+	addonAgent := getContainer(agentDeploy, "addon-agent")
+	assert.NotNil(t, addonAgent)
+	assert.Contains(t, addonAgent.Args, "--spoke-kubeconfig=/etc/managed/kubeconfig")
+
+	serviceProxy := getContainer(agentDeploy, "service-proxy")
+	assert.Nil(t, serviceProxy)
+
+	managedAPIServerProxy := getContainer(agentDeploy, "managed-apiserver-proxy")
+	assert.NotNil(t, managedAPIServerProxy)
+	assert.Contains(t, managedAPIServerProxy.Args, "--managed-kubeconfig=/etc/managed/kubeconfig")
+
+	provisionerDeploy := getDeploymentByName(manifests, "cluster-proxy-managed-kubeconfig-provisioner")
+	assert.NotNil(t, provisionerDeploy)
+	assert.Equal(t, "hosting", provisionerDeploy.Annotations[addonv1alpha1.HostedManifestLocationAnnotationKey])
+
+	kubeAPIService := getKubeAPIServerExternalNameService(manifests, clusterName)
+	assert.NotNil(t, kubeAPIService)
+	assert.Equal(t, corev1.ServiceTypeClusterIP, kubeAPIService.Spec.Type)
+	assert.Equal(t, "hosting", kubeAPIService.Annotations[addonv1alpha1.HostedManifestLocationAnnotationKey])
+
+	managedRole := getRoleByName(manifests, "cluster-proxy-addon-agent")
+	assert.NotNil(t, managedRole)
+	assert.NotContains(t, managedRole.Annotations, addonv1alpha1.HostedManifestLocationAnnotationKey)
+}
+
+func TestNewAgentAddonDefaultModeDoesNotRenderHostedResources(t *testing.T) {
+	clusterName := "cluster"
+	addOnName := "open-cluster-management-cluster-proxy"
+	managedProxyConfigName := "cluster-proxy"
+
+	addon := newAddOn(addOnName, clusterName)
+	addon.Status.ConfigReferences = []addonv1alpha1.ConfigReference{newManagedProxyConfigReference(managedProxyConfigName)}
+
+	fakeKubeClient := fakekube.NewSimpleClientset(&corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "cluster-proxy-service-proxy-server-cert",
+			Namespace: "test",
+		},
+		Data: map[string][]byte{
+			"tls.crt": []byte("testcrt"),
+			"tls.key": []byte("testkey"),
+		},
+	})
+	fakeRuntimeClient := fakeruntime.NewClientBuilder().
+		WithObjects(newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypeHostname)).
+		Build()
+
+	agentAddOn, err := NewAgentAddon(
+		&fakeSelfSigner{t: t},
+		"test",
+		fakeRuntimeClient,
+		fakeKubeClient,
+		true,
+		true,
+		fakeaddon.NewSimpleClientset(),
+	)
+	assert.NoError(t, err)
+
+	manifests, err := agentAddOn.Manifests(newCluster(clusterName, true), addon)
+	assert.NoError(t, err)
+
+	for _, manifest := range manifests {
+		obj, ok := manifest.(metav1.ObjectMetaAccessor)
+		if !ok {
+			continue
+		}
+		assert.NotContains(t, obj.GetObjectMeta().GetAnnotations(), addonv1alpha1.HostedManifestLocationAnnotationKey)
+	}
+
+	agentDeploy := getDeploymentByName(manifests, "cluster-proxy-proxy-agent")
+	assert.NotNil(t, agentDeploy)
+	assert.False(t, deploymentHasVolume(agentDeploy, "managed-kubeconfig"))
+	assert.Nil(t, getContainer(agentDeploy, "managed-apiserver-proxy"))
+	assert.Nil(t, getDeploymentByName(manifests, "cluster-proxy-managed-kubeconfig-provisioner"))
+	assert.Nil(t, getDeploymentByName(manifests, "cluster-proxy-service-relay"))
+}
+
+func TestNewAgentAddonHostedModeBestEffortServiceProxy(t *testing.T) {
+	clusterName := "cluster"
+	addOnName := "open-cluster-management-cluster-proxy"
+	managedProxyConfigName := "cluster-proxy"
+	addOnDeploymentConfigName := "deploy-config"
+
+	addon := newAddOn(addOnName, clusterName)
+	addon.Annotations = map[string]string{
+		addonv1alpha1.HostingClusterNameAnnotationKey: "hosting-cluster",
+	}
+	addon.Status.ConfigReferences = []addonv1alpha1.ConfigReference{
+		newManagedProxyConfigReference(managedProxyConfigName),
+		newAddOndDeploymentConfigReference(addOnDeploymentConfigName, clusterName),
+	}
+
+	fakeKubeClient := fakekube.NewSimpleClientset(&corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "cluster-proxy-service-proxy-server-cert",
+			Namespace: "test",
+		},
+		Data: map[string][]byte{
+			"tls.crt": []byte("testcrt"),
+			"tls.key": []byte("testkey"),
+		},
+	})
+	fakeRuntimeClient := fakeruntime.NewClientBuilder().
+		WithObjects(newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypeHostname)).
+		Build()
+	addOnDeploymentConfig := newAddOnDeploymentConfig(addOnDeploymentConfigName, clusterName)
+	addOnDeploymentConfig.Spec.CustomizedVariables = []addonv1alpha1.CustomizedVariable{
+		{
+			Name:  "hostedServiceProxyMode",
+			Value: "BestEffort",
+		},
+		{
+			Name:  "externalManagedKubeConfigSecretNamespace",
+			Value: "external-ns",
+		},
+		{
+			Name:  "externalManagedKubeConfigSecretName",
+			Value: "external-kubeconfig",
+		},
+		{
+			Name:  "managedKubeConfigSecret",
+			Value: "custom-managed-kubeconfig",
+		},
+		{
+			Name:  "managedKubeConfigTokenExpiration",
+			Value: "12h",
+		},
+		{
+			Name:  "managedKubeConfigRefreshBefore",
+			Value: "30m",
+		},
+		{
+			Name:  "managedKubeConfigSyncInterval",
+			Value: "2m",
+		},
+	}
+
+	agentAddOn, err := NewAgentAddon(
+		&fakeSelfSigner{t: t},
+		"test",
+		fakeRuntimeClient,
+		fakeKubeClient,
+		true,
+		true,
+		fakeaddon.NewSimpleClientset(addOnDeploymentConfig),
+	)
+	assert.NoError(t, err)
+
+	manifests, err := agentAddOn.Manifests(newCluster(clusterName, true), addon)
+	assert.NoError(t, err)
+
+	agentDeploy := getDeploymentByName(manifests, "cluster-proxy-proxy-agent")
+	assert.NotNil(t, agentDeploy)
+	assert.Equal(t, "custom-managed-kubeconfig", getVolumeSecretName(agentDeploy, "managed-kubeconfig"))
+
+	serviceProxy := getContainer(agentDeploy, "service-proxy")
+	assert.NotNil(t, serviceProxy)
+	assert.Contains(t, serviceProxy.Args, "--managed-kubeconfig=/etc/managed/kubeconfig")
+	assert.Contains(t, serviceProxy.Args, "--hosted-service-proxy-mode=BestEffort")
+
+	provisioner := getContainer(getDeploymentByName(manifests, "cluster-proxy-managed-kubeconfig-provisioner"), "managed-kubeconfig-provisioner")
+	assert.NotNil(t, provisioner)
+	assert.Contains(t, provisioner.Args, "--source-namespace=external-ns")
+	assert.Contains(t, provisioner.Args, "--source-name=external-kubeconfig")
+	assert.Contains(t, provisioner.Args, "--target-name=custom-managed-kubeconfig")
+	assert.Contains(t, provisioner.Args, "--token-expiration=12h")
+	assert.Contains(t, provisioner.Args, "--refresh-before=30m")
+	assert.Contains(t, provisioner.Args, "--sync-interval=2m")
+
+	serviceProxyServerCertSecret := getSecretByName(manifests, "cluster-proxy-service-proxy-server-certificates")
+	assert.NotNil(t, serviceProxyServerCertSecret)
+	assert.Equal(t, "hosting", serviceProxyServerCertSecret.Annotations[addonv1alpha1.HostedManifestLocationAnnotationKey])
+}
+
+func TestNewAgentAddonHostedModeRelayServiceProxy(t *testing.T) {
+	clusterName := "cluster"
+	addOnName := "open-cluster-management-cluster-proxy"
+	managedProxyConfigName := "cluster-proxy"
+	addOnDeploymentConfigName := "deploy-config"
+
+	addon := newAddOn(addOnName, clusterName)
+	addon.Annotations = map[string]string{
+		addonv1alpha1.HostingClusterNameAnnotationKey: "hosting-cluster",
+	}
+	addon.Status.ConfigReferences = []addonv1alpha1.ConfigReference{
+		newManagedProxyConfigReference(managedProxyConfigName),
+		newAddOndDeploymentConfigReference(addOnDeploymentConfigName, clusterName),
+	}
+
+	addOnDeploymentConfig := newAddOnDeploymentConfig(addOnDeploymentConfigName, clusterName)
+	addOnDeploymentConfig.Spec.CustomizedVariables = []addonv1alpha1.CustomizedVariable{
+		{
+			Name:  "hostedServiceProxyMode",
+			Value: "Relay",
+		},
+	}
+
+	agentAddOn, err := NewAgentAddon(
+		&fakeSelfSigner{t: t},
+		"test",
+		fakeruntime.NewClientBuilder().
+			WithObjects(newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypeHostname)).
+			Build(),
+		fakekube.NewSimpleClientset(&corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "cluster-proxy-service-proxy-server-cert",
+				Namespace: "test",
+			},
+			Data: map[string][]byte{
+				"tls.crt": []byte("testcrt"),
+				"tls.key": []byte("testkey"),
+			},
+		}),
+		true,
+		true,
+		fakeaddon.NewSimpleClientset(addOnDeploymentConfig),
+	)
+	assert.NoError(t, err)
+
+	manifests, err := agentAddOn.Manifests(newCluster(clusterName, true), addon)
+	assert.NoError(t, err)
+
+	agentDeploy := getDeploymentByName(manifests, "cluster-proxy-proxy-agent")
+	assert.NotNil(t, agentDeploy)
+
+	serviceProxy := getContainer(agentDeploy, "service-proxy")
+	assert.NotNil(t, serviceProxy)
+	assert.Contains(t, serviceProxy.Args, "--managed-kubeconfig=/etc/managed/kubeconfig")
+	assert.Contains(t, serviceProxy.Args, "--hosted-service-proxy-mode=Relay")
+
+	serviceRelayDeploy := getDeploymentByName(manifests, "cluster-proxy-service-relay")
+	assert.NotNil(t, serviceRelayDeploy)
+	assert.NotContains(t, serviceRelayDeploy.Annotations, addonv1alpha1.HostedManifestLocationAnnotationKey)
+	serviceRelay := getContainer(serviceRelayDeploy, "service-relay")
+	assert.NotNil(t, serviceRelay)
+	assert.Contains(t, serviceRelay.Args, "service-relay")
+	assert.Contains(t, serviceRelay.Args, "--listen=:7444")
+	assert.NotNil(t, serviceRelayDeploy.Spec.Template.Spec.AutomountServiceAccountToken)
+	assert.False(t, *serviceRelayDeploy.Spec.Template.Spec.AutomountServiceAccountToken)
+
+	serviceRelayService := getServiceByName(manifests, "cluster-proxy-service-relay")
+	assert.NotNil(t, serviceRelayService)
+	assert.Equal(t, corev1.ServiceTypeClusterIP, serviceRelayService.Spec.Type)
+	assert.NotContains(t, serviceRelayService.Annotations, addonv1alpha1.HostedManifestLocationAnnotationKey)
+
+	serviceRelayRole := getRoleByName(manifests, "cluster-proxy-service-relay-proxy")
+	assert.NotNil(t, serviceRelayRole)
+	assert.NotContains(t, serviceRelayRole.Annotations, addonv1alpha1.HostedManifestLocationAnnotationKey)
+
+	serviceProxyServerCertSecret := getSecretByName(manifests, "cluster-proxy-service-proxy-server-certificates")
+	assert.NotNil(t, serviceProxyServerCertSecret)
+	assert.Equal(t, "hosting", serviceProxyServerCertSecret.Annotations[addonv1alpha1.HostedManifestLocationAnnotationKey])
+}
+
 type fakeSelfSigner struct {
 	t *testing.T
 }
@@ -1054,12 +1353,85 @@ func getAgentDeployment(manifests []runtime.Object) *appsv1.Deployment {
 	return nil
 }
 
+func getDeploymentByName(manifests []runtime.Object, name string) *appsv1.Deployment {
+	for _, manifest := range manifests {
+		switch obj := manifest.(type) {
+		case *appsv1.Deployment:
+			if obj.Name == name {
+				return obj
+			}
+		}
+	}
+	return nil
+}
+
+func getContainer(deploy *appsv1.Deployment, name string) *corev1.Container {
+	if deploy == nil {
+		return nil
+	}
+	for i := range deploy.Spec.Template.Spec.Containers {
+		if deploy.Spec.Template.Spec.Containers[i].Name == name {
+			return &deploy.Spec.Template.Spec.Containers[i]
+		}
+	}
+	return nil
+}
+
+func deploymentHasVolume(deploy *appsv1.Deployment, name string) bool {
+	if deploy == nil {
+		return false
+	}
+	for _, volume := range deploy.Spec.Template.Spec.Volumes {
+		if volume.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func getVolumeSecretName(deploy *appsv1.Deployment, name string) string {
+	if deploy == nil {
+		return ""
+	}
+	for _, volume := range deploy.Spec.Template.Spec.Volumes {
+		if volume.Name == name && volume.Secret != nil {
+			return volume.Secret.SecretName
+		}
+	}
+	return ""
+}
+
+func getRoleByName(manifests []runtime.Object, name string) *rbacv1.Role {
+	for _, manifest := range manifests {
+		switch obj := manifest.(type) {
+		case *rbacv1.Role:
+			if obj.Name == name {
+				return obj
+			}
+		}
+	}
+	return nil
+}
+
 func getKubeAPIServerExternalNameService(manifests []runtime.Object, clusterName string) *corev1.Service {
 	for _, manifest := range manifests {
 		switch obj := manifest.(type) {
 		case *corev1.Service:
 			// As the cluster-service.yaml shows, the service name is cluster name.
 			if obj.Name == clusterName {
+				return obj
+			}
+		}
+	}
+
+	return nil
+}
+
+func getServiceByName(manifests []runtime.Object, name string) *corev1.Service {
+	for _, manifest := range manifests {
+		switch obj := manifest.(type) {
+		case *corev1.Service:
+			if obj.Name == name {
 				return obj
 			}
 		}
@@ -1084,6 +1456,19 @@ func getCASecret(manifests []runtime.Object) *corev1.Secret {
 		switch obj := manifest.(type) {
 		case *corev1.Secret:
 			if obj.Name == "cluster-proxy-ca" {
+				return obj
+			}
+		}
+	}
+
+	return nil
+}
+
+func getSecretByName(manifests []runtime.Object, name string) *corev1.Secret {
+	for _, manifest := range manifests {
+		switch obj := manifest.(type) {
+		case *corev1.Secret:
+			if obj.Name == name {
 				return obj
 			}
 		}

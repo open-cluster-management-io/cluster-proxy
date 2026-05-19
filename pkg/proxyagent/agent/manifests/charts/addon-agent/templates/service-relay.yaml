@@ -1,0 +1,124 @@
+{{- if and .Values.enableServiceProxy (eq .Values.installMode "Hosted") (eq .Values.hostedServiceProxyMode "Relay") }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: {{ .Release.Namespace }}
+  name: cluster-proxy-service-relay-proxy
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - services/proxy
+    resourceNames:
+      - {{ .Values.serviceRelayName }}
+      - http:{{ .Values.serviceRelayName }}
+      - http:{{ .Values.serviceRelayName }}:{{ .Values.serviceRelayPort }}
+    verbs:
+      - get
+      - create
+      - update
+      - patch
+      - delete
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  namespace: {{ .Release.Namespace }}
+  name: cluster-proxy-service-relay-proxy
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: cluster-proxy-service-relay-proxy
+subjects:
+  - kind: ServiceAccount
+    name: cluster-proxy
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: {{ .Release.Namespace }}
+  name: {{ .Values.serviceRelayName }}
+spec:
+  type: ClusterIP
+  selector:
+    open-cluster-management.io/addon: cluster-proxy
+    proxy.open-cluster-management.io/component-name: service-relay
+  ports:
+    - name: http
+      port: {{ .Values.serviceRelayPort }}
+      targetPort: {{ .Values.serviceRelayPort }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: {{ .Release.Namespace }}
+  name: {{ .Values.serviceRelayName }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      open-cluster-management.io/addon: cluster-proxy
+      proxy.open-cluster-management.io/component-name: service-relay
+  template:
+    metadata:
+      labels:
+        open-cluster-management.io/addon: cluster-proxy
+        proxy.open-cluster-management.io/component-name: service-relay
+    spec:
+      serviceAccountName: cluster-proxy
+      automountServiceAccountToken: false
+      {{- if .Values.tolerations }}
+      tolerations: {{ toYaml .Values.tolerations | nindent 8 }}
+      {{- end }}
+      {{- if .Values.nodeSelector }}
+      nodeSelector: {{ toYaml .Values.nodeSelector | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: service-relay
+          image: {{ .Values.registry }}/{{ .Values.image }}:{{ .Values.tag }}
+          imagePullPolicy: IfNotPresent
+          command:
+            - /cluster-proxy
+          args:
+            - service-relay
+            - --listen=:{{ .Values.serviceRelayPort }}
+            - --health-probe-bind-address=:8000
+          {{- if .Values.additionalServiceCAConfigMap }}
+            - --additional-service-ca=/additional-service-ca/service-ca.crt
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.serviceRelayPort }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 2
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            privileged: false
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
+          {{- if .Values.additionalServiceCAConfigMap }}
+          volumeMounts:
+            - name: additional-service-ca
+              mountPath: /additional-service-ca
+              readOnly: true
+          {{- end }}
+      {{- if .Values.additionalServiceCAConfigMap }}
+      volumes:
+        - name: additional-service-ca
+          configMap:
+            name: {{ .Values.additionalServiceCAConfigMap }}
+            optional: true
+      {{- end }}
+      imagePullSecrets:
+      {{- range .Values.proxyAgentImagePullSecrets }}
+        - name: {{ . }}
+      {{- end }}
+{{- end }}

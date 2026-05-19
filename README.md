@@ -118,6 +118,53 @@ dialer of the Kubernetes client config object, e.g.:
   cfg.Dial = tunnel.DialContext 
 ```
 
+### Hosted mode
+
+Cluster Proxy supports addon-framework hosted mode when the `ManagedClusterAddOn`
+has the `addon.open-cluster-management.io/hosting-cluster-name` annotation. In
+hosted mode the proxy-agent deployment runs on the hosting cluster while the
+managed cluster keeps the service account and RBAC needed for TokenRequest,
+TokenReview, leases, ConfigMaps, and impersonation.
+
+The hosting cluster must contain an external managed-cluster kubeconfig Secret.
+By default the addon reads `external-managed-kubeconfig` from the namespace named
+after the managed cluster, creates short-lived tokens for the managed
+`cluster-proxy` service account, and writes a generated kubeconfig Secret named
+`cluster-proxy-managed-kubeconfig` in the addon install namespace. The generated
+kubeconfig is mounted read-only by the hosted agent containers; the external
+admin kubeconfig is mounted only by the provisioner.
+
+Hosted mode supports the managed Kubernetes API proxy path. The regular Service
+proxy is disabled by default in hosted mode because a service-proxy running on
+the hosting cluster usually cannot reach managed cluster Service DNS names or
+ClusterIPs. Set `hostedServiceProxyMode=BestEffort` only when the hosting
+cluster can directly reach managed Service networking. Set
+`hostedServiceProxyMode=Relay` to deploy a managed-side relay and send Service
+proxy requests through the managed apiserver Service proxy subresource.
+
+| Mode | Kube API proxy | Regular Service proxy |
+|------|----------------|-----------------------|
+| Default | Supported | Supported when service proxy is enabled |
+| Hosted, `hostedServiceProxyMode=Disabled` | Supported | Disabled |
+| Hosted, `hostedServiceProxyMode=BestEffort` | Supported | Best effort; requires hosting-to-managed Service network reachability |
+| Hosted, `hostedServiceProxyMode=Relay` | Supported | Supported through the managed-side `cluster-proxy-service-relay` Deployment and Service |
+
+The following `AddOnDeploymentConfig.spec.customizedVariables` are available for
+hosted mode:
+
+- `externalManagedKubeConfigSecretNamespace`: defaults to the managed cluster name
+- `externalManagedKubeConfigSecretName`: defaults to `external-managed-kubeconfig`
+- `managedKubeConfigSecret`: defaults to `cluster-proxy-managed-kubeconfig`
+- `managedKubeConfigTokenExpiration`: defaults to `24h`
+- `managedKubeConfigRefreshBefore`: defaults to `1h`
+- `managedKubeConfigSyncInterval`: defaults to `5m`
+- `hostedServiceProxyMode`: `Disabled`, `BestEffort`, or `Relay`; defaults to `Disabled`
+
+The hosted provisioner patches `ManagedKubeconfigReady` on the hub
+`ManagedClusterAddOn` and exposes health and metrics on `:8000`. The
+managed-apiserver raw TCP relay exposes health and metrics on `:8001`; the
+service relay exposes health and metrics on `:8000`.
+
 ### Performance
 
 The following table shows network bandwidth benchmarking results via [goben](https://github.com/udhos/goben)

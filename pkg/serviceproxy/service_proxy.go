@@ -1,6 +1,7 @@
 package serviceproxy
 
 import (
+	"bufio"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -8,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -19,12 +21,14 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/klog/v2"
 
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 
 	addonutils "open-cluster-management.io/addon-framework/pkg/utils"
 	"open-cluster-management.io/cluster-proxy/pkg/constant"
+	addonmetrics "open-cluster-management.io/cluster-proxy/pkg/metrics"
 	"open-cluster-management.io/cluster-proxy/pkg/utils"
 	sdktls "open-cluster-management.io/sdk-go/pkg/tls"
 )
@@ -46,6 +50,10 @@ func NewServiceProxyCommand() *cobra.Command {
 }
 
 const (
+	ServiceProxyModeDisabled   = "Disabled"
+	ServiceProxyModeBestEffort = "BestEffort"
+	ServiceProxyModeRelay      = "Relay"
+
 	// defaultTokenReviewCacheTTL is the default TTL for cached TokenReview results.
 	// Cached entries expire after this duration, forcing a fresh TokenReview API call.
 	// A short TTL (10s) is sufficient because the primary goal is deduplicating
@@ -76,8 +84,13 @@ type serviceProxy struct {
 	kubeClientBurst     int
 
 	hubKubeConfig            string
+	managedKubeConfig        string
+	managedAPIServerURL      string
 	hubKubeClient            kubernetes.Interface
 	managedClusterKubeClient kubernetes.Interface
+
+	hostedServiceProxyMode string
+	relayURLTemplate       *url.URL
 
 	enableImpersonation bool
 
@@ -92,9 +105,10 @@ type serviceProxy struct {
 
 func newServiceProxy() *serviceProxy {
 	s := &serviceProxy{
-		tokenReviewCacheTTL: defaultTokenReviewCacheTTL,
-		kubeClientQPS:       defaultKubeClientQPS,
-		kubeClientBurst:     defaultKubeClientBurst,
+		tokenReviewCacheTTL:    defaultTokenReviewCacheTTL,
+		kubeClientQPS:          defaultKubeClientQPS,
+		kubeClientBurst:        defaultKubeClientBurst,
+		hostedServiceProxyMode: ServiceProxyModeBestEffort,
 	}
 	s.getImpersonateTokenFunc = s.readImpersonateTokenFromFile
 	return s
@@ -109,6 +123,8 @@ func (s *serviceProxy) AddFlags(cmd *cobra.Command) {
 
 	// hubKubeConfig is the kubeconfig file for connecting to the hub cluster
 	flags.StringVar(&s.hubKubeConfig, "hub-kubeconfig", "", "The kubeconfig file for connecting to the hub cluster")
+	flags.StringVar(&s.managedKubeConfig, "managed-kubeconfig", "", "The kubeconfig file for connecting to the managed cluster. If empty, in-cluster config is used")
+	flags.StringVar(&s.hostedServiceProxyMode, "hosted-service-proxy-mode", s.hostedServiceProxyMode, "Hosted service proxy mode. One of Disabled, BestEffort, or Relay")
 
 	// proxy related flags
 	flags.IntVar(&s.maxIdleConns, "max-idle-conns", 100, "The maximum number of idle (keep-alive) connections across all hosts.")
@@ -132,7 +148,7 @@ func (s *serviceProxy) Run(ctx context.Context) error {
 	var err error
 	customChecks := []healthz.Checker{}
 
-	cc, err := addonutils.NewConfigChecker("cert", s.cert, s.key, rootCAFile, s.hubKubeConfig)
+	cc, err := addonutils.NewConfigChecker("cert", configCheckerFiles(s.cert, s.key, rootCAFile, s.hubKubeConfig, s.managedKubeConfig)...)
 	if err != nil {
 		return err
 	}
@@ -174,17 +190,29 @@ func (s *serviceProxy) Run(ctx context.Context) error {
 	}
 
 	// init managedClusterKubeClient
-	// managedClusterKubeClient is the kubeClient of current cluster using in-cluster config
-	config, err := rest.InClusterConfig()
-	if err != nil {
-		return fmt.Errorf("failed to get in-cluster config: %v", err)
-	}
-	config.QPS = s.kubeClientQPS
-	config.Burst = s.kubeClientBurst
-
-	s.managedClusterKubeClient, err = kubernetes.NewForConfig(config)
+	managedConfig, err := s.managedRESTConfig()
 	if err != nil {
 		return err
+	}
+	managedConfig.QPS = s.kubeClientQPS
+	managedConfig.Burst = s.kubeClientBurst
+
+	s.managedClusterKubeClient, err = kubernetes.NewForConfig(managedConfig)
+	if err != nil {
+		return err
+	}
+	if s.managedKubeConfig != "" {
+		s.managedAPIServerURL = managedConfig.Host
+		s.getImpersonateTokenFunc = s.readImpersonateTokenFromManagedKubeconfig
+		if err := appendRESTConfigCA(s.rootCAs, managedConfig); err != nil {
+			return err
+		}
+	}
+	if s.hostedServiceProxyMode == ServiceProxyModeRelay {
+		s.relayURLTemplate, err = buildServiceRelayURL(s.managedAPIServerURL, os.Getenv("POD_NAMESPACE"))
+		if err != nil {
+			return err
+		}
 	}
 
 	// get hubKubeConfig
@@ -263,6 +291,11 @@ func (s *serviceProxy) Run(ctx context.Context) error {
 func (s *serviceProxy) ServeHTTP(wr http.ResponseWriter, req *http.Request) {
 	ctx := req.Context()
 	logger := klog.FromContext(ctx)
+	targetKind := "unknown"
+	result := "error"
+	defer func() {
+		addonmetrics.ObserveServiceProxyRequest(s.hostedServiceProxyMode, targetKind, result)
+	}()
 
 	if klog.V(4).Enabled() {
 		dump, err := httputil.DumpRequest(req, true)
@@ -273,29 +306,54 @@ func (s *serviceProxy) ServeHTTP(wr http.ResponseWriter, req *http.Request) {
 		klog.V(4).Infof("request:\n %s", string(dump))
 	}
 
-	url, err := utils.GetTargetServiceURLFromRequest(req)
+	targetURL, err := utils.GetTargetServiceURLFromRequest(req)
 	if err != nil {
 		http.Error(wr, err.Error(), http.StatusBadRequest)
 		logger.Error(err, "failed to get target service url from request")
 		return
 	}
+	isKubeAPIServer := targetURL.Host == "kubernetes.default.svc"
+	targetKind = "service"
+	if isKubeAPIServer {
+		targetKind = "kube-apiserver"
+	}
+	if isKubeAPIServer && s.managedAPIServerURL != "" {
+		targetURL, err = parseManagedAPIServerURL(s.managedAPIServerURL)
+		if err != nil {
+			http.Error(wr, err.Error(), http.StatusBadRequest)
+			logger.Error(err, "failed to parse managed apiserver url")
+			return
+		}
+	} else if !isKubeAPIServer && s.hostedServiceProxyMode == ServiceProxyModeRelay {
+		targetURL, err = s.serviceRelayURL()
+		if err != nil {
+			http.Error(wr, err.Error(), http.StatusBadRequest)
+			logger.Error(err, "failed to build service relay url")
+			return
+		}
+		if err := s.prepareRelayRequest(req); err != nil {
+			http.Error(wr, err.Error(), http.StatusBadRequest)
+			logger.Error(err, "failed to prepare service relay request")
+			return
+		}
+	}
 
 	// Enrich logger with request-scoped fields so all downstream logs
 	// are traceable by request without repeating these values.
 	logger = logger.WithValues(
-		"targetHost", url.Host,
+		"targetHost", targetURL.Host,
 		"method", req.Method,
 		"path", req.URL.Path,
 	)
 	ctx = klog.NewContext(ctx, logger)
 
 	logger.V(4).Info("service proxy received request",
-		"targetScheme", url.Scheme,
+		"targetScheme", targetURL.Scheme,
 		"enableImpersonation", s.enableImpersonation,
-		"isKubeAPIServer", url.Host == "kubernetes.default.svc",
+		"isKubeAPIServer", isKubeAPIServer,
 	)
 
-	if url.Host == "kubernetes.default.svc" {
+	if isKubeAPIServer {
 		if s.enableImpersonation {
 			if err := s.processAuthentication(ctx, req); err != nil {
 				logger.Error(err, "authentication failed")
@@ -306,10 +364,10 @@ func (s *serviceProxy) ServeHTTP(wr http.ResponseWriter, req *http.Request) {
 	}
 
 	logger.V(6).Info("forwarding request to reverse proxy",
-		"targetURL", url.String(),
+		"targetURL", targetURL.String(),
 	)
 
-	proxy := httputil.NewSingleHostReverseProxy(url)
+	proxy := httputil.NewSingleHostReverseProxy(targetURL)
 	proxy.Transport = &http.Transport{
 		DialContext: (&net.Dialer{
 			Timeout:   30 * time.Second,
@@ -328,8 +386,14 @@ func (s *serviceProxy) ServeHTTP(wr http.ResponseWriter, req *http.Request) {
 		// set ForceAttemptHTTP2 = false to prevent auto http2 upgration
 		ForceAttemptHTTP2: false,
 	}
+	proxy.ErrorHandler = func(w http.ResponseWriter, req *http.Request, err error) {
+		logger.Error(err, "service proxy reverse proxy error")
+		http.Error(w, err.Error(), http.StatusBadGateway)
+	}
 
-	proxy.ServeHTTP(wr, req)
+	recorder := &statusRecorder{ResponseWriter: wr, statusCode: http.StatusOK}
+	proxy.ServeHTTP(recorder, req)
+	result = resultFromStatus(recorder.statusCode)
 }
 
 func (s *serviceProxy) validate() error {
@@ -339,7 +403,155 @@ func (s *serviceProxy) validate() error {
 	if s.key == "" {
 		return fmt.Errorf("key is required")
 	}
+	switch s.hostedServiceProxyMode {
+	case ServiceProxyModeDisabled, ServiceProxyModeBestEffort, ServiceProxyModeRelay:
+	default:
+		return fmt.Errorf("hosted-service-proxy-mode must be one of Disabled, BestEffort, or Relay; got %q", s.hostedServiceProxyMode)
+	}
+	if s.hostedServiceProxyMode == ServiceProxyModeRelay && s.managedKubeConfig == "" {
+		return fmt.Errorf("managed-kubeconfig is required when hosted-service-proxy-mode=Relay")
+	}
 	return nil
+}
+
+func (s *serviceProxy) managedRESTConfig() (*rest.Config, error) {
+	if s.managedKubeConfig == "" {
+		config, err := rest.InClusterConfig()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get in-cluster config: %v", err)
+		}
+		return config, nil
+	}
+
+	config, err := clientcmd.BuildConfigFromFlags("", s.managedKubeConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build managed kubeconfig: %v", err)
+	}
+	return config, nil
+}
+
+func configCheckerFiles(files ...string) []string {
+	result := []string{}
+	for _, file := range files {
+		if file != "" {
+			result = append(result, file)
+		}
+	}
+	return result
+}
+
+func appendRESTConfigCA(pool *x509.CertPool, config *rest.Config) error {
+	if len(config.CAData) > 0 {
+		if ok := pool.AppendCertsFromPEM(config.CAData); !ok {
+			return fmt.Errorf("failed to parse managed kubeconfig CA data")
+		}
+		return nil
+	}
+	if config.CAFile == "" {
+		return nil
+	}
+	caData, err := os.ReadFile(config.CAFile)
+	if err != nil {
+		return err
+	}
+	if ok := pool.AppendCertsFromPEM(caData); !ok {
+		return fmt.Errorf("failed to parse managed kubeconfig CA file %s", config.CAFile)
+	}
+	return nil
+}
+
+func parseManagedAPIServerURL(rawURL string) (*url.URL, error) {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return nil, err
+	}
+	if parsed.Scheme == "" || parsed.Host == "" {
+		return nil, fmt.Errorf("managed apiserver URL %q must include scheme and host", rawURL)
+	}
+	return parsed, nil
+}
+
+func (s *serviceProxy) serviceRelayURL() (*url.URL, error) {
+	if s.relayURLTemplate == nil {
+		return nil, fmt.Errorf("service relay URL is not initialized")
+	}
+	clone := *s.relayURLTemplate
+	return &clone, nil
+}
+
+func buildServiceRelayURL(managedAPIServerURL, namespace string) (*url.URL, error) {
+	if managedAPIServerURL == "" {
+		return nil, fmt.Errorf("managed apiserver URL is required for Relay mode")
+	}
+	if namespace == "" {
+		return nil, fmt.Errorf("POD_NAMESPACE is required for Relay mode")
+	}
+	relayURL, err := parseManagedAPIServerURL(managedAPIServerURL)
+	if err != nil {
+		return nil, err
+	}
+	relayURL.Path = fmt.Sprintf(
+		"/api/v1/namespaces/%s/services/http:%s:%d/proxy",
+		url.PathEscape(namespace),
+		constant.ServiceRelayName,
+		constant.ServiceRelayPort,
+	)
+	relayURL.RawQuery = ""
+	return relayURL, nil
+}
+
+func (s *serviceProxy) prepareRelayRequest(req *http.Request) error {
+	authorization := req.Header.Get("Authorization")
+	req.Header.Del(utils.HeaderClusterProxyAuthorization)
+	if authorization != "" {
+		req.Header.Set(utils.HeaderClusterProxyAuthorization, authorization)
+	}
+
+	tokenReader := s.getImpersonateTokenFunc
+	if tokenReader == nil {
+		tokenReader = s.readImpersonateTokenFromManagedKubeconfig
+	}
+	token, err := tokenReader()
+	if err != nil {
+		return fmt.Errorf("failed to get managed kubeconfig token: %v", err)
+	}
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return fmt.Errorf("managed kubeconfig token is empty")
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	return nil
+}
+
+func resultFromStatus(statusCode int) string {
+	if statusCode >= http.StatusBadRequest {
+		return "error"
+	}
+	return "success"
+}
+
+type statusRecorder struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (r *statusRecorder) WriteHeader(statusCode int) {
+	r.statusCode = statusCode
+	r.ResponseWriter.WriteHeader(statusCode)
+}
+
+func (r *statusRecorder) Flush() {
+	if flusher, ok := r.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
+func (r *statusRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hijacker, ok := r.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, fmt.Errorf("response writer does not support hijacking")
+	}
+	return hijacker.Hijack()
 }
 
 func (s *serviceProxy) readImpersonateTokenFromFile() (string, error) {
@@ -349,6 +561,49 @@ func (s *serviceProxy) readImpersonateTokenFromFile() (string, error) {
 		return "", err
 	}
 	return string(token), nil
+}
+
+func (s *serviceProxy) readImpersonateTokenFromManagedKubeconfig() (string, error) {
+	config, err := clientcmd.LoadFromFile(s.managedKubeConfig)
+	if err != nil {
+		return "", err
+	}
+
+	authInfo, err := currentAuthInfo(config)
+	if err != nil {
+		return "", err
+	}
+	if authInfo.Token != "" {
+		return authInfo.Token, nil
+	}
+	if authInfo.TokenFile != "" {
+		token, err := os.ReadFile(authInfo.TokenFile)
+		if err != nil {
+			return "", err
+		}
+		return string(token), nil
+	}
+	return "", fmt.Errorf("managed kubeconfig does not contain a bearer token")
+}
+
+func currentAuthInfo(config *clientcmdapi.Config) (*clientcmdapi.AuthInfo, error) {
+	if config == nil {
+		return nil, fmt.Errorf("managed kubeconfig is empty")
+	}
+	if config.CurrentContext != "" {
+		if context, ok := config.Contexts[config.CurrentContext]; ok && context.AuthInfo != "" {
+			if authInfo, ok := config.AuthInfos[context.AuthInfo]; ok {
+				return authInfo, nil
+			}
+			return nil, fmt.Errorf("current context references missing authinfo %q", context.AuthInfo)
+		}
+	}
+	if len(config.AuthInfos) == 1 {
+		for _, authInfo := range config.AuthInfos {
+			return authInfo, nil
+		}
+	}
+	return nil, fmt.Errorf("managed kubeconfig must have a current context or exactly one authinfo")
 }
 
 // processAuthentication handles the authentication flow for both managed cluster and hub users.

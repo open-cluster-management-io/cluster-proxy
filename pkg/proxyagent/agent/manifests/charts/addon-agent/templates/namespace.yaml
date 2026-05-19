@@ -5,4 +5,14 @@ metadata:
   name: {{ .Release.Namespace }}
   annotations:
     addon.open-cluster-management.io/deletion-orphan: ""
+{{ if eq .Values.installMode "Hosted" }}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Release.Namespace }}
+  annotations:
+    addon.open-cluster-management.io/deletion-orphan: ""
+    addon.open-cluster-management.io/hosted-manifest-location: hosting
+{{ end }}
 {{ end }}

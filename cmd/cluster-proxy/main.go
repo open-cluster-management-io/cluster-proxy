@@ -13,7 +13,10 @@ import (
 	"k8s.io/klog/v2"
 
 	"open-cluster-management.io/cluster-proxy/pkg/controllers"
+	"open-cluster-management.io/cluster-proxy/pkg/proxyagent/agent/managedapiserver"
+	"open-cluster-management.io/cluster-proxy/pkg/proxyagent/agent/provisioner"
 	"open-cluster-management.io/cluster-proxy/pkg/serviceproxy"
+	"open-cluster-management.io/cluster-proxy/pkg/servicerelay"
 	"open-cluster-management.io/cluster-proxy/pkg/userserver"
 	"open-cluster-management.io/cluster-proxy/pkg/version"
 )
@@ -53,6 +56,9 @@ func newClusterProxyCommand() *cobra.Command {
 
 	cmd.AddCommand(userserver.NewUserServerCommand())
 	cmd.AddCommand(serviceproxy.NewServiceProxyCommand())
+	cmd.AddCommand(servicerelay.NewCommand())
+	cmd.AddCommand(provisioner.NewManagedKubeconfigProvisionerCommand())
+	cmd.AddCommand(managedapiserver.NewCommand())
 	cmd.AddCommand(controllers.NewControllersCommand())
 
 	return cmd

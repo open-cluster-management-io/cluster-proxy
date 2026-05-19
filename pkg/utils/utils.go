@@ -9,6 +9,7 @@ import (
 	"time"
 
 	utilnet "k8s.io/apimachinery/pkg/util/net"
+	"k8s.io/component-base/metrics/legacyregistry"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 )
@@ -19,10 +20,11 @@ const (
 	HEADERSERVICEKEY  = "Service-Client-Key"
 
 	// Cluster-Proxy custom headers for service proxy
-	HeaderClusterProxyProto     = "Cluster-Proxy-Proto"
-	HeaderClusterProxyNamespace = "Cluster-Proxy-Namespace"
-	HeaderClusterProxyService   = "Cluster-Proxy-Service"
-	HeaderClusterProxyPort      = "Cluster-Proxy-Port"
+	HeaderClusterProxyProto         = "Cluster-Proxy-Proto"
+	HeaderClusterProxyNamespace     = "Cluster-Proxy-Namespace"
+	HeaderClusterProxyService       = "Cluster-Proxy-Service"
+	HeaderClusterProxyPort          = "Cluster-Proxy-Port"
+	HeaderClusterProxyAuthorization = "Cluster-Proxy-Authorization"
 )
 
 // TargetServiceConfig is a collection of data extrict from the request URL description the target service we can to access on the managed cluster.
@@ -166,6 +168,7 @@ func ServeHealthProbes(healthProbeBindAddress string, tlsConfig *tls.Config, cus
 	}
 
 	mux.Handle("/healthz", http.StripPrefix("/healthz", &healthz.Handler{Checks: checks}))
+	mux.Handle("/metrics", legacyregistry.Handler())
 	server := http.Server{
 		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second,

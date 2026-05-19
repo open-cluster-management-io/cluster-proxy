@@ -5,9 +5,13 @@ const (
 
 	ServiceProxyPort = 7443
 
+	ServiceRelayPort = 7444
+
 	ServerCertSecretName = "cluster-proxy-service-proxy-server-cert"
 
 	ServiceProxyName = "cluster-proxy-service-proxy"
+
+	ServiceRelayName = "cluster-proxy-service-relay"
 
 	AddonName = "cluster-proxy"
 

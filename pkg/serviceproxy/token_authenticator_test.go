@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 
@@ -72,7 +73,7 @@ func TestTokenReviewAuthenticator_Unauthenticated(t *testing.T) {
 
 func TestProcessAuthentication_ManagedClusterToken(t *testing.T) {
 	s := &serviceProxy{
-		enableImpersonation:         true,
+		enableImpersonation: true,
 		managedClusterAuthenticator: authenticator.TokenFunc(func(ctx context.Context, token string) (*authenticator.Response, bool, error) {
 			return &authenticator.Response{User: &user.DefaultInfo{Name: "mc-user"}}, true, nil
 		}),
@@ -235,6 +236,95 @@ func TestNewServiceProxy_DefaultValues(t *testing.T) {
 	}
 	if s.kubeClientBurst != defaultKubeClientBurst {
 		t.Fatalf("expected default burst %v, got %v", defaultKubeClientBurst, s.kubeClientBurst)
+	}
+}
+
+func TestManagedKubeconfigConfigAndToken(t *testing.T) {
+	kubeconfig := `apiVersion: v1
+kind: Config
+clusters:
+- name: managed
+  cluster:
+    server: https://managed.example.com:6443
+contexts:
+- name: managed
+  context:
+    cluster: managed
+    user: cluster-proxy
+current-context: managed
+users:
+- name: cluster-proxy
+  user:
+    token: managed-token
+`
+	path := t.TempDir() + "/kubeconfig"
+	if err := os.WriteFile(path, []byte(kubeconfig), 0600); err != nil {
+		t.Fatalf("failed to write kubeconfig: %v", err)
+	}
+
+	s := &serviceProxy{managedKubeConfig: path}
+	config, err := s.managedRESTConfig()
+	if err != nil {
+		t.Fatalf("unexpected managedRESTConfig error: %v", err)
+	}
+	if config.Host != "https://managed.example.com:6443" {
+		t.Fatalf("unexpected managed host: %s", config.Host)
+	}
+
+	token, err := s.readImpersonateTokenFromManagedKubeconfig()
+	if err != nil {
+		t.Fatalf("unexpected token read error: %v", err)
+	}
+	if token != "managed-token" {
+		t.Fatalf("expected managed-token, got %q", token)
+	}
+}
+
+func TestParseManagedAPIServerURL(t *testing.T) {
+	url, err := parseManagedAPIServerURL("https://managed.example.com:6443")
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	if url.Host != "managed.example.com:6443" {
+		t.Fatalf("unexpected host: %s", url.Host)
+	}
+
+	if _, err := parseManagedAPIServerURL("managed.example.com:6443"); err == nil {
+		t.Fatal("expected error for URL without scheme")
+	}
+}
+
+func TestServiceProxyRelayURLAndAuthorizationHeader(t *testing.T) {
+	relayURLTemplate, err := buildServiceRelayURL("https://managed.example.com:6443", "addon-ns")
+	if err != nil {
+		t.Fatalf("unexpected buildServiceRelayURL error: %v", err)
+	}
+	s := &serviceProxy{
+		managedAPIServerURL:     "https://managed.example.com:6443",
+		hostedServiceProxyMode:  ServiceProxyModeRelay,
+		relayURLTemplate:        relayURLTemplate,
+		getImpersonateTokenFunc: func() (string, error) { return "managed-token", nil },
+	}
+
+	relayURL, err := s.serviceRelayURL()
+	if err != nil {
+		t.Fatalf("unexpected relay URL error: %v", err)
+	}
+	if relayURL.String() != "https://managed.example.com:6443/api/v1/namespaces/addon-ns/services/http:cluster-proxy-service-relay:7444/proxy" {
+		t.Fatalf("unexpected relay URL %s", relayURL.String())
+	}
+
+	req, _ := http.NewRequest("GET", "https://example.com/ping", nil)
+	req.Header.Set("Authorization", "Bearer original-token")
+	req.Header.Set("Cluster-Proxy-Authorization", "Bearer spoofed-token")
+	if err := s.prepareRelayRequest(req); err != nil {
+		t.Fatalf("unexpected prepare relay request error: %v", err)
+	}
+	if req.Header.Get("Authorization") != "Bearer managed-token" {
+		t.Fatalf("expected managed token authorization, got %q", req.Header.Get("Authorization"))
+	}
+	if req.Header.Get("Cluster-Proxy-Authorization") != "Bearer original-token" {
+		t.Fatalf("expected original authorization in internal header, got %q", req.Header.Get("Cluster-Proxy-Authorization"))
 	}
 }
 

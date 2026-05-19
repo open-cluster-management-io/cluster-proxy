@@ -88,6 +88,7 @@ func NewAgentAddon(
 	})
 
 	agentFactory := addonfactory.NewAgentAddonFactory(common.AddonName, FS, "manifests/charts/addon-agent").
+		WithAgentHostedModeEnabledOption().
 		WithAgentRegistrationOption(&agent.RegistrationOption{
 			CSRConfigurations: func(cluster *clusterv1.ManagedCluster, addon *addonv1alpha1.ManagedClusterAddOn) ([]addonv1alpha1.RegistrationConfig, error) {
 				return regConfigs, nil

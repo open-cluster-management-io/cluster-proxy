@@ -221,6 +221,10 @@ test-e2e: delete-e2e-image-from-kind build-e2e-image load-e2e-image-kind
 	@./test/e2e/env/wait-for-job.sh cluster-proxy-e2e open-cluster-management-addon 1200
 .PHONY: test-e2e
 
+test-e2e-hosted:
+	$(MAKE) test-e2e LABEL_FILTER="hosted"
+.PHONY: test-e2e-hosted
+
 # Rapid iteration workflow for e2e tests (cleans up everything first)
 # Use LABEL_FILTER to run specific tests, e.g.: make retest-e2e LABEL_FILTER="connectivity"
 retest-e2e: clean-e2e delete-e2e-image-from-kind build-e2e-image load-e2e-image-kind

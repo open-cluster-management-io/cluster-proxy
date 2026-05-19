@@ -1,12 +1,20 @@
+{{- $validHostedServiceProxyModes := list "Disabled" "BestEffort" "Relay" -}}
+{{- if and (eq .Values.installMode "Hosted") (not (has .Values.hostedServiceProxyMode $validHostedServiceProxyModes)) -}}
+{{- fail (printf "hostedServiceProxyMode must be one of Disabled, BestEffort, or Relay; got %q" .Values.hostedServiceProxyMode) -}}
+{{- end -}}
+{{- $enableServiceProxy := and .Values.enableServiceProxy (or (ne .Values.installMode "Hosted") (or (eq .Values.hostedServiceProxyMode "BestEffort") (eq .Values.hostedServiceProxyMode "Relay"))) -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   namespace: {{ .Release.Namespace }}
   name: {{ .Values.agentDeploymentName }}
   annotations:
-  {{- with .Values.agentDeploymentAnnotations }}
-  {{ toYaml . | indent 2 }}
-  {{- end }}
+{{ if eq .Values.installMode "Hosted" }}
+    addon.open-cluster-management.io/hosted-manifest-location: hosting
+{{ end }}
+{{ with .Values.agentDeploymentAnnotations }}
+{{ toYaml . | nindent 4 }}
+{{ end }}
 spec:
   replicas: {{ .Values.replicas }}
   selector:
@@ -16,9 +24,9 @@ spec:
   template:
     metadata:
       annotations:
-      {{- with .Values.agentDeploymentAnnotations }}
-      {{ toYaml . | indent 2 }}
-      {{- end }}
+{{ with .Values.agentDeploymentAnnotations }}
+{{ toYaml . | nindent 8 }}
+{{ end }}
         target.workload.openshift.io/management: '{"effect": "PreferredDuringScheduling"}'
       labels:
         open-cluster-management.io/addon: cluster-proxy
@@ -115,6 +123,9 @@ spec:
             {{- range .Values.addonAgentArgs }}
             - {{ . }}
             {{- end }}
+            {{- if eq .Values.installMode "Hosted" }}
+            - --spoke-kubeconfig=/etc/managed/kubeconfig
+            {{- end }}
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -130,12 +141,17 @@ spec:
             - name: hub
               mountPath: /etc/tls
               readOnly: true
+            {{- if eq .Values.installMode "Hosted" }}
+            - name: managed-kubeconfig
+              mountPath: /etc/managed
+              readOnly: true
+            {{- end }}
           env:
             - name: POD_NAMESPACE
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
-        {{- if .Values.enableServiceProxy }}
+        {{- if $enableServiceProxy }}
         - name: service-proxy
           {{- $reverseResourceRequirements := reverse .Values.global.resourceRequirements }}
           {{- range $item := $reverseResourceRequirements }}
@@ -158,6 +174,10 @@ spec:
             - --cert=/server-cert/tls.crt
             - --key=/server-cert/tls.key
             - --hub-kubeconfig=/etc/kubeconfig/kubeconfig
+            {{- if eq .Values.installMode "Hosted" }}
+            - --managed-kubeconfig=/etc/managed/kubeconfig
+            - --hosted-service-proxy-mode={{ .Values.hostedServiceProxyMode }}
+            {{- end }}
             {{- range .Values.additionalServiceProxyArgs }}
             - {{ . }}
             {{- end }}
@@ -190,11 +210,51 @@ spec:
             - name: service-proxy-server-cert
               mountPath: /server-cert
               readOnly: true
+            {{- if eq .Values.installMode "Hosted" }}
+            - name: managed-kubeconfig
+              mountPath: /etc/managed
+              readOnly: true
+            {{- end }}
           env:
             - name: POD_NAMESPACE
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+        {{- end }}
+        {{- if and .Values.enableKubeApiProxy (eq .Values.installMode "Hosted") }}
+        - name: managed-apiserver-proxy
+          {{- $reverseResourceRequirements := reverse .Values.global.resourceRequirements }}
+          {{- range $item := $reverseResourceRequirements }}
+            {{- if regexMatch $item.containerIDRegex "deployments:cluster-proxy-proxy-agent:managed-apiserver-proxy" }}
+          resources:
+              {{- toYaml $item.resources | nindent 12 }}
+              {{- break -}}
+            {{- end -}}
+          {{- end }}
+          image: {{ .Values.registry }}/{{ .Values.image }}:{{ .Values.tag }}
+          imagePullPolicy: IfNotPresent
+          command:
+            - /cluster-proxy
+          args:
+            - managed-apiserver-proxy
+            - --managed-kubeconfig=/etc/managed/kubeconfig
+            - --listen=:8443
+            - --health-probe-bind-address=:8001
+          ports:
+            - name: managed-api
+              containerPort: 8443
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            privileged: false
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: managed-kubeconfig
+              mountPath: /etc/managed
+              readOnly: true
         {{- end }}
       volumes:
         - name: ca
@@ -206,7 +266,12 @@ spec:
         - name: hub-kubeconfig
           secret:
             secretName: cluster-proxy-hub-kubeconfig
-        {{- if .Values.enableServiceProxy }}
+        {{- if eq .Values.installMode "Hosted" }}
+        - name: managed-kubeconfig
+          secret:
+            secretName: {{ .Values.managedKubeConfigSecret }}
+        {{- end }}
+        {{- if $enableServiceProxy }}
         {{- if .Values.additionalServiceCAConfigMap }}
         - name: additional-service-ca
           configMap:

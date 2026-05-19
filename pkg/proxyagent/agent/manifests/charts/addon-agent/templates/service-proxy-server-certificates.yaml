@@ -1,11 +1,19 @@
-{{- if .Values.enableServiceProxy }}
+{{- $validHostedServiceProxyModes := list "Disabled" "BestEffort" "Relay" -}}
+{{- if and (eq .Values.installMode "Hosted") (not (has .Values.hostedServiceProxyMode $validHostedServiceProxyModes)) -}}
+{{- fail (printf "hostedServiceProxyMode must be one of Disabled, BestEffort, or Relay; got %q" .Values.hostedServiceProxyMode) -}}
+{{- end -}}
+{{- $enableServiceProxy := and .Values.enableServiceProxy (or (ne .Values.installMode "Hosted") (or (eq .Values.hostedServiceProxyMode "BestEffort") (eq .Values.hostedServiceProxyMode "Relay"))) -}}
+{{- if $enableServiceProxy }}
 apiVersion: v1
 kind: Secret
 metadata:
   namespace: {{ .Release.Namespace }}
   name: cluster-proxy-service-proxy-server-certificates
+{{ if eq .Values.installMode "Hosted" }}
+  annotations:
+    addon.open-cluster-management.io/hosted-manifest-location: hosting
+{{ end }}
 data:
   "tls.crt": {{ .Values.serviceProxySecretCert }}
   "tls.key": {{ .Values.serviceProxySecretKey }}
 {{- end }}
-

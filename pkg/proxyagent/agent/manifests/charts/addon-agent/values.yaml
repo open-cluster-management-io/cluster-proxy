@@ -1,4 +1,5 @@
 clusterName: loopback
+installMode: Default
 
 agentDeploymentName: cluster-proxy-proxy-agent
 
@@ -19,6 +20,16 @@ replicas: 1
 spokeAddonNamespace: "open-cluster-management-cluster-proxy"
 additionalProxyAgentArgs: []
 additionalServiceProxyArgs: []
+
+externalManagedKubeConfigSecretNamespace: ""
+externalManagedKubeConfigSecretName: external-managed-kubeconfig
+managedKubeConfigSecret: cluster-proxy-managed-kubeconfig
+managedKubeConfigTokenExpiration: 24h
+managedKubeConfigRefreshBefore: 1h
+managedKubeConfigSyncInterval: 5m
+hostedServiceProxyMode: Disabled
+serviceRelayName: cluster-proxy-service-relay
+serviceRelayPort: 7444
 
 agentDeploymentAnnotations: {}
 
