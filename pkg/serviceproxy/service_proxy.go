@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -365,8 +366,12 @@ func (s *serviceProxy) processAuthentication(ctx context.Context, req *http.Requ
 	// try managed cluster authentication first
 	managedClusterResp, managedClusterAuthenticated, err := s.managedClusterAuthenticator.AuthenticateToken(ctx, token)
 	if err != nil {
-		logger.Error(err, "managed cluster authentication failed")
-		return fmt.Errorf("managed cluster authentication failed: %v", err)
+		if errors.Is(err, ErrTokenNotAuthenticated) {
+			logger.V(4).Info("managed cluster token not authenticated, trying hub", "error", err)
+			managedClusterAuthenticated = false
+		} else {
+			return fmt.Errorf("managed cluster authentication failed: %v", err)
+		}
 	}
 
 	if managedClusterAuthenticated {
@@ -383,8 +388,13 @@ func (s *serviceProxy) processAuthentication(ctx context.Context, req *http.Requ
 		// try hub authentication
 		hubResp, hubAuthenticated, err := s.hubAuthenticator.AuthenticateToken(ctx, token)
 		if err != nil {
-			logger.Error(err, "hub cluster authentication failed")
-			return fmt.Errorf("authentication failed: managed cluster auth: not authenticated, hub cluster auth error: %v", err)
+			if errors.Is(err, ErrTokenNotAuthenticated) {
+				logger.V(4).Info("hub cluster token not authenticated", "error", err)
+				hubAuthenticated = false
+			} else {
+				logger.Error(err, "hub cluster authentication failed")
+				return fmt.Errorf("authentication failed: managed cluster auth: not authenticated, hub cluster auth error: %v", err)
+			}
 		}
 		logger.V(4).Info("hub cluster authentication result",
 			"authenticated", hubAuthenticated,

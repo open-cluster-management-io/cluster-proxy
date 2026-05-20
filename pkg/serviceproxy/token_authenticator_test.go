@@ -2,6 +2,7 @@ package serviceproxy
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -72,7 +73,7 @@ func TestTokenReviewAuthenticator_Unauthenticated(t *testing.T) {
 
 func TestProcessAuthentication_ManagedClusterToken(t *testing.T) {
 	s := &serviceProxy{
-		enableImpersonation:         true,
+		enableImpersonation: true,
 		managedClusterAuthenticator: authenticator.TokenFunc(func(ctx context.Context, token string) (*authenticator.Response, bool, error) {
 			return &authenticator.Response{User: &user.DefaultInfo{Name: "mc-user"}}, true, nil
 		}),
@@ -281,19 +282,66 @@ func TestTokenReviewAuthenticator_APIError(t *testing.T) {
 	}
 }
 
-func TestTokenReviewAuthenticator_StatusError(t *testing.T) {
+func TestTokenReviewAuthenticator_StatusError_KnownRejection(t *testing.T) {
+	tests := []struct {
+		name        string
+		statusError string
+	}{
+		{
+			name:        "Kubernetes: invalid bearer token",
+			statusError: "invalid bearer token",
+		},
+		{
+			name:        "OpenShift: invalid bearer token with token lookup failed",
+			statusError: "[invalid bearer token, token lookup failed]",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := fake.NewSimpleClientset()
+			client.PrependReactor("create", "tokenreviews", func(action k8stesting.Action) (bool, runtime.Object, error) {
+				return true, &authenticationv1.TokenReview{
+					Status: authenticationv1.TokenReviewStatus{
+						Authenticated: false,
+						Error:         tt.statusError,
+					},
+				}, nil
+			})
+
+			authn := &tokenReviewAuthenticator{client: client, name: "test"}
+			resp, ok, err := authn.AuthenticateToken(context.Background(), "bad-token")
+			if err == nil {
+				t.Fatal("expected error when Status.Error is set")
+			}
+			if ok {
+				t.Fatal("expected authenticated=false")
+			}
+			if resp != nil {
+				t.Fatal("expected nil response")
+			}
+			if !errors.Is(err, ErrTokenNotAuthenticated) {
+				t.Fatalf("expected ErrTokenNotAuthenticated, got: %v", err)
+			}
+			if !strings.Contains(err.Error(), tt.statusError) {
+				t.Fatalf("expected Status.Error in error message, got: %v", err)
+			}
+		})
+	}
+}
+
+func TestTokenReviewAuthenticator_StatusError_UnknownError(t *testing.T) {
 	client := fake.NewSimpleClientset()
 	client.PrependReactor("create", "tokenreviews", func(action k8stesting.Action) (bool, runtime.Object, error) {
 		return true, &authenticationv1.TokenReview{
 			Status: authenticationv1.TokenReviewStatus{
 				Authenticated: false,
-				Error:         "Credentials are expired",
+				Error:         "webhook authenticator connection reset",
 			},
 		}, nil
 	})
 
 	authn := &tokenReviewAuthenticator{client: client, name: "test"}
-	resp, ok, err := authn.AuthenticateToken(context.Background(), "expired-token")
+	resp, ok, err := authn.AuthenticateToken(context.Background(), "some-token")
 	if err == nil {
 		t.Fatal("expected error when Status.Error is set")
 	}
@@ -303,7 +351,10 @@ func TestTokenReviewAuthenticator_StatusError(t *testing.T) {
 	if resp != nil {
 		t.Fatal("expected nil response")
 	}
-	if !strings.Contains(err.Error(), "Credentials are expired") {
+	if errors.Is(err, ErrTokenNotAuthenticated) {
+		t.Fatal("unknown Status.Error should NOT be wrapped with ErrTokenNotAuthenticated")
+	}
+	if !strings.Contains(err.Error(), "webhook authenticator connection reset") {
 		t.Fatalf("expected Status.Error in error message, got: %v", err)
 	}
 }
@@ -339,15 +390,14 @@ func TestProcessAuthentication_GetImpersonateTokenError(t *testing.T) {
 	}
 }
 
-func TestProcessAuthentication_ManagedClusterAuthError(t *testing.T) {
-	hubCalled := false
+func TestProcessAuthentication_ManagedClusterFatalError(t *testing.T) {
 	s := &serviceProxy{
 		enableImpersonation: true,
 		managedClusterAuthenticator: authenticator.TokenFunc(func(ctx context.Context, token string) (*authenticator.Response, bool, error) {
 			return nil, false, fmt.Errorf("apiserver unreachable")
 		}),
 		hubAuthenticator: authenticator.TokenFunc(func(ctx context.Context, token string) (*authenticator.Response, bool, error) {
-			hubCalled = true
+			t.Fatal("hub authenticator should not be called for fatal managed cluster errors")
 			return nil, false, nil
 		}),
 	}
@@ -357,25 +407,61 @@ func TestProcessAuthentication_ManagedClusterAuthError(t *testing.T) {
 
 	err := s.processAuthentication(context.Background(), req)
 	if err == nil {
-		t.Fatal("expected error")
+		t.Fatal("expected fatal error when managed cluster auth has infrastructure failure")
 	}
-	if !strings.Contains(err.Error(), "managed cluster authentication failed") {
-		t.Fatalf("expected managed cluster error, got: %v", err)
+	if !strings.Contains(err.Error(), "apiserver unreachable") {
+		t.Fatalf("expected original error preserved, got: %v", err)
 	}
-	if hubCalled {
-		t.Fatal("hub authenticator should not be called when managed cluster auth errors")
+}
+
+func TestProcessAuthentication_OpenShiftTokenReviewError_FallsBackToHub(t *testing.T) {
+	s := &serviceProxy{
+		enableImpersonation: true,
+		managedClusterAuthenticator: authenticator.TokenFunc(func(ctx context.Context, token string) (*authenticator.Response, bool, error) {
+			return nil, false, fmt.Errorf(
+				"managed cluster TokenReview: invalid bearer token, token lookup failed: %w",
+				ErrTokenNotAuthenticated,
+			)
+		}),
+		hubAuthenticator: authenticator.TokenFunc(func(ctx context.Context, token string) (*authenticator.Response, bool, error) {
+			return &authenticator.Response{
+				User: &user.DefaultInfo{
+					Name:   "kube:admin",
+					Groups: []string{"system:cluster-admins", "system:authenticated"},
+				},
+			}, true, nil
+		}),
+		getImpersonateTokenFunc: func() (string, error) {
+			return "fake-sa-token", nil
+		},
+	}
+
+	req, _ := http.NewRequest("GET", "https://example.com/api", nil)
+	req.Header.Set("Authorization", "Bearer hub-only-token")
+
+	err := s.processAuthentication(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if req.Header.Get("Impersonate-User") != "kube:admin" {
+		t.Fatalf("expected impersonate user 'kube:admin', got '%s'", req.Header.Get("Impersonate-User"))
+	}
+	if req.Header.Get("Authorization") != "Bearer fake-sa-token" {
+		t.Fatalf("expected authorization header to use impersonation token, got '%s'", req.Header.Get("Authorization"))
 	}
 }
 
 func TestProcessAuthentication_HubAuthError(t *testing.T) {
 	s := &serviceProxy{
 		enableImpersonation: true,
-		managedClusterAuthenticator: authenticator.TokenFunc(func(ctx context.Context, token string) (*authenticator.Response, bool, error) {
-			return nil, false, nil // not a managed cluster token
-		}),
-		hubAuthenticator: authenticator.TokenFunc(func(ctx context.Context, token string) (*authenticator.Response, bool, error) {
-			return nil, false, fmt.Errorf("hub apiserver timeout")
-		}),
+		managedClusterAuthenticator: authenticator.TokenFunc(
+			func(ctx context.Context, token string) (*authenticator.Response, bool, error) {
+				return nil, false, nil // not a managed cluster token
+			}),
+		hubAuthenticator: authenticator.TokenFunc(
+			func(ctx context.Context, token string) (*authenticator.Response, bool, error) {
+				return nil, false, fmt.Errorf("hub apiserver timeout")
+			}),
 	}
 
 	req, _ := http.NewRequest("GET", "https://example.com/api", nil)

@@ -2,7 +2,9 @@ package serviceproxy
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 
 	authenticationv1 "k8s.io/api/authentication/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -11,6 +13,31 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 )
+
+// ErrTokenNotAuthenticated is returned when a TokenReview explicitly rejects a
+// token with a known authentication error. Callers use errors.Is to distinguish
+// this from infrastructure errors (network, TLS, etc.).
+var ErrTokenNotAuthenticated = errors.New("token not authenticated")
+
+// authRejectionPatterns contains substrings of TokenReview Status.Error that
+// indicate the token was rejected by the authenticator. Observed from:
+//   - Kubernetes v1.35: "invalid bearer token"
+//   - OpenShift 4.x:    "[invalid bearer token, token lookup failed]"
+var authRejectionPatterns = []string{
+	"invalid bearer token",
+}
+
+// isAuthRejection reports whether a TokenReview Status.Error indicates an
+// authentication rejection rather than an infrastructure failure.
+func isAuthRejection(statusError string) bool {
+	lower := strings.ToLower(statusError)
+	for _, pattern := range authRejectionPatterns {
+		if strings.Contains(lower, pattern) {
+			return true
+		}
+	}
+	return false
+}
 
 // tokenReviewAuthenticator implements authenticator.Token by calling the
 // Kubernetes TokenReview API against a specific cluster.
@@ -40,10 +67,14 @@ func (a *tokenReviewAuthenticator) AuthenticateToken(ctx context.Context, token 
 		"groups", tokenReview.Status.User.Groups,
 	)
 
-	if !tokenReview.Status.Authenticated {
-		if tokenReview.Status.Error != "" {
-			return nil, false, fmt.Errorf("%s TokenReview error: %s", a.name, tokenReview.Status.Error)
+	if tokenReview.Status.Error != "" {
+		if isAuthRejection(tokenReview.Status.Error) {
+			return nil, false, fmt.Errorf("%s TokenReview: %s: %w", a.name, tokenReview.Status.Error, ErrTokenNotAuthenticated)
 		}
+		return nil, false, fmt.Errorf("%s TokenReview: %s", a.name, tokenReview.Status.Error)
+	}
+
+	if !tokenReview.Status.Authenticated {
 		return nil, false, nil
 	}
 
