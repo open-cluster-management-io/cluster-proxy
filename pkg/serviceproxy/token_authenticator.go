@@ -22,9 +22,15 @@ var ErrTokenNotAuthenticated = errors.New("token not authenticated")
 // authRejectionPatterns contains substrings of TokenReview Status.Error that
 // indicate the token was rejected by the authenticator. Observed from:
 //   - Kubernetes v1.35: "invalid bearer token"
+//   - Kubernetes service account token authenticator: "service account token has expired"
+//   - Kubernetes OIDC token authenticator: "oidc: token is expired"
 //   - OpenShift 4.x:    "[invalid bearer token, token lookup failed]"
+//   - OpenShift OAuth API server: "token is expired"
 var authRejectionPatterns = []string{
 	"invalid bearer token",
+	"service account token has expired",
+	"oidc: token is expired",
+	"token is expired",
 }
 
 // isAuthRejection reports whether a TokenReview Status.Error indicates an
