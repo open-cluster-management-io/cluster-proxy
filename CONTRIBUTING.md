@@ -43,9 +43,17 @@ The Open Cluster Management project has adopted the CNCF Code of Conduct. Refer 
 
 Anyone can comment on issues and submit reviews for pull requests. In order to be assigned an issue or pull request, you can leave a `/assign <your Github ID>` comment on the issue or pull request (PR).
 
-## Pre-check before submitting a PR 
+## Pre-check before submitting a PR
 <!-- Customize this template for your repository -->
 
 Before submitting a PR, please perform the following steps:
 
-- List of steps to perform before submitting a PR.
+- Run `make build`.
+- Run `make verify`.
+- Run `make test`.
+- Run `make test-integration` for controller or manifest behavior changes.
+- Run `make test-e2e` for user-facing proxy behavior changes.
+
+Use these make targets as the official test interface. A raw `go test ./...`
+does not include generated manifests, envtest asset setup, linting, or the e2e
+packaging used by CI.
