@@ -10,6 +10,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 )
@@ -45,11 +46,14 @@ var _ = Describe("TLS Profile Test", Serial, Label("tls", "profile", "configurat
 					originalConfigMapData[k] = v
 				}
 				fmt.Fprintf(GinkgoWriter, "[INFO] Saved original TLS ConfigMap: %v\n", originalConfigMapData)
-			} else {
+			} else if apierrors.IsNotFound(err) {
 				// ConfigMap doesn't exist
 				configMapExisted = false
 				originalConfigMapData = nil
 				fmt.Fprintf(GinkgoWriter, "[INFO] TLS ConfigMap does not exist before test\n")
+			} else {
+				// Real API error
+				Fail(fmt.Sprintf("Failed to get TLS ConfigMap in BeforeEach: %v", err))
 			}
 		})
 
@@ -61,27 +65,26 @@ var _ = Describe("TLS Profile Test", Serial, Label("tls", "profile", "configurat
 				Namespace: namespace,
 				Name:      "cluster-proxy",
 			}, deploy)
-			if err == nil {
-				generationBeforeCleanup = deploy.Generation
-				fmt.Fprintf(GinkgoWriter, "[INFO] Deployment generation before cleanup: %d\n", generationBeforeCleanup)
-			}
+			Expect(err).ToNot(HaveOccurred(), "Failed to get deployment before cleanup")
+			generationBeforeCleanup = deploy.Generation
+			fmt.Fprintf(GinkgoWriter, "[INFO] Deployment generation before cleanup: %d\n", generationBeforeCleanup)
 
 			By("Restoring original TLS ConfigMap state")
 			if configMapExisted {
 				// Restore original ConfigMap data
 				configMap, err := hubKubeClient.CoreV1().ConfigMaps(namespace).Get(context.TODO(), tlsConfigMapName, metav1.GetOptions{})
-				if err == nil {
-					configMap.Data = originalConfigMapData
-					_, err = hubKubeClient.CoreV1().ConfigMaps(namespace).Update(context.TODO(), configMap, metav1.UpdateOptions{})
-					Expect(err).ToNot(HaveOccurred())
-					fmt.Fprintf(GinkgoWriter, "[INFO] Restored original TLS ConfigMap: %v\n", originalConfigMapData)
-				}
+				Expect(err).ToNot(HaveOccurred(), "Failed to get ConfigMap for restore")
+				configMap.Data = originalConfigMapData
+				_, err = hubKubeClient.CoreV1().ConfigMaps(namespace).Update(context.TODO(), configMap, metav1.UpdateOptions{})
+				Expect(err).ToNot(HaveOccurred(), "Failed to restore ConfigMap")
+				fmt.Fprintf(GinkgoWriter, "[INFO] Restored original TLS ConfigMap: %v\n", originalConfigMapData)
 			} else {
 				// ConfigMap didn't exist before, delete it
 				err := hubKubeClient.CoreV1().ConfigMaps(namespace).Delete(context.TODO(), tlsConfigMapName, metav1.DeleteOptions{})
-				if err == nil {
-					fmt.Fprintf(GinkgoWriter, "[INFO] Deleted TLS ConfigMap (it didn't exist before test)\n")
+				if err != nil && !apierrors.IsNotFound(err) {
+					Fail(fmt.Sprintf("Failed to delete ConfigMap in cleanup: %v", err))
 				}
+				fmt.Fprintf(GinkgoWriter, "[INFO] Deleted TLS ConfigMap (it didn't exist before test)\n")
 			}
 
 			By("Waiting for deployment to be reconciled after ConfigMap cleanup")
