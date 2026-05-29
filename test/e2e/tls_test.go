@@ -108,7 +108,7 @@ var _ = Describe("TLS Profile Test", Serial, Label("tls", "profile", "configurat
 				}
 				fmt.Fprintf(GinkgoWriter, "[DEBUG] proxy-server container not found\n")
 				return false
-			}).WithTimeout(2 * time.Minute).WithPolling(5 * time.Second).Should(BeTrue(),
+			}).WithTimeout(2*time.Minute).WithPolling(5*time.Second).Should(BeTrue(),
 				"Deployment should be updated with --tls-min-version flag within 2 minutes")
 		})
 
@@ -142,7 +142,7 @@ var _ = Describe("TLS Profile Test", Serial, Label("tls", "profile", "configurat
 					return false
 				}
 				return deploy.Status.AvailableReplicas >= 1 && deploy.Status.ReadyReplicas >= 1
-			}).WithTimeout(2 * time.Minute).WithPolling(5 * time.Second).Should(BeTrue(),
+			}).WithTimeout(2*time.Minute).WithPolling(5*time.Second).Should(BeTrue(),
 				"Deployment should stabilize after ConfigMap cleanup")
 		})
 
