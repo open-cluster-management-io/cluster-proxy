@@ -33,6 +33,11 @@ var _ = Describe("TLS Profile Test", Serial, Label("tls", "profile", "configurat
 		)
 
 		BeforeEach(func() {
+			// Reset variables for clean state
+			originalConfigMapData = nil
+			configMapExisted = false
+			proxyServerDeploy = nil
+
 			By("Saving original TLS ConfigMap state")
 			existingConfigMap, err := hubKubeClient.CoreV1().ConfigMaps(namespace).Get(context.TODO(), tlsConfigMapName, metav1.GetOptions{})
 			if err == nil {
