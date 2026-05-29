@@ -54,6 +54,18 @@ var _ = Describe("TLS Profile Test", Serial, Label("tls", "profile", "configurat
 		})
 
 		AfterEach(func() {
+			By("Capturing deployment generation before ConfigMap cleanup")
+			var generationBeforeCleanup int64
+			deploy := &appsv1.Deployment{}
+			err := hubRuntimeClient.Get(context.TODO(), types.NamespacedName{
+				Namespace: namespace,
+				Name:      "cluster-proxy",
+			}, deploy)
+			if err == nil {
+				generationBeforeCleanup = deploy.Generation
+				fmt.Fprintf(GinkgoWriter, "[INFO] Deployment generation before cleanup: %d\n", generationBeforeCleanup)
+			}
+
 			By("Restoring original TLS ConfigMap state")
 			if configMapExisted {
 				// Restore original ConfigMap data
@@ -72,7 +84,27 @@ var _ = Describe("TLS Profile Test", Serial, Label("tls", "profile", "configurat
 				}
 			}
 
-			By("Waiting for deployment to stabilize after ConfigMap cleanup")
+			By("Waiting for deployment to be reconciled after ConfigMap cleanup")
+			Eventually(func() bool {
+				deploy := &appsv1.Deployment{}
+				err := hubRuntimeClient.Get(context.TODO(), types.NamespacedName{
+					Namespace: namespace,
+					Name:      "cluster-proxy",
+				}, deploy)
+				if err != nil {
+					return false
+				}
+				// Generation increments when spec changes, proving reconciliation happened
+				if deploy.Generation > generationBeforeCleanup {
+					fmt.Fprintf(GinkgoWriter, "[INFO] Deployment generation after cleanup: %d (changed from %d)\n",
+						deploy.Generation, generationBeforeCleanup)
+					return true
+				}
+				return false
+			}).WithTimeout(4*time.Minute).WithPolling(5*time.Second).Should(BeTrue(),
+				"Deployment should be reconciled after ConfigMap cleanup")
+
+			By("Waiting for deployment to be ready after reconciliation")
 			Eventually(func() bool {
 				deploy := &appsv1.Deployment{}
 				err := hubRuntimeClient.Get(context.TODO(), types.NamespacedName{
@@ -84,7 +116,7 @@ var _ = Describe("TLS Profile Test", Serial, Label("tls", "profile", "configurat
 				}
 				return deploy.Status.AvailableReplicas >= 1 && deploy.Status.ReadyReplicas >= 1
 			}).WithTimeout(4*time.Minute).WithPolling(5*time.Second).Should(BeTrue(),
-				"Deployment should stabilize after ConfigMap cleanup")
+				"Deployment should be ready after reconciliation")
 		})
 
 		It("should apply TLS 1.2 with cipher suites from ConfigMap", Label("tls", "flags", "tls12"), func() {
