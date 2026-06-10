@@ -97,22 +97,17 @@ func main() {
 		panic(fmt.Sprintf("Pod namespace is empty, please set the ENV for %s", envKeyPodNamespace))
 	}
 
-	var leaseUpdater lease.LeaseUpdater
+	var healthCheckFuncs []func() bool
 	if enableProxyAgentHealthCheck {
 		klog.Infof("Proxy-agent health check enabled, lease will only update when proxy-agent is connected")
-		leaseUpdater = lease.NewLeaseUpdater(
-			spokeClient,
-			common.AddonName,
-			addonAgentNamespace,
-			checkProxyAgentReadiness(),
-		).WithHubLeaseConfig(cfg, clusterName)
-	} else {
-		leaseUpdater = lease.NewLeaseUpdater(
-			spokeClient,
-			common.AddonName,
-			addonAgentNamespace,
-		).WithHubLeaseConfig(cfg, clusterName)
+		healthCheckFuncs = []func() bool{checkProxyAgentReadiness()}
 	}
+	leaseUpdater := lease.NewLeaseUpdater(
+		spokeClient,
+		common.AddonName,
+		addonAgentNamespace,
+		healthCheckFuncs...,
+	).WithHubLeaseConfig(cfg, clusterName)
 
 	ctx := context.Background()
 
