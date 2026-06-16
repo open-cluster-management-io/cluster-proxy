@@ -114,15 +114,34 @@ func TestTLSConfigHash_EmptyConfig(t *testing.T) {
 }
 
 func TestProxyServerArgs_WithMinVersion(t *testing.T) {
-	tlsConfig := &sdktls.TLSConfig{
-		MinVersion: tls.VersionTLS12,
+	tests := []struct {
+		name       string
+		minVersion uint16
+		expected   string
+	}{
+		{
+			name:       "TLS12",
+			minVersion: tls.VersionTLS12,
+			expected:   "--tls-min-version=VersionTLS12",
+		},
+		{
+			name:       "TLS13",
+			minVersion: tls.VersionTLS13,
+			expected:   "--tls-min-version=VersionTLS13",
+		},
 	}
-	args := proxyServerArgs(newTestConfig(3), tlsConfig)
 
-	expected := append(append([]string{}, baseArgs...),
-		"--tls-min-version="+sdktls.VersionToString(tlsConfig.MinVersion),
-	)
-	assert.Equal(t, expected, args)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tlsConfig := &sdktls.TLSConfig{
+				MinVersion: tt.minVersion,
+			}
+			args := proxyServerArgs(newTestConfig(3), tlsConfig)
+
+			expected := append(append([]string{}, baseArgs...), tt.expected)
+			assert.Equal(t, expected, args)
+		})
+	}
 }
 
 func TestProxyServerArgs_WithMinVersionAndCipherSuites(t *testing.T) {
@@ -137,22 +156,4 @@ func TestProxyServerArgs_WithMinVersionAndCipherSuites(t *testing.T) {
 		"--tls-min-version="+sdktls.VersionToString(tlsConfig.MinVersion),
 	)
 	assert.Equal(t, expected, args)
-}
-
-func TestProxyServerArgs_WithTLS12(t *testing.T) {
-	tlsConfig := &sdktls.TLSConfig{
-		MinVersion: tls.VersionTLS12,
-	}
-	args := proxyServerArgs(newTestConfig(3), tlsConfig)
-
-	assert.Contains(t, args, "--tls-min-version=VersionTLS12")
-}
-
-func TestProxyServerArgs_WithTLS13(t *testing.T) {
-	tlsConfig := &sdktls.TLSConfig{
-		MinVersion: tls.VersionTLS13,
-	}
-	args := proxyServerArgs(newTestConfig(3), tlsConfig)
-
-	assert.Contains(t, args, "--tls-min-version=VersionTLS13")
 }
