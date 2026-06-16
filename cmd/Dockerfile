@@ -9,10 +9,10 @@ ARG APISERVER_NETWORK_PROXY_VERSION=0.30.2
 ARG KUBECTL_VERSION=v1.30.2
 ARG ADDON_AGENT_IMAGE_NAME
 
+ENV CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH}
+
 # Build Apiserver-network-proxy binaries
-RUN set -eux; \
-      export GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-$(go env GOHOSTARCH)} CGO_ENABLED=0; \
-      wget https://github.com/kubernetes-sigs/apiserver-network-proxy/archive/refs/tags/v${APISERVER_NETWORK_PROXY_VERSION}.tar.gz \
+RUN wget https://github.com/kubernetes-sigs/apiserver-network-proxy/archive/refs/tags/v${APISERVER_NETWORK_PROXY_VERSION}.tar.gz \
       && tar xzvf v${APISERVER_NETWORK_PROXY_VERSION}.tar.gz \
       && cd apiserver-network-proxy-${APISERVER_NETWORK_PROXY_VERSION} \
       && go build -o /workspace/proxy-server ./cmd/server/ \
@@ -35,13 +35,11 @@ COPY cmd/ cmd/
 COPY pkg pkg/
 
 # Build addons
-RUN set -eux; \
-      export GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-$(go env GOHOSTARCH)} CGO_ENABLED=0; \
-      go build -a -o agent cmd/addon-agent/main.go; \
-      go build -a \
+RUN go build -a -o agent cmd/addon-agent/main.go
+RUN go build -a \
         -ldflags="-X 'open-cluster-management.io/cluster-proxy/pkg/config.AgentImageName=${ADDON_AGENT_IMAGE_NAME}'" \
-        -o manager cmd/addon-manager/main.go; \
-      go build -a -o cluster-proxy cmd/cluster-proxy/main.go
+        -o manager cmd/addon-manager/main.go
+RUN go build -a -o cluster-proxy cmd/cluster-proxy/main.go
 
 # Use Alpine as a minimal base image to package the static binaries.
 FROM alpine:3.21
