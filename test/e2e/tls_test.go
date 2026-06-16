@@ -3,6 +3,9 @@ package e2e
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -13,18 +16,15 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+
+	sdktls "open-cluster-management.io/sdk-go/pkg/tls"
 )
 
-// TLS Profile Test runs serially (after all parallel tests complete) because it
-// creates/modifies the ocm-tls-profile ConfigMap, which triggers the cluster-proxy
-// deployment to restart with new TLS settings. Running this concurrently with other
-// tests (especially connectivity tests) would cause those tests to fail when the
-// proxy restarts. The test properly cleans up by restoring the original ConfigMap
-// state in AfterEach.
+// TLS Profile Test runs serially because it mutates the ocm-tls-profile ConfigMap,
+// which restarts the cluster-proxy deployment and would break concurrent connectivity tests.
 var _ = Describe("TLS Profile Test", Serial, Label("tls", "profile", "configuration"),
 	func() {
-		const tlsConfigMapName = "ocm-tls-profile"
-		const namespace = "open-cluster-management-addon"
+		const tlsConfigMapName = sdktls.ConfigMapName
 
 		var (
 			originalConfigMapData map[string]string
@@ -32,264 +32,183 @@ var _ = Describe("TLS Profile Test", Serial, Label("tls", "profile", "configurat
 		)
 
 		BeforeEach(func() {
-			// Reset variables for clean state
 			originalConfigMapData = nil
 			configMapExisted = false
 
 			By("Saving original TLS ConfigMap state")
-			existingConfigMap, err := hubKubeClient.CoreV1().ConfigMaps(namespace).Get(context.TODO(), tlsConfigMapName, metav1.GetOptions{})
-			if err == nil {
-				// ConfigMap exists, save its data
+			existing, err := hubKubeClient.CoreV1().ConfigMaps(hubInstallNamespace).Get(context.TODO(), tlsConfigMapName, metav1.GetOptions{})
+			switch {
+			case err == nil:
 				configMapExisted = true
-				originalConfigMapData = make(map[string]string)
-				for k, v := range existingConfigMap.Data {
-					originalConfigMapData[k] = v
-				}
-				fmt.Fprintf(GinkgoWriter, "[INFO] Saved original TLS ConfigMap: %v\n", originalConfigMapData)
-			} else if apierrors.IsNotFound(err) {
-				// ConfigMap doesn't exist
-				configMapExisted = false
-				originalConfigMapData = nil
-				fmt.Fprintf(GinkgoWriter, "[INFO] TLS ConfigMap does not exist before test\n")
-			} else {
-				// Real API error
-				Fail(fmt.Sprintf("Failed to get TLS ConfigMap in BeforeEach: %v", err))
+				originalConfigMapData = maps.Clone(existing.Data)
+			case apierrors.IsNotFound(err):
+				// ConfigMap does not exist before the test; nothing to save.
+			default:
+				Expect(err).ToNot(HaveOccurred(), "Failed to get TLS ConfigMap in BeforeEach")
 			}
 		})
 
 		AfterEach(func() {
 			By("Capturing deployment generation before ConfigMap cleanup")
-			var generationBeforeCleanup int64
-			deploy := &appsv1.Deployment{}
-			err := hubRuntimeClient.Get(context.TODO(), types.NamespacedName{
-				Namespace: namespace,
-				Name:      "cluster-proxy",
-			}, deploy)
+			deploy, err := getProxyServerDeployment()
 			Expect(err).ToNot(HaveOccurred(), "Failed to get deployment before cleanup")
-			generationBeforeCleanup = deploy.Generation
-			fmt.Fprintf(GinkgoWriter, "[INFO] Deployment generation before cleanup: %d\n", generationBeforeCleanup)
+			generationBeforeCleanup := deploy.Generation
 
+			var expectedData map[string]string
 			By("Restoring original TLS ConfigMap state")
 			if configMapExisted {
-				// Restore original ConfigMap data
-				configMap, err := hubKubeClient.CoreV1().ConfigMaps(namespace).Get(context.TODO(), tlsConfigMapName, metav1.GetOptions{})
-				Expect(err).ToNot(HaveOccurred(), "Failed to get ConfigMap for restore")
-				configMap.Data = originalConfigMapData
-				_, err = hubKubeClient.CoreV1().ConfigMaps(namespace).Update(context.TODO(), configMap, metav1.UpdateOptions{})
-				Expect(err).ToNot(HaveOccurred(), "Failed to restore ConfigMap")
-				fmt.Fprintf(GinkgoWriter, "[INFO] Restored original TLS ConfigMap: %v\n", originalConfigMapData)
+				applyTLSProfile(tlsConfigMapName, originalConfigMapData)
+				expectedData = originalConfigMapData
 			} else {
-				// ConfigMap didn't exist before, delete it
-				err := hubKubeClient.CoreV1().ConfigMaps(namespace).Delete(context.TODO(), tlsConfigMapName, metav1.DeleteOptions{})
+				err := hubKubeClient.CoreV1().ConfigMaps(hubInstallNamespace).Delete(context.TODO(), tlsConfigMapName, metav1.DeleteOptions{})
 				if err != nil && !apierrors.IsNotFound(err) {
-					Fail(fmt.Sprintf("Failed to delete ConfigMap in cleanup: %v", err))
+					Expect(err).ToNot(HaveOccurred(), "Failed to delete ConfigMap in cleanup")
 				}
-				fmt.Fprintf(GinkgoWriter, "[INFO] Deleted TLS ConfigMap (it didn't exist before test)\n")
 			}
 
 			By("Waiting for deployment to be reconciled after ConfigMap cleanup")
-			Eventually(func() bool {
-				deploy := &appsv1.Deployment{}
-				err := hubRuntimeClient.Get(context.TODO(), types.NamespacedName{
-					Namespace: namespace,
-					Name:      "cluster-proxy",
-				}, deploy)
-				if err != nil {
-					return false
-				}
-				// Generation increments when spec changes, proving reconciliation happened
-				if deploy.Generation > generationBeforeCleanup {
-					fmt.Fprintf(GinkgoWriter, "[INFO] Deployment generation after cleanup: %d (changed from %d)\n",
-						deploy.Generation, generationBeforeCleanup)
-					return true
-				}
-				return false
-			}).WithTimeout(4*time.Minute).WithPolling(5*time.Second).Should(BeTrue(),
-				"Deployment should be reconciled after ConfigMap cleanup")
-
-			By("Waiting for deployment to be ready after reconciliation")
-			Eventually(func() bool {
-				deploy := &appsv1.Deployment{}
-				err := hubRuntimeClient.Get(context.TODO(), types.NamespacedName{
-					Namespace: namespace,
-					Name:      "cluster-proxy",
-				}, deploy)
-				if err != nil {
-					return false
-				}
-				return deploy.Status.AvailableReplicas >= 1 && deploy.Status.ReadyReplicas >= 1
-			}).WithTimeout(4*time.Minute).WithPolling(5*time.Second).Should(BeTrue(),
-				"Deployment should be ready after reconciliation")
+			waitForProxyServerTLSProfile(generationBeforeCleanup, expectedTLSArgs(expectedData))
 		})
 
 		It("should apply TLS 1.2 with cipher suites from ConfigMap", Label("tls", "flags", "tls12"), func() {
 			By("Creating TLS ConfigMap with TLS 1.2 and cipher suites")
-			tlsConfigMap := &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      tlsConfigMapName,
-					Namespace: namespace,
-				},
-				Data: map[string]string{
-					"minTLSVersion": "VersionTLS12",
-					"cipherSuites":  "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
-				},
+			deploy, err := getProxyServerDeployment()
+			Expect(err).ToNot(HaveOccurred())
+			generationBeforeUpdate := deploy.Generation
+			tlsProfile := map[string]string{
+				sdktls.ConfigMapKeyMinVersion:   "VersionTLS12",
+				sdktls.ConfigMapKeyCipherSuites: "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
 			}
+			applyTLSProfile(tlsConfigMapName, tlsProfile)
 
-			if configMapExisted {
-				existingConfigMap, err := hubKubeClient.CoreV1().ConfigMaps(namespace).Get(context.TODO(), tlsConfigMapName, metav1.GetOptions{})
-				Expect(err).ToNot(HaveOccurred())
-				existingConfigMap.Data = tlsConfigMap.Data
-				_, err = hubKubeClient.CoreV1().ConfigMaps(namespace).Update(context.TODO(), existingConfigMap, metav1.UpdateOptions{})
-				Expect(err).ToNot(HaveOccurred())
-				fmt.Fprintf(GinkgoWriter, "[INFO] Updated ConfigMap with TLS 1.2 config\n")
-			} else {
-				_, err := hubKubeClient.CoreV1().ConfigMaps(namespace).Create(context.TODO(), tlsConfigMap, metav1.CreateOptions{})
-				Expect(err).ToNot(HaveOccurred())
-				fmt.Fprintf(GinkgoWriter, "[INFO] Created ConfigMap with TLS 1.2 config\n")
-			}
-
-			By("Waiting for deployment to have cipher suites from ConfigMap")
-			expectedCipherSuites := "--cipher-suites=TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384"
-			var proxyServerDeploy *appsv1.Deployment
-			Eventually(func() bool {
-				deploy := &appsv1.Deployment{}
-				err := hubRuntimeClient.Get(context.TODO(), types.NamespacedName{
-					Namespace: namespace,
-					Name:      "cluster-proxy",
-				}, deploy)
-				if err != nil {
-					return false
-				}
-
-				// Wait for cipher suites flag specifically (TLS 1.2 is the default, so can't rely on that)
-				for _, container := range deploy.Spec.Template.Spec.Containers {
-					if container.Name == "proxy-server" {
-						for _, arg := range container.Args {
-							if arg == expectedCipherSuites {
-								proxyServerDeploy = deploy
-								fmt.Fprintf(GinkgoWriter, "[DEBUG] Found cipher suites in deployment\n")
-								return true
-							}
-						}
-					}
-				}
-				return false
-			}).WithTimeout(4*time.Minute).WithPolling(5*time.Second).Should(BeTrue(),
-				"Deployment should have cipher suites from ConfigMap")
-
-			By("Verifying both TLS version and cipher suites are present")
-			Expect(proxyServerDeploy).NotTo(BeNil())
-
-			var proxyServerContainer *corev1.Container
-			for i := range proxyServerDeploy.Spec.Template.Spec.Containers {
-				if proxyServerDeploy.Spec.Template.Spec.Containers[i].Name == "proxy-server" {
-					proxyServerContainer = &proxyServerDeploy.Spec.Template.Spec.Containers[i]
-					break
-				}
-			}
-			Expect(proxyServerContainer).NotTo(BeNil())
-
-			args := proxyServerContainer.Args
-			fmt.Fprintf(GinkgoWriter, "[DEBUG] Proxy-server args: %v\n", args)
-
-			hasMinVersion := false
-			hasCipherSuites := false
-			for _, arg := range args {
-				if arg == "--tls-min-version=VersionTLS12" {
-					hasMinVersion = true
-				}
-				if arg == expectedCipherSuites {
-					hasCipherSuites = true
-					fmt.Fprintf(GinkgoWriter, "[DEBUG] Found cipher suites: %s\n", arg)
-				}
-			}
-
-			Expect(hasMinVersion).To(BeTrue(), "Expected --tls-min-version=VersionTLS12")
-			Expect(hasCipherSuites).To(BeTrue(), "Expected %s", expectedCipherSuites)
+			By("Ensuring the proxy-server is configured with TLS 1.2 and cipher suites")
+			waitForProxyServerTLSProfile(generationBeforeUpdate, expectedTLSArgs(tlsProfile))
 		})
 
 		It("should apply TLS 1.3 with cipher suites from ConfigMap", Label("tls", "flags", "tls13"), func() {
 			By("Creating TLS ConfigMap with TLS 1.3 and cipher suites")
-			tlsConfigMap := &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      tlsConfigMapName,
-					Namespace: namespace,
-				},
-				Data: map[string]string{
-					"minTLSVersion": "VersionTLS13",
-					"cipherSuites":  "TLS_AES_128_GCM_SHA256,TLS_AES_256_GCM_SHA384",
-				},
+			deploy, err := getProxyServerDeployment()
+			Expect(err).ToNot(HaveOccurred())
+			generationBeforeUpdate := deploy.Generation
+			tlsProfile := map[string]string{
+				sdktls.ConfigMapKeyMinVersion:   "VersionTLS13",
+				sdktls.ConfigMapKeyCipherSuites: "TLS_AES_128_GCM_SHA256,TLS_AES_256_GCM_SHA384",
 			}
+			applyTLSProfile(tlsConfigMapName, tlsProfile)
 
-			if configMapExisted {
-				existingConfigMap, err := hubKubeClient.CoreV1().ConfigMaps(namespace).Get(context.TODO(), tlsConfigMapName, metav1.GetOptions{})
-				Expect(err).ToNot(HaveOccurred())
-				existingConfigMap.Data = tlsConfigMap.Data
-				_, err = hubKubeClient.CoreV1().ConfigMaps(namespace).Update(context.TODO(), existingConfigMap, metav1.UpdateOptions{})
-				Expect(err).ToNot(HaveOccurred())
-				fmt.Fprintf(GinkgoWriter, "[INFO] Updated ConfigMap with TLS 1.3 config\n")
-			} else {
-				_, err := hubKubeClient.CoreV1().ConfigMaps(namespace).Create(context.TODO(), tlsConfigMap, metav1.CreateOptions{})
-				Expect(err).ToNot(HaveOccurred())
-				fmt.Fprintf(GinkgoWriter, "[INFO] Created ConfigMap with TLS 1.3 config\n")
-			}
-
-			By("Waiting for deployment to have TLS 1.3 config")
-			var proxyServerDeploy *appsv1.Deployment
-			Eventually(func() bool {
-				deploy := &appsv1.Deployment{}
-				err := hubRuntimeClient.Get(context.TODO(), types.NamespacedName{
-					Namespace: namespace,
-					Name:      "cluster-proxy",
-				}, deploy)
-				if err != nil {
-					return false
-				}
-
-				for _, container := range deploy.Spec.Template.Spec.Containers {
-					if container.Name == "proxy-server" {
-						for _, arg := range container.Args {
-							if arg == "--tls-min-version=VersionTLS13" {
-								proxyServerDeploy = deploy
-								fmt.Fprintf(GinkgoWriter, "[DEBUG] Found TLS 1.3 in deployment\n")
-								return true
-							}
-						}
-					}
-				}
-				return false
-			}).WithTimeout(4*time.Minute).WithPolling(5*time.Second).Should(BeTrue(),
-				"Deployment should have --tls-min-version=VersionTLS13")
-
-			By("Verifying both TLS version and cipher suites are present")
-			Expect(proxyServerDeploy).NotTo(BeNil())
-
-			var proxyServerContainer *corev1.Container
-			for i := range proxyServerDeploy.Spec.Template.Spec.Containers {
-				if proxyServerDeploy.Spec.Template.Spec.Containers[i].Name == "proxy-server" {
-					proxyServerContainer = &proxyServerDeploy.Spec.Template.Spec.Containers[i]
-					break
-				}
-			}
-			Expect(proxyServerContainer).NotTo(BeNil())
-
-			args := proxyServerContainer.Args
-			fmt.Fprintf(GinkgoWriter, "[DEBUG] Proxy-server args: %v\n", args)
-
-			hasMinVersion := false
-			expectedCipherSuites := "--cipher-suites=TLS_AES_128_GCM_SHA256,TLS_AES_256_GCM_SHA384"
-			hasCipherSuites := false
-			for _, arg := range args {
-				if arg == "--tls-min-version=VersionTLS13" {
-					hasMinVersion = true
-				}
-				if arg == expectedCipherSuites {
-					hasCipherSuites = true
-					fmt.Fprintf(GinkgoWriter, "[DEBUG] Found cipher suites: %s\n", arg)
-				}
-			}
-
-			Expect(hasMinVersion).To(BeTrue(), "Expected --tls-min-version=VersionTLS13")
-			Expect(hasCipherSuites).To(BeTrue(), "Expected %s", expectedCipherSuites)
+			By("Ensuring the proxy-server is configured with TLS 1.3 and cipher suites")
+			waitForProxyServerTLSProfile(generationBeforeUpdate, expectedTLSArgs(tlsProfile))
 		})
 	})
+
+func getProxyServerDeployment() (*appsv1.Deployment, error) {
+	deploy := &appsv1.Deployment{}
+	err := hubRuntimeClient.Get(context.TODO(), types.NamespacedName{
+		Namespace: hubInstallNamespace,
+		Name:      "cluster-proxy",
+	}, deploy)
+	return deploy, err
+}
+
+// applyTLSProfile creates or updates the ocm-tls-profile ConfigMap with the given data.
+func applyTLSProfile(name string, data map[string]string) {
+	configMaps := hubKubeClient.CoreV1().ConfigMaps(hubInstallNamespace)
+	configMap, err := configMaps.Get(context.TODO(), name, metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		_, err = configMaps.Create(context.TODO(), &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: hubInstallNamespace},
+			Data:       data,
+		}, metav1.CreateOptions{})
+		Expect(err).ToNot(HaveOccurred())
+		return
+	}
+	Expect(err).ToNot(HaveOccurred())
+	configMap.Data = data
+	_, err = configMaps.Update(context.TODO(), configMap, metav1.UpdateOptions{})
+	Expect(err).ToNot(HaveOccurred())
+}
+
+type expectedProxyServerTLSArgs struct {
+	present      []string
+	absentPrefix []string
+}
+
+func expectedTLSArgs(data map[string]string) expectedProxyServerTLSArgs {
+	minTLSVersion := sdktls.VersionToString(sdktls.GetDefaultTLSConfig().MinVersion)
+	if v := data[sdktls.ConfigMapKeyMinVersion]; v != "" {
+		minTLSVersion = v
+	}
+
+	expected := expectedProxyServerTLSArgs{
+		present: []string{"--tls-min-version=" + minTLSVersion},
+	}
+	if cs := data[sdktls.ConfigMapKeyCipherSuites]; cs != "" {
+		expected.present = append(expected.present, "--cipher-suites="+cs)
+	} else {
+		expected.absentPrefix = append(expected.absentPrefix, "--cipher-suites=")
+	}
+	return expected
+}
+
+func waitForProxyServerTLSProfile(previousGeneration int64, expected expectedProxyServerTLSArgs) {
+	Eventually(func() error {
+		deploy, err := getProxyServerDeployment()
+		if err != nil {
+			return err
+		}
+		if err := expectProxyServerArgs(deploy, expected); err != nil {
+			return err
+		}
+		return expectProxyServerReady(deploy, previousGeneration)
+	}).WithTimeout(4 * time.Minute).WithPolling(5 * time.Second).ShouldNot(HaveOccurred())
+}
+
+// expectProxyServerArgs verifies the cluster-proxy proxy-server container has
+// the expected TLS args and no stale TLS args from the previous profile.
+func expectProxyServerArgs(deploy *appsv1.Deployment, expected expectedProxyServerTLSArgs) error {
+	container := proxyServerContainer(deploy)
+	if container == nil {
+		return fmt.Errorf("proxy-server container not found in deployment")
+	}
+	for _, arg := range expected.present {
+		if !slices.Contains(container.Args, arg) {
+			return fmt.Errorf("expected arg %q in %v", arg, container.Args)
+		}
+	}
+	for _, prefix := range expected.absentPrefix {
+		for _, arg := range container.Args {
+			if strings.HasPrefix(arg, prefix) {
+				return fmt.Errorf("unexpected arg with prefix %q in %v", prefix, container.Args)
+			}
+		}
+	}
+	return nil
+}
+
+func expectProxyServerReady(deploy *appsv1.Deployment, previousGeneration int64) error {
+	if deploy.Generation > previousGeneration && deploy.Status.ObservedGeneration < deploy.Generation {
+		return fmt.Errorf("deployment generation %d not yet observed, observed=%d", deploy.Generation, deploy.Status.ObservedGeneration)
+	}
+
+	desiredReplicas := int32(1)
+	if deploy.Spec.Replicas != nil {
+		desiredReplicas = *deploy.Spec.Replicas
+	}
+	if deploy.Status.UpdatedReplicas < desiredReplicas {
+		return fmt.Errorf("deployment not fully updated: updated=%d desired=%d", deploy.Status.UpdatedReplicas, desiredReplicas)
+	}
+	if deploy.Status.ReadyReplicas < desiredReplicas || deploy.Status.AvailableReplicas < desiredReplicas {
+		return fmt.Errorf("deployment not ready: ready=%d available=%d desired=%d",
+			deploy.Status.ReadyReplicas, deploy.Status.AvailableReplicas, desiredReplicas)
+	}
+	return nil
+}
+
+func proxyServerContainer(deploy *appsv1.Deployment) *corev1.Container {
+	for i := range deploy.Spec.Template.Spec.Containers {
+		if deploy.Spec.Template.Spec.Containers[i].Name == "proxy-server" {
+			return &deploy.Spec.Template.Spec.Containers[i]
+		}
+	}
+	return nil
+}
