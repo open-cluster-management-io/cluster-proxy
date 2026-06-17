@@ -19,6 +19,7 @@ spec:
     spec:
       serviceAccount: cluster-proxy
       securityContext:
+        runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
       containers:

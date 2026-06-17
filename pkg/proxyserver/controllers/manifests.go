@@ -119,6 +119,7 @@ func newProxyServerDeployment(config *proxyv1alpha1.ManagedProxyConfiguration, i
 				Spec: corev1.PodSpec{
 					ServiceAccountName: common.AddonName,
 					SecurityContext: &corev1.PodSecurityContext{
+						RunAsNonRoot: ptr.To(true),
 						SeccompProfile: &corev1.SeccompProfile{
 							Type: corev1.SeccompProfileTypeRuntimeDefault,
 						},

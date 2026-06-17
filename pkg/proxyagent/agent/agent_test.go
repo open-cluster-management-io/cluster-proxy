@@ -28,6 +28,7 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	clienttesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/util/cert"
+	"k8s.io/utils/ptr"
 
 	openshiftcrypto "github.com/openshift/library-go/pkg/crypto"
 	"github.com/stretchr/testify/assert"
@@ -727,20 +728,25 @@ func TestNewAgentAddon(t *testing.T) {
 				return
 			}
 			assert.NoError(t, err)
-			assertRuntimeDefaultSeccompProfile(t, getAgentDeployment(manifests))
+			assertPodSecurityContext(t, getAgentDeployment(manifests))
 			c.verifyManifests(t, manifests)
 		})
 	}
 }
 
-func assertRuntimeDefaultSeccompProfile(t *testing.T, deploy *appsv1.Deployment) {
+func assertPodSecurityContext(t *testing.T, deploy *appsv1.Deployment) {
 	t.Helper()
 
-	if assert.NotNil(t, deploy) &&
-		assert.NotNil(t, deploy.Spec.Template.Spec.SecurityContext) &&
-		assert.NotNil(t, deploy.Spec.Template.Spec.SecurityContext.SeccompProfile) {
-		assert.Equal(t, corev1.SeccompProfileTypeRuntimeDefault, deploy.Spec.Template.Spec.SecurityContext.SeccompProfile.Type)
+	if !assert.NotNil(t, deploy) {
+		return
 	}
+	expected := &corev1.PodSecurityContext{
+		RunAsNonRoot: ptr.To(true),
+		SeccompProfile: &corev1.SeccompProfile{
+			Type: corev1.SeccompProfileTypeRuntimeDefault,
+		},
+	}
+	assert.Equal(t, expected, deploy.Spec.Template.Spec.SecurityContext)
 }
 
 type fakeSelfSigner struct {

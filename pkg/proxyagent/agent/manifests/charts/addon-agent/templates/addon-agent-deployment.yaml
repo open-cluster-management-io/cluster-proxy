@@ -32,6 +32,7 @@ spec:
       {{- end }}
       serviceAccount: cluster-proxy
       securityContext:
+        runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
       {{- if .Values.tolerations }}
