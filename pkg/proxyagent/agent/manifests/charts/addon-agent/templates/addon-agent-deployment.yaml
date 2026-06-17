@@ -3,9 +3,9 @@ kind: Deployment
 metadata:
   namespace: {{ .Release.Namespace }}
   name: {{ .Values.agentDeploymentName }}
-  annotations:
   {{- with .Values.agentDeploymentAnnotations }}
-  {{ toYaml . | indent 2 }}
+  annotations:
+{{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
   replicas: {{ .Values.replicas }}
@@ -17,17 +17,19 @@ spec:
     metadata:
       annotations:
       {{- with .Values.agentDeploymentAnnotations }}
-      {{ toYaml . | indent 2 }}
+{{- toYaml . | nindent 8 }}
       {{- end }}
         target.workload.openshift.io/management: '{"effect": "PreferredDuringScheduling"}'
       labels:
         open-cluster-management.io/addon: cluster-proxy
         proxy.open-cluster-management.io/component-name: proxy-agent
     spec:
+      {{- if .Values.serviceProxyHost }}
       hostAliases:
       - ip: "127.0.0.1"
         hostnames:
         - {{ .Values.serviceProxyHost }}
+      {{- end }}
       serviceAccount: cluster-proxy
       {{- if .Values.tolerations }}
       tolerations: {{ toYaml .Values.tolerations | nindent 8 }}
@@ -217,7 +219,9 @@ spec:
           secret:
             secretName: cluster-proxy-service-proxy-server-certificates
         {{- end }}
+      {{- with .Values.proxyAgentImagePullSecrets }}
       imagePullSecrets:
-      {{- range .Values.proxyAgentImagePullSecrets }}
+      {{- range . }}
       - name: {{ . }}
+      {{- end }}
       {{- end }}
