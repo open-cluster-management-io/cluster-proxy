@@ -1,0 +1,42 @@
+# Copyright Contributors to the Open Cluster Management project
+
+name: PR Verifier
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+    branches:
+      - main
+      - release-*
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: verify PR contents
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verifier action
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          if [[ -z "$TITLE" ]]; then
+            echo "Error: PR title cannot be empty."
+            exit 1
+          fi
+
+          if ! [[ "$TITLE" =~ ^(:sparkles:|:bug:|:book:|:memo:|:warning:|:seedling:|:question:|$'\u2728'|$'\U0001F41B'|$'\U0001F4D6'|$'\U0001F4DD'|$'\u26A0'$'\uFE0F'?|$'\U0001F331'|$'\u2753') ]]; then
+            echo "Error: Invalid PR title format."
+            echo "Your PR title must start with one of the following indicators:"
+            echo "- :sparkles: ✨ feature"
+            echo "- :bug: 🐛 bug fix"
+            echo "- :book: 📖 docs"
+            echo "- :memo: 📝 proposal"
+            echo "- :warning: ⚠️ breaking change"
+            echo "- :seedling: 🌱 other/misc"
+            echo "- :question: ❓ requires manual review"
+            exit 1
+          fi
+
+          echo "PR title is valid: '$TITLE'"
