@@ -42,6 +42,10 @@ spec:
     spec:
       serviceAccountName: cluster-proxy-e2e
       securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
         seccompProfile:
           type: RuntimeDefault
       restartPolicy: Never
@@ -50,6 +54,14 @@ spec:
           # Use the e2e test image built from test/e2e/Dockerfile
           image: quay.io/open-cluster-management/cluster-proxy-e2e:latest
           imagePullPolicy: Never
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
+            privileged: false
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
           args:
             - -ginkgo.v
             - -ginkgo.label-filter=$(LABEL_FILTER)
@@ -71,3 +83,9 @@ spec:
             limits:
               cpu: 500m
               memory: 512Mi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

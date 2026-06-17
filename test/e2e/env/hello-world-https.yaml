@@ -39,12 +39,27 @@ metadata:
     run: hello-world-https
 spec:
   securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    fsGroup: 65532
     seccompProfile:
       type: RuntimeDefault
   containers:
   - name: hello-world-https
     image: alpine/openssl:latest
     imagePullPolicy: IfNotPresent
+    securityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+        - ALL
+      privileged: false
+      runAsNonRoot: true
+      readOnlyRootFilesystem: true
+    env:
+    - name: HOME
+      value: /tmp
     command:
     - /bin/sh
     - /scripts/server.sh
@@ -53,11 +68,24 @@ spec:
     volumeMounts:
     - name: script
       mountPath: /scripts
+      readOnly: true
+    - name: certs
+      mountPath: /certs
+    - name: www
+      mountPath: /var/www
+    - name: tmp
+      mountPath: /tmp
   volumes:
   - name: script
     configMap:
       name: hello-world-https-script
       defaultMode: 0755
+  - name: certs
+    emptyDir: {}
+  - name: www
+    emptyDir: {}
+  - name: tmp
+    emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
