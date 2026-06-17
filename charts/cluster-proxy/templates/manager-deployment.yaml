@@ -18,6 +18,9 @@ spec:
         component: cluster-proxy-manager
     spec:
       serviceAccount: cluster-proxy
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: manager
           image: {{ .Values.registry }}/{{ .Values.image }}:{{ .Values.tag | default (print "v" .Chart.Version) }}

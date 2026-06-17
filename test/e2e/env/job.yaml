@@ -41,6 +41,9 @@ spec:
         app: cluster-proxy-e2e
     spec:
       serviceAccountName: cluster-proxy-e2e
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       restartPolicy: Never
       containers:
         - name: e2e

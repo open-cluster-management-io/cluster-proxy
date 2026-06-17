@@ -31,6 +31,9 @@ spec:
         - {{ .Values.serviceProxyHost }}
       {{- end }}
       serviceAccount: cluster-proxy
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       {{- if .Values.tolerations }}
       tolerations: {{ toYaml .Values.tolerations | nindent 8 }}
       {{- end }}
