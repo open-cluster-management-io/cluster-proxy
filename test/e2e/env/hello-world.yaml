@@ -7,6 +7,9 @@ metadata:
   labels:
     run: hello-world
 spec:
+  securityContext:
+    seccompProfile:
+      type: RuntimeDefault
   containers:
   - name: hello-world
     image: quay.io/prometheus/busybox

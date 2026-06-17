@@ -727,8 +727,19 @@ func TestNewAgentAddon(t *testing.T) {
 				return
 			}
 			assert.NoError(t, err)
+			assertRuntimeDefaultSeccompProfile(t, getAgentDeployment(manifests))
 			c.verifyManifests(t, manifests)
 		})
+	}
+}
+
+func assertRuntimeDefaultSeccompProfile(t *testing.T, deploy *appsv1.Deployment) {
+	t.Helper()
+
+	if assert.NotNil(t, deploy) &&
+		assert.NotNil(t, deploy.Spec.Template.Spec.SecurityContext) &&
+		assert.NotNil(t, deploy.Spec.Template.Spec.SecurityContext.SeccompProfile) {
+		assert.Equal(t, corev1.SeccompProfileTypeRuntimeDefault, deploy.Spec.Template.Spec.SecurityContext.SeccompProfile.Type)
 	}
 }
 

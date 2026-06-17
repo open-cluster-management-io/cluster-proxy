@@ -38,6 +38,9 @@ metadata:
   labels:
     run: hello-world-https
 spec:
+  securityContext:
+    seccompProfile:
+      type: RuntimeDefault
   containers:
   - name: hello-world-https
     image: alpine/openssl:latest
