@@ -5,6 +5,7 @@ IMAGE_NAME = cluster-proxy
 IMAGE_TAG ?= latest
 E2E_TEST_CLUSTER_NAME ?= e2e
 CONTAINER_ENGINE ?= docker
+HELM ?= helm
 # Produce CRDs that work back to Kubernetes 1.11 (no version conversion)
 CRD_OPTIONS ?= "crd:crdVersions={v1},allowDangerousTypes=true,generateEmbeddedObjectMeta=true"
 
@@ -72,12 +73,17 @@ envtest-setup:
 	$(eval export KUBEBUILDER_ASSETS=$(shell curl -fsSL $(ENSURE_ENVTEST_SCRIPT) | bash))
 	@echo "KUBEBUILDER_ASSETS=$(KUBEBUILDER_ASSETS)"
 
-test: manifests generate fmt vet envtest-setup ## Run tests.
+.PHONY: helm-dependencies
+helm-dependencies: ## Build local Helm chart dependencies.
+	$(HELM) dependency build --skip-refresh charts/cluster-proxy
+	$(HELM) dependency build --skip-refresh pkg/proxyagent/agent/manifests/charts/addon-agent
+
+test: helm-dependencies manifests generate fmt vet envtest-setup ## Run tests.
 	go test ./pkg/... -coverprofile cover.out
 
 ##@ Build
 
-build: generate fmt vet
+build: helm-dependencies generate fmt vet
 	go build -o bin/addon-manager cmd/addon-manager/main.go
 	go build -o bin/addon-agent cmd/addon-agent/main.go
 	go build -o bin/cluster-proxy cmd/cluster-proxy/main.go
@@ -122,14 +128,14 @@ client-gen:
  	-g lister-gen \
  	--versions=open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1
 
-images:
+images: helm-dependencies
 	$(CONTAINER_ENGINE) build \
 		$(IMAGE_BUILD_EXTRA_FLAGS) \
 		-f cmd/Dockerfile \
 		--build-arg ADDON_AGENT_IMAGE_NAME=$(IMAGE_REGISTRY_NAME)/$(IMAGE_NAME):$(IMAGE_TAG) \
 		-t $(IMAGE_REGISTRY_NAME)/$(IMAGE_NAME):$(IMAGE_TAG) .
 
-images-amd64:
+images-amd64: helm-dependencies
 	$(CONTAINER_ENGINE) buildx build \
 		--platform linux/amd64 \
 		--load \
@@ -139,7 +145,7 @@ images-amd64:
 
 ## Integration Testing
 
-test-integration: manifests generate fmt vet envtest-setup
+test-integration: helm-dependencies manifests generate fmt vet envtest-setup
 	go test ./test/integration/... -coverprofile cover.out
 
 ## E2E Testing
@@ -166,7 +172,7 @@ delete-cluster-proxy-image-from-kind:
 	done
 .PHONY: delete-cluster-proxy-image-from-kind
 
-deploy-cluster-proxy-e2e: delete-cluster-proxy-image-from-kind load-cluster-proxy-image-kind
+deploy-cluster-proxy-e2e: helm-dependencies delete-cluster-proxy-image-from-kind load-cluster-proxy-image-kind
 	@echo "Deploying cluster-proxy..."
 	helm install \
 	-n open-cluster-management-addon --create-namespace \
@@ -184,7 +190,7 @@ deploy-cluster-proxy-e2e: delete-cluster-proxy-image-from-kind load-cluster-prox
 .PHONY: deploy-cluster-proxy-e2e
 
 # Build e2e test container image
-build-e2e-image:
+build-e2e-image: helm-dependencies
 	@echo "Building e2e test container image..."
 	$(CONTAINER_ENGINE) build \
 		-f test/e2e/Dockerfile \

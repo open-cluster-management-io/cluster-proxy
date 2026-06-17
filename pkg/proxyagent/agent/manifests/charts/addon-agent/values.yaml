@@ -9,9 +9,9 @@ registry: quay.io/open-cluster-management
 
 # Image of the cluster-gateway instances
 image: cluster-proxy
-tag: latest
+tag:
 
-proxyAgentImage: quay.io/open-cluster-management/cluster-proxy:latest
+proxyAgentImage:
 proxyAgentImagePullSecrets: []
 
 # Number of replicas

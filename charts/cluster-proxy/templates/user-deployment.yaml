@@ -1,4 +1,5 @@
 {{- if .Values.enableServiceProxy }}
+{{- $clusterProxyImage := include "cluster-proxy-common.clusterProxyImage" . }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -25,7 +26,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: controllers
-          image: {{ .Values.registry }}/{{ .Values.image }}:{{ .Values.tag | default (print "v" .Chart.Version) }}
+          image: {{ $clusterProxyImage }}
           imagePullPolicy: IfNotPresent
           command:
             - /cluster-proxy
@@ -33,7 +34,7 @@ spec:
             - controllers
             - --certificates-namespace={{ .Release.Namespace }}
             - --signer-secret-namespace={{ .Release.Namespace }}
-            - --agent-image={{ .Values.registry }}/{{ .Values.image }}:{{ .Values.tag | default (print "v" .Chart.Version) }}
+            - --agent-image={{ $clusterProxyImage }}
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -43,7 +44,7 @@ spec:
             runAsNonRoot: true
             readOnlyRootFilesystem: true
         - name: user-server
-          image: {{ .Values.registry }}/{{ .Values.image }}:{{ .Values.tag | default (print "v" .Chart.Version) }}
+          image: {{ $clusterProxyImage }}
           imagePullPolicy: IfNotPresent
           command:
             - /cluster-proxy

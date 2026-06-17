@@ -34,7 +34,7 @@ import (
 	"open-cluster-management.io/cluster-proxy/pkg/util"
 )
 
-//go:embed manifests
+//go:embed all:manifests
 var FS embed.FS
 
 const (

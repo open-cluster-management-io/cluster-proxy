@@ -1,0 +1,6 @@
+apiVersion: v2
+name: cluster-proxy-common
+description: A library Helm chart for Cluster-Proxy shared helpers
+type: library
+version: 0.1.0
+appVersion: 0.1.0

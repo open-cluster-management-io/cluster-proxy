@@ -1,3 +1,5 @@
+{{- $proxyServerImage := include "cluster-proxy-common.proxyServerImage" . }}
+{{- $proxyAgentImage := include "cluster-proxy-common.proxyAgentRepositoryImage" . }}
 apiVersion: proxy.open-cluster-management.io/v1alpha1
 kind: ManagedProxyConfiguration
 metadata:
@@ -9,7 +11,7 @@ spec:
     signer:
       type: SelfSigned
   proxyServer:
-    image: {{ .Values.proxyServerImage }}:{{ .Values.tag | default (print "v" .Chart.Version) }}
+    image: {{ $proxyServerImage }}
     replicas: {{ .Values.replicas }}
     namespace: {{ .Release.Namespace }}
     entrypoint:
@@ -25,7 +27,7 @@ spec:
       {{- end }}
       port: {{ .Values.proxyServer.port }}
   proxyAgent:
-    image: {{ .Values.proxyAgentImage }}:{{ .Values.tag | default (print "v" .Chart.Version) }}
+    image: {{ $proxyAgentImage }}
     replicas: {{ .Values.replicas }}
   {{- if .Values.userServer.enabled }}
   userServer:
