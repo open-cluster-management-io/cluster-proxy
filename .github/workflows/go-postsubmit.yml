@@ -35,7 +35,7 @@ jobs:
       - name: images
         run: |
           IMAGE_TAG=latest-${{ matrix.arch }} \
-          IMAGE_BUILD_EXTRA_FLAGS="--build-arg OS=linux --build-arg ARCH=${{ matrix.arch }}" \
+          IMAGE_BUILD_EXTRA_FLAGS="--platform linux/${{ matrix.arch }}" \
             make images
       - name: push
         run: |
