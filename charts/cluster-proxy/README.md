@@ -35,6 +35,8 @@ helm install cluster-proxy ./charts/cluster-proxy \
 | `installByPlacement.placementName`      | Placement name for installation    | `""`                                            |
 | `installByPlacement.placementNamespace` | Placement namespace                | `""`                                            |
 | `enableServiceProxy`                    | Enable user server deployment      | `false`                                         |
+| `userServer.enabled`                    | Auto-manage user-server cert       | `false`                                         |
+| `userServer.additionalSANs`             | Extra SANs for the generated cert  | `[]`                                            |
 
 ### User Server Configuration
 
@@ -45,11 +47,32 @@ helm install cluster-proxy ./charts/cluster-proxy \
   --set enableServiceProxy=true
 ```
 
-#### Important Prerequisites for User Server
+#### User Server Serving Certificate
 
-**Before enabling the user server, you MUST create the following secret in the installation namespace:**
+The user-server deployment mounts a TLS serving certificate from the `cluster-proxy-user-serving-cert` secret in the installation namespace. You can provision this secret in one of two ways.
 
-**cluster-proxy-user-serving-cert** - TLS certificate for the user server
+**Option 1 (recommended): let the controller generate and rotate it**
+
+Set `userServer.enabled=true` so the `ManagedProxyConfiguration` requests a user-server certificate. The controller then generates the `cluster-proxy-user-serving-cert` secret in the installation namespace and rotates it automatically, so no manual secret creation is required:
+
+```bash
+helm install cluster-proxy ./charts/cluster-proxy \
+  --set enableServiceProxy=true \
+  --set userServer.enabled=true
+```
+
+Add extra hostnames or IPs to the generated certificate with `userServer.additionalSANs`:
+
+```bash
+helm install cluster-proxy ./charts/cluster-proxy \
+  --set enableServiceProxy=true \
+  --set userServer.enabled=true \
+  --set userServer.additionalSANs[0]=user-server.example.com
+```
+
+**Option 2: provide the certificate yourself**
+
+If you leave `userServer.enabled=false`, you MUST create the `cluster-proxy-user-serving-cert` secret in the installation namespace before the user-server pods can start:
 
 ```yaml
 apiVersion: v1
@@ -65,14 +88,14 @@ data:
 
 **Automatically Created Secrets:**
 
-The following secrets will be automatically created by the controller and do NOT need to be created manually:
+The following secrets are always created automatically by the controller and do NOT need to be created manually:
 
 - **proxy-server-ca** - CA certificate for the proxy server
 - **proxy-client** - Client certificate for proxy authentication
 
-**⚠️ Warning:** If the `cluster-proxy-user-serving-cert` secret is not present before installation, the user-server deployment will remain in **Pending** state and pods will fail to start.
+**⚠️ Warning:** When `userServer.enabled=false` and the `cluster-proxy-user-serving-cert` secret is not present, the user-server deployment will remain in **Pending** state and pods will fail to start. Either set `userServer.enabled=true` or create the secret manually.
 
-To verify the secret is created:
+To verify the secret exists (whether controller-generated or manually created):
 
 ```bash
 kubectl get secret -n <release-namespace> cluster-proxy-user-serving-cert
@@ -86,10 +109,21 @@ kubectl get secret -n <release-namespace> cluster-proxy-user-serving-cert
 helm install cluster-proxy ./charts/cluster-proxy
 ```
 
-### With User Server Enabled
+### With User Server Enabled (controller-managed certificate)
 
 ```bash
-# First, create the required secret
+# The controller generates and rotates cluster-proxy-user-serving-cert automatically.
+# proxy-server-ca and proxy-client secrets are also created automatically by the controller.
+helm install cluster-proxy ./charts/cluster-proxy \
+  --namespace open-cluster-management-addon \
+  --set enableServiceProxy=true \
+  --set userServer.enabled=true
+```
+
+### With User Server Enabled (self-provided certificate)
+
+```bash
+# Leave userServer.enabled at its default (false) and create the secret yourself first
 kubectl create secret tls cluster-proxy-user-serving-cert \
   --cert=path/to/tls.crt \
   --key=path/to/tls.key \
@@ -127,15 +161,23 @@ helm uninstall cluster-proxy
 
 ### User Server Pods Stuck in Pending
 
-**Symptom:** After enabling `enableServiceProxy=true`, the deployment pods remain in Pending state.
+**Symptom:** After enabling `enableServiceProxy=true`, the deployment pods remain in Pending state because the `cluster-proxy-user-serving-cert` secret is missing.
 
-**Solution:** Verify that the required secret exists in the namespace:
+**Solution:** Verify that the secret exists in the namespace:
 
 ```bash
 kubectl get secret -n <namespace> cluster-proxy-user-serving-cert
 ```
 
-If the secret is missing, create it:
+If the secret is missing, either let the controller manage it by enabling automatic rotation:
+
+```bash
+helm upgrade cluster-proxy ./charts/cluster-proxy \
+  --set enableServiceProxy=true \
+  --set userServer.enabled=true
+```
+
+or create it manually:
 
 ```bash
 kubectl create secret tls cluster-proxy-user-serving-cert \
