@@ -7,16 +7,37 @@ metadata:
   labels:
     run: hello-world
 spec:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    fsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
   containers:
   - name: hello-world
     image: quay.io/prometheus/busybox
     imagePullPolicy: IfNotPresent
+    securityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+        - ALL
+      privileged: false
+      runAsNonRoot: true
+      readOnlyRootFilesystem: true
     args:
     - sh
     - -c
     - echo 'Hello from hello-world' > /var/www/index.html && httpd -f -p 8000 -h /var/www/
+    volumeMounts:
+    - name: www
+      mountPath: /var/www
     ports:
     - containerPort: 8000
+  volumes:
+  - name: www
+    emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

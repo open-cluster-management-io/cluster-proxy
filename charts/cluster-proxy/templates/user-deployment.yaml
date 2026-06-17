@@ -19,6 +19,10 @@ spec:
         component: cluster-proxy-addon-user
     spec:
       serviceAccount: cluster-proxy
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: controllers
           image: {{ .Values.registry }}/{{ .Values.image }}:{{ .Values.tag | default (print "v" .Chart.Version) }}

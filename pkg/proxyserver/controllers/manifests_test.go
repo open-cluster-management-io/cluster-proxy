@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/utils/ptr"
 
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 	sdktls "open-cluster-management.io/sdk-go/pkg/tls"
@@ -77,6 +79,23 @@ func TestProxyServerArgs_WithAdditionalArgsAndCipherSuites(t *testing.T) {
 		"--cipher-suites="+sdktls.CipherSuitesToString(tlsConfig.CipherSuites),
 	)
 	assert.Equal(t, expected, args)
+}
+
+func TestNewProxyServerDeployment_SetsPodSecurityContext(t *testing.T) {
+	config := newTestConfig(3)
+	config.Name = "cluster-proxy"
+	config.Spec.ProxyServer.Namespace = "test"
+	config.Spec.ProxyServer.Image = "quay.io/open-cluster-management/cluster-proxy:test"
+
+	deploy := newProxyServerDeployment(config, "IfNotPresent", nil)
+
+	expected := &corev1.PodSecurityContext{
+		RunAsNonRoot: ptr.To(true),
+		SeccompProfile: &corev1.SeccompProfile{
+			Type: corev1.SeccompProfileTypeRuntimeDefault,
+		},
+	}
+	assert.Equal(t, expected, deploy.Spec.Template.Spec.SecurityContext)
 }
 
 func TestTLSConfigHash_Nil(t *testing.T) {
