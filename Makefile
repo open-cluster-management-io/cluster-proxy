@@ -84,6 +84,23 @@ verify-helm-dependencies: ## Verify Helm chart dependencies are committed and cu
 test: manifests generate fmt vet envtest-setup ## Run tests.
 	go test ./pkg/... -coverprofile cover.out
 
+.PHONY: test-helm
+test-helm: verify-helm-dependencies ## Lint and render Helm charts.
+	$(HELM) lint charts/cluster-proxy
+	$(HELM) template cluster-proxy charts/cluster-proxy \
+		--namespace open-cluster-management-addon >/dev/null
+	$(HELM) template cluster-proxy charts/cluster-proxy \
+		--namespace open-cluster-management-addon \
+		--set enableServiceProxy=true >/dev/null
+	$(HELM) lint pkg/proxyagent/agent/manifests/charts/addon-agent
+	$(HELM) template addon-agent pkg/proxyagent/agent/manifests/charts/addon-agent \
+		--namespace open-cluster-management-agent-addon >/dev/null
+	$(HELM) template addon-agent pkg/proxyagent/agent/manifests/charts/addon-agent \
+		--namespace open-cluster-management-agent-addon \
+		--set enableServiceProxy=true \
+		--set serviceProxySecretCert=dGVzdA== \
+		--set serviceProxySecretKey=dGVzdA== >/dev/null
+
 ##@ Build
 
 build: generate fmt vet
