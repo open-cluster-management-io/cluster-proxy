@@ -137,8 +137,7 @@ var _ = Describe("Requests through Cluster-Proxy", Label("serviceproxy", "connec
 	Describe("Get pods", Label("pods"), func() {
 		Context("URL is vailid", func() {
 			It("should return pods information", Label("valid-url"), func() {
-				_, err := clusterProxyKubeClient.CoreV1().Pods(hubInstallNamespace).List(context.Background(), v1.ListOptions{})
-				Expect(err).To(BeNil())
+				waitForClusterProxyKubeAPIAvailable()
 			})
 		})
 
@@ -299,3 +298,10 @@ var _ = Describe("Requests through Cluster-Proxy", Label("serviceproxy", "connec
 		})
 	})
 })
+
+func waitForClusterProxyKubeAPIAvailable() {
+	Eventually(func() error {
+		_, err := clusterProxyKubeClient.CoreV1().Pods(hubInstallNamespace).List(context.Background(), v1.ListOptions{})
+		return err
+	}).WithTimeout(4 * time.Minute).WithPolling(5 * time.Second).Should(Succeed())
+}

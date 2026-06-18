@@ -21,10 +21,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func init() {
-	SchemeBuilder.Register(&ManagedProxyConfiguration{}, &ManagedProxyConfigurationList{})
-}
-
 // ManagedProxyConfigurationSpec is the prescription of ManagedProxyConfiguration
 type ManagedProxyConfigurationSpec struct {
 	// `authentication` defines how the credentials for the authentication
