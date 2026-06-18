@@ -24,8 +24,8 @@
 
 index.yaml
 cluster-proxy-*.tgz
-charts/cluster-proxy/Chart.lock
-pkg/proxyagent/agent/manifests/charts/addon-agent/Chart.lock
+!**/charts/*.tgz
+!**/Chart.lock
 
 /_output
 
