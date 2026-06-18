@@ -221,8 +221,8 @@ var _ = Describe("Requests through Cluster-Proxy", Label("serviceproxy", "connec
 				Stderr: &stderr,
 				Tty:    false,
 			})
-			Expect(err).To(BeNil())
-			Expect(strings.Contains(stdout.String(), "hello")).To(Equal(true))
+			Expect(err).To(BeNil(), stderr.String())
+			Expect(strings.Contains(stdout.String(), "hello")).To(BeTrue(), "stderr: %s", stderr.String())
 		})
 	})
 
