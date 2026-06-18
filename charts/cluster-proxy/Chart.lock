@@ -1,0 +1,6 @@
+dependencies:
+- name: cluster-proxy-common
+  repository: file://../cluster-proxy-common
+  version: 0.1.0
+digest: sha256:0e859c26cd19514cbfbbbc3c6efa5c0e9b3c59ae2b66a6265f318fc2f09d5718
+generated: "2026-06-19T03:21:35.546048564+09:00"

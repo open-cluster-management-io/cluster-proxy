@@ -24,6 +24,8 @@
 
 index.yaml
 cluster-proxy-*.tgz
+!**/charts/*.tgz
+!**/Chart.lock
 
 /_output
 

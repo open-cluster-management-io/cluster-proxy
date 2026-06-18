@@ -98,6 +98,8 @@ jobs:
           fetch-depth: 1
       - name: setup helm
         uses: azure/setup-helm@v1
+      - name: verify helm dependencies
+        run: make verify-helm-dependencies
       - name: chart package
         run: |
           mkdir -p release

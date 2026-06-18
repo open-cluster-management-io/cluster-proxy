@@ -5,6 +5,7 @@ IMAGE_NAME = cluster-proxy
 IMAGE_TAG ?= latest
 E2E_TEST_CLUSTER_NAME ?= e2e
 CONTAINER_ENGINE ?= docker
+HELM ?= helm
 # Produce CRDs that work back to Kubernetes 1.11 (no version conversion)
 CRD_OPTIONS ?= "crd:crdVersions={v1},allowDangerousTypes=true,generateEmbeddedObjectMeta=true"
 
@@ -71,6 +72,14 @@ verify: fmt vet lint
 envtest-setup:
 	$(eval export KUBEBUILDER_ASSETS=$(shell curl -fsSL $(ENSURE_ENVTEST_SCRIPT) | bash))
 	@echo "KUBEBUILDER_ASSETS=$(KUBEBUILDER_ASSETS)"
+
+.PHONY: sync-helm-dependencies
+sync-helm-dependencies: ## Sync local Helm chart dependencies into charts/ directories.
+	./hack/sync-helm-dependencies.sh
+
+.PHONY: verify-helm-dependencies
+verify-helm-dependencies: ## Verify Helm chart dependencies are committed and current.
+	./hack/verify-helm-dependencies.sh
 
 test: manifests generate fmt vet envtest-setup ## Run tests.
 	go test ./pkg/... -coverprofile cover.out
