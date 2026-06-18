@@ -16,6 +16,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 
 	sdktls "open-cluster-management.io/sdk-go/pkg/tls"
 )
@@ -68,6 +69,9 @@ var _ = Describe("TLS Profile Test", Serial, Label("tls", "profile", "configurat
 
 			By("Waiting for deployment to be reconciled after ConfigMap cleanup")
 			waitForProxyServerTLSProfile(generationBeforeCleanup, expectedTLSArgs(expectedData))
+
+			By("Waiting for cluster-proxy API path to recover after ConfigMap cleanup")
+			waitForClusterProxyKubeAPIAvailable()
 		})
 
 		It("should apply TLS 1.2 with cipher suites from ConfigMap", Label("tls", "flags", "tls12"), func() {
@@ -83,6 +87,9 @@ var _ = Describe("TLS Profile Test", Serial, Label("tls", "profile", "configurat
 
 			By("Ensuring the proxy-server is configured with TLS 1.2 and cipher suites")
 			waitForProxyServerTLSProfile(generationBeforeUpdate, expectedTLSArgs(tlsProfile))
+
+			By("Ensuring the cluster-proxy API path remains available")
+			waitForClusterProxyKubeAPIAvailable()
 		})
 
 		It("should apply TLS 1.3 with cipher suites from ConfigMap", Label("tls", "flags", "tls13"), func() {
@@ -98,6 +105,9 @@ var _ = Describe("TLS Profile Test", Serial, Label("tls", "profile", "configurat
 
 			By("Ensuring the proxy-server is configured with TLS 1.3 and cipher suites")
 			waitForProxyServerTLSProfile(generationBeforeUpdate, expectedTLSArgs(tlsProfile))
+
+			By("Ensuring the cluster-proxy API path remains available")
+			waitForClusterProxyKubeAPIAvailable()
 		})
 	})
 
@@ -185,21 +195,18 @@ func expectProxyServerArgs(deploy *appsv1.Deployment, expected expectedProxyServ
 	return nil
 }
 
-func expectProxyServerReady(deploy *appsv1.Deployment, previousGeneration int64) error {
-	if deploy.Generation > previousGeneration && deploy.Status.ObservedGeneration < deploy.Generation {
+func expectProxyServerReady(deploy *appsv1.Deployment, _ int64) error {
+	if deploy.Status.ObservedGeneration < deploy.Generation {
 		return fmt.Errorf("deployment generation %d not yet observed, observed=%d", deploy.Generation, deploy.Status.ObservedGeneration)
 	}
 
-	desiredReplicas := int32(1)
-	if deploy.Spec.Replicas != nil {
-		desiredReplicas = *deploy.Spec.Replicas
-	}
-	if deploy.Status.UpdatedReplicas < desiredReplicas {
-		return fmt.Errorf("deployment not fully updated: updated=%d desired=%d", deploy.Status.UpdatedReplicas, desiredReplicas)
-	}
-	if deploy.Status.ReadyReplicas < desiredReplicas || deploy.Status.AvailableReplicas < desiredReplicas {
-		return fmt.Errorf("deployment not ready: ready=%d available=%d desired=%d",
-			deploy.Status.ReadyReplicas, deploy.Status.AvailableReplicas, desiredReplicas)
+	desiredReplicas := ptr.Deref(deploy.Spec.Replicas, 1)
+	if deploy.Status.Replicas != desiredReplicas ||
+		deploy.Status.UpdatedReplicas != desiredReplicas ||
+		deploy.Status.ReadyReplicas != desiredReplicas ||
+		deploy.Status.AvailableReplicas != desiredReplicas ||
+		deploy.Status.UnavailableReplicas != 0 {
+		return fmt.Errorf("deployment rollout is incomplete: %v", deploy.Status)
 	}
 	return nil
 }
