@@ -44,7 +44,7 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"open-cluster-management.io/addon-framework/pkg/addonmanager"
-	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
+	addonv1beta1 "open-cluster-management.io/api/addon/v1beta1"
 	addonclient "open-cluster-management.io/api/client/addon/clientset/versioned"
 	clusterv1beta2 "open-cluster-management.io/api/cluster/v1beta2"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
@@ -66,7 +66,7 @@ var (
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
-	utilruntime.Must(addonv1alpha1.Install(scheme))
+	utilruntime.Must(addonv1beta1.Install(scheme))
 	utilruntime.Must(proxyv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(clusterv1beta2.Install(scheme))
 	utilruntime.Must(cpv1alpha1.AddToScheme(scheme))

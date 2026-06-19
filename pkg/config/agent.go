@@ -4,7 +4,7 @@ package config
 import (
 	"strings"
 
-	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
+	addonv1beta1 "open-cluster-management.io/api/addon/v1beta1"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 
 	"k8s.io/klog/v2"
@@ -41,7 +41,7 @@ func ParseImage(imageName string) (string, string, string, error) {
 	return registry, image, tag, nil
 }
 
-func IsManagedProxyConfiguration(gr addonv1alpha1.ConfigGroupResource) bool {
+func IsManagedProxyConfiguration(gr addonv1beta1.ConfigGroupResource) bool {
 	if gr.Group != proxyv1alpha1.GroupVersion.Group {
 		return false
 	}

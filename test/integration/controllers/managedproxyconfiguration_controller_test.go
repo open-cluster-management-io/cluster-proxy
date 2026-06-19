@@ -12,13 +12,13 @@ import (
 	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
+	addonv1beta1 "open-cluster-management.io/api/addon/v1beta1"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 	"open-cluster-management.io/cluster-proxy/pkg/common"
 )
 
 var _ = Describe("ManagedProxyConfigurationReconciler Test", func() {
-	var addon *addonv1alpha1.ClusterManagementAddOn
+	var addon *addonv1beta1.ClusterManagementAddOn
 	var config *proxyv1alpha1.ManagedProxyConfiguration
 
 	const (
@@ -29,25 +29,19 @@ var _ = Describe("ManagedProxyConfigurationReconciler Test", func() {
 	)
 
 	BeforeEach(func() {
-		addon = &addonv1alpha1.ClusterManagementAddOn{
+		addon = &addonv1beta1.ClusterManagementAddOn{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: common.AddonName,
 			},
-			Spec: addonv1alpha1.ClusterManagementAddOnSpec{
-				SupportedConfigs: []addonv1alpha1.ConfigMeta{
+			Spec: addonv1beta1.ClusterManagementAddOnSpec{
+				DefaultConfigs: []addonv1beta1.AddOnConfig{
 					{
-						ConfigGroupResource: addonv1alpha1.ConfigGroupResource{
+						ConfigGroupResource: addonv1beta1.ConfigGroupResource{
 							Group:    "proxy.open-cluster-management.io",
 							Resource: "managedproxyconfigurations",
 						},
-						DefaultConfig: &addonv1alpha1.ConfigReferent{
+						ConfigReferent: addonv1beta1.ConfigReferent{
 							Name: configName,
-						},
-					},
-					{
-						ConfigGroupResource: addonv1alpha1.ConfigGroupResource{
-							Group:    "addon.open-cluster-management.io",
-							Resource: "addondeploymentconfigs",
 						},
 					},
 				},

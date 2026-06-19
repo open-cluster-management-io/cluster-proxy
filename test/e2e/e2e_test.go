@@ -27,7 +27,7 @@ import (
 	k8sscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 
-	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
+	addonv1beta1 "open-cluster-management.io/api/addon/v1beta1"
 	addonclient "open-cluster-management.io/api/client/addon/clientset/versioned"
 	clusterclient "open-cluster-management.io/api/client/cluster/clientset/versioned"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
@@ -49,7 +49,7 @@ func init() {
 	utilruntime.Must(clusterv1.Install(scheme))
 	utilruntime.Must(clusterv1beta2.Install(scheme))
 	utilruntime.Must(clusterv1beta1.Install(scheme))
-	utilruntime.Must(addonv1alpha1.Install(scheme))
+	utilruntime.Must(addonv1beta1.Install(scheme))
 	utilruntime.Must(k8sscheme.AddToScheme(scheme))
 }
 
