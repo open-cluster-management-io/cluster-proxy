@@ -10,6 +10,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
@@ -60,6 +61,9 @@ var _ = Describe("ManagedProxyConfigurationReconciler Test", func() {
 	AfterEach(func() {
 		// Add any teardown steps that needs to be executed after each test
 		err := ctrlClient.Delete(ctx, config)
+		if apierrors.IsNotFound(err) {
+			return
+		}
 		Expect(err).ToNot(HaveOccurred())
 	})
 
