@@ -56,7 +56,10 @@ sync_chart_dependencies() {
 		return 0
 	fi
 
+	rm -f "${chart_dir}/Chart.lock"
+
 	for name in "${dependency_names[@]}"; do
+		rm -f "${chart_dir}/charts/${name}-"*.tgz
 		rm -rf "${chart_dir}/charts/${name}"
 	done
 
