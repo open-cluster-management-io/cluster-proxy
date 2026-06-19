@@ -33,3 +33,13 @@ updates:
     commit-message:
       prefix: ":seedling: ci"
       include: "scope"
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: ":seedling:"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
