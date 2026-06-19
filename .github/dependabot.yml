@@ -31,5 +31,5 @@ updates:
         patterns:
           - "github.com/onsi/*"
     commit-message:
-      prefix: "ci"
+      prefix: ":seedling: ci"
       include: "scope"
