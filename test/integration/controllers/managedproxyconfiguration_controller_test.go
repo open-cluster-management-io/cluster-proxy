@@ -12,13 +12,10 @@ import (
 	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	addonv1beta1 "open-cluster-management.io/api/addon/v1beta1"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
-	"open-cluster-management.io/cluster-proxy/pkg/common"
 )
 
 var _ = Describe("ManagedProxyConfigurationReconciler Test", func() {
-	var addon *addonv1beta1.ClusterManagementAddOn
 	var config *proxyv1alpha1.ManagedProxyConfiguration
 
 	const (
@@ -29,25 +26,6 @@ var _ = Describe("ManagedProxyConfigurationReconciler Test", func() {
 	)
 
 	BeforeEach(func() {
-		addon = &addonv1beta1.ClusterManagementAddOn{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: common.AddonName,
-			},
-			Spec: addonv1beta1.ClusterManagementAddOnSpec{
-				DefaultConfigs: []addonv1beta1.AddOnConfig{
-					{
-						ConfigGroupResource: addonv1beta1.ConfigGroupResource{
-							Group:    "proxy.open-cluster-management.io",
-							Resource: "managedproxyconfigurations",
-						},
-						ConfigReferent: addonv1beta1.ConfigReferent{
-							Name: configName,
-						},
-					},
-				},
-			},
-		}
-
 		config = &proxyv1alpha1.ManagedProxyConfiguration{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: configName,
@@ -77,17 +55,11 @@ var _ = Describe("ManagedProxyConfigurationReconciler Test", func() {
 
 		err := ctrlClient.Create(ctx, config)
 		Expect(err).ToNot(HaveOccurred())
-
-		err = ctrlClient.Create(ctx, addon)
-		Expect(err).ToNot(HaveOccurred())
 	})
 
 	AfterEach(func() {
 		// Add any teardown steps that needs to be executed after each test
-		err := ctrlClient.Delete(ctx, addon)
-		Expect(err).ToNot(HaveOccurred())
-
-		err = ctrlClient.Delete(ctx, config)
+		err := ctrlClient.Delete(ctx, config)
 		Expect(err).ToNot(HaveOccurred())
 	})
 
