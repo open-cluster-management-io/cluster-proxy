@@ -11,6 +11,7 @@ fi
 
 failed=0
 temp_dirs=()
+sync_helm_dependencies_hint_printed=0
 
 cleanup() {
 	for dir in "${temp_dirs[@]}"; do
@@ -18,6 +19,15 @@ cleanup() {
 	done
 }
 trap cleanup EXIT
+
+print_sync_helm_dependencies_hint() {
+	if [[ "${sync_helm_dependencies_hint_printed}" -eq 1 ]]; then
+		return
+	fi
+
+	echo "Run 'make sync-helm-dependencies' and commit the regenerated Chart.lock and charts/*.tgz files." >&2
+	sync_helm_dependencies_hint_printed=1
+}
 
 resolve_file_repository() {
 	local chart_dir="$1"
@@ -142,6 +152,10 @@ verify_dependency_list() {
 			echo "${chart_dir}: Chart.lock is not tracked by git: ${lock_file}" >&2
 			chart_failed=1
 		fi
+	fi
+
+	if [[ "${chart_failed}" -eq 1 ]]; then
+		print_sync_helm_dependencies_hint
 	fi
 
 	return "${chart_failed}"
