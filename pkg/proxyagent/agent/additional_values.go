@@ -12,7 +12,7 @@ import (
 
 	"open-cluster-management.io/addon-framework/pkg/addonfactory"
 	"open-cluster-management.io/addon-framework/pkg/utils"
-	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
+	addonv1beta1 "open-cluster-management.io/api/addon/v1beta1"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 	"open-cluster-management.io/cluster-proxy/pkg/common"
@@ -34,7 +34,7 @@ func GetClusterProxyAdditionalValueFunc(
 	enableServiceProxy bool,
 ) addonfactory.GetValuesFunc {
 	return func(cluster *clusterv1.ManagedCluster,
-		addon *addonv1alpha1.ManagedClusterAddOn) (addonfactory.Values, error) {
+		addon *addonv1beta1.ManagedClusterAddOn) (addonfactory.Values, error) {
 		proxyConfig := &proxyv1alpha1.ManagedProxyConfiguration{}
 		if err := runtimeClient.Get(context.TODO(), types.NamespacedName{
 			Name: ManagedClusterConfigurationName,

@@ -41,7 +41,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
+	addonv1beta1 "open-cluster-management.io/api/addon/v1beta1"
 	clusterv1beta2 "open-cluster-management.io/api/cluster/v1beta2"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/controllers"
@@ -93,13 +93,13 @@ var _ = BeforeSuite(func() {
 	err = clientgoscheme.AddToScheme(scheme)
 	Expect(err).NotTo(HaveOccurred())
 
-	err = addonv1alpha1.AddToScheme(scheme)
+	err = addonv1beta1.Install(scheme)
 	Expect(err).NotTo(HaveOccurred())
 
 	err = proxyv1alpha1.AddToScheme(scheme)
 	Expect(err).NotTo(HaveOccurred())
 
-	err = clusterv1beta2.AddToScheme(scheme)
+	err = clusterv1beta2.Install(scheme)
 	Expect(err).NotTo(HaveOccurred())
 
 	err = cpv1alpha1.AddToScheme(scheme)

@@ -19,7 +19,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/utils/ptr"
 
-	addonapiv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
+	addonapiv1beta1 "open-cluster-management.io/api/addon/v1beta1"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 	"open-cluster-management.io/cluster-proxy/pkg/common"
 	"open-cluster-management.io/cluster-proxy/pkg/config"
@@ -56,7 +56,7 @@ var _ = Describe("Install Test", Label("install", "deployment"),
 			By("Polling addon healthiness")
 			Eventually(
 				func() (bool, error) {
-					addon := &addonapiv1alpha1.ManagedClusterAddOn{}
+					addon := &addonapiv1beta1.ManagedClusterAddOn{}
 					if err := hubRuntimeClient.Get(context.TODO(), types.NamespacedName{
 						Namespace: managedClusterName,
 						Name:      "cluster-proxy",
@@ -68,7 +68,7 @@ var _ = Describe("Install Test", Label("install", "deployment"),
 					}
 					return meta.IsStatusConditionTrue(
 						addon.Status.Conditions,
-						addonapiv1alpha1.ManagedClusterAddOnConditionAvailable), nil
+						addonapiv1beta1.ManagedClusterAddOnConditionAvailable), nil
 				}).
 				WithTimeout(time.Minute).
 				Should(BeTrue())
@@ -109,13 +109,13 @@ var _ = Describe("Install Test", Label("install", "deployment"),
 
 			By("Prepare a AddOnDeployMentConfig for cluster-proxy")
 			Eventually(func() error {
-				return hubRuntimeClient.Create(context.TODO(), &addonapiv1alpha1.AddOnDeploymentConfig{
+				return hubRuntimeClient.Create(context.TODO(), &addonapiv1beta1.AddOnDeploymentConfig{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      deployConfigName,
 						Namespace: managedClusterName,
 					},
-					Spec: addonapiv1alpha1.AddOnDeploymentConfigSpec{
-						NodePlacement: &addonapiv1alpha1.NodePlacement{
+					Spec: addonapiv1beta1.AddOnDeploymentConfigSpec{
+						NodePlacement: &addonapiv1beta1.NodePlacement{
 							NodeSelector: nodeSelector,
 							Tolerations:  tolerations,
 						},
@@ -126,7 +126,7 @@ var _ = Describe("Install Test", Label("install", "deployment"),
 
 			By("Add the config to cluster-proxy")
 			Eventually(func() error {
-				return setManagedClusterAddonConfigs([]addonapiv1alpha1.AddOnConfig{
+				return setManagedClusterAddonConfigs([]addonapiv1beta1.AddOnConfig{
 					addOnDeploymentConfigReference(deployConfigName),
 				})
 			}).WithTimeout(time.Minute).ShouldNot(HaveOccurred())
@@ -213,7 +213,7 @@ func waitManagedClusterAddonAvailable() {
 
 		if !meta.IsStatusConditionTrue(
 			addon.Status.Conditions,
-			addonapiv1alpha1.ManagedClusterAddOnConditionAvailable) {
+			addonapiv1beta1.ManagedClusterAddOnConditionAvailable) {
 			return fmt.Errorf("addon is unavailable")
 		}
 
@@ -231,7 +231,8 @@ func waitManagedClusterAddonConfigReferenced(name string) {
 
 		for _, cr := range addon.Status.ConfigReferences {
 			if cr.ConfigGroupResource == expected.ConfigGroupResource &&
-				cr.ConfigReferent == expected.ConfigReferent {
+				cr.DesiredConfig != nil &&
+				cr.DesiredConfig.ConfigReferent == expected.ConfigReferent {
 				return nil
 			}
 		}
@@ -240,7 +241,7 @@ func waitManagedClusterAddonConfigReferenced(name string) {
 	}).WithTimeout(time.Minute).ShouldNot(HaveOccurred())
 }
 
-func setManagedClusterAddonConfigs(configs []addonapiv1alpha1.AddOnConfig) error {
+func setManagedClusterAddonConfigs(configs []addonapiv1beta1.AddOnConfig) error {
 	addon, err := getManagedClusterAddon()
 	if err != nil {
 		return err
@@ -250,8 +251,8 @@ func setManagedClusterAddonConfigs(configs []addonapiv1alpha1.AddOnConfig) error
 	return hubRuntimeClient.Update(context.TODO(), addon)
 }
 
-func getManagedClusterAddon() (*addonapiv1alpha1.ManagedClusterAddOn, error) {
-	addon := &addonapiv1alpha1.ManagedClusterAddOn{}
+func getManagedClusterAddon() (*addonapiv1beta1.ManagedClusterAddOn, error) {
+	addon := &addonapiv1beta1.ManagedClusterAddOn{}
 	err := hubRuntimeClient.Get(context.TODO(), types.NamespacedName{
 		Namespace: managedClusterName,
 		Name:      "cluster-proxy",
@@ -259,13 +260,13 @@ func getManagedClusterAddon() (*addonapiv1alpha1.ManagedClusterAddOn, error) {
 	return addon, err
 }
 
-func addOnDeploymentConfigReference(name string) addonapiv1alpha1.AddOnConfig {
-	return addonapiv1alpha1.AddOnConfig{
-		ConfigGroupResource: addonapiv1alpha1.ConfigGroupResource{
+func addOnDeploymentConfigReference(name string) addonapiv1beta1.AddOnConfig {
+	return addonapiv1beta1.AddOnConfig{
+		ConfigGroupResource: addonapiv1beta1.ConfigGroupResource{
 			Group:    "addon.open-cluster-management.io",
 			Resource: "addondeploymentconfigs",
 		},
-		ConfigReferent: addonapiv1alpha1.ConfigReferent{
+		ConfigReferent: addonapiv1beta1.ConfigReferent{
 			Namespace: managedClusterName,
 			Name:      name,
 		},
@@ -273,7 +274,7 @@ func addOnDeploymentConfigReference(name string) addonapiv1alpha1.AddOnConfig {
 }
 
 func deleteAddOnDeploymentConfig(name string) error {
-	err := hubRuntimeClient.Delete(context.TODO(), &addonapiv1alpha1.AddOnDeploymentConfig{
+	err := hubRuntimeClient.Delete(context.TODO(), &addonapiv1beta1.AddOnDeploymentConfig{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: managedClusterName,

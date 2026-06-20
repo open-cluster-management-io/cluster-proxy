@@ -23,7 +23,7 @@ import (
 	addonutils "open-cluster-management.io/addon-framework/pkg/utils"
 	addonclient "open-cluster-management.io/api/client/addon/clientset/versioned"
 	addoninformers "open-cluster-management.io/api/client/addon/informers/externalversions"
-	addonlisterv1alpha1 "open-cluster-management.io/api/client/addon/listers/addon/v1alpha1"
+	addonlisterv1beta1 "open-cluster-management.io/api/client/addon/listers/addon/v1beta1"
 	sdktls "open-cluster-management.io/sdk-go/pkg/tls"
 
 	"open-cluster-management.io/cluster-proxy/pkg/constant"
@@ -69,7 +69,7 @@ type userServer struct {
 	serviceProxyCACertPath string
 	agentInstallNamespace  string
 
-	addonLister addonlisterv1alpha1.ManagedClusterAddOnLister
+	addonLister addonlisterv1beta1.ManagedClusterAddOnLister
 }
 
 func (k *userServer) AddFlags(cmd *cobra.Command) {
@@ -153,7 +153,7 @@ func (k *userServer) init(ctx context.Context) error {
 		return err
 	}
 	addonInformerFactory := addoninformers.NewSharedInformerFactory(addonClient, 30*time.Minute)
-	k.addonLister = addonInformerFactory.Addon().V1alpha1().ManagedClusterAddOns().Lister()
+	k.addonLister = addonInformerFactory.Addon().V1beta1().ManagedClusterAddOns().Lister()
 	addonInformerFactory.Start(ctx.Done())
 
 	return nil

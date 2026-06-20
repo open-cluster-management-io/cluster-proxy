@@ -24,7 +24,7 @@ import (
 	"open-cluster-management.io/addon-framework/pkg/addonfactory"
 	"open-cluster-management.io/addon-framework/pkg/agent"
 	"open-cluster-management.io/addon-framework/pkg/utils"
-	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
+	addonv1beta1 "open-cluster-management.io/api/addon/v1beta1"
 	addonclient "open-cluster-management.io/api/client/addon/clientset/versioned"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
@@ -61,38 +61,33 @@ func NewAgentAddon(
 		return nil, err
 	}
 
-	regConfigs := make([]addonv1alpha1.RegistrationConfig, 0, 2)
-	regConfigs = append(regConfigs, addonv1alpha1.RegistrationConfig{
-		SignerName: csrv1.KubeAPIServerClientSignerName,
-		Subject: addonv1alpha1.Subject{
-			User: common.SubjectUserClusterAddonAgent,
-			Groups: []string{
-				common.SubjectGroupClusterProxy,
-			},
+	regConfigs := make([]agent.RegistrationConfig, 0, 2)
+	regConfigs = append(regConfigs, &agent.KubeClientRegistration{
+		User: common.SubjectUserClusterAddonAgent,
+		Groups: []string{
+			common.SubjectGroupClusterProxy,
 		},
 	})
 	// Register the custom signer CSR option if V1 csr is supported
 	// caculate a hash value of signer ca data and add it to the organizationUnits of the subject
 	signerHash := sha256.Sum256(signer.CAData())
-	regConfigs = append(regConfigs, addonv1alpha1.RegistrationConfig{
+	regConfigs = append(regConfigs, &agent.CustomSignerRegistration{
 		SignerName: ProxyAgentSignerName,
-		Subject: addonv1alpha1.Subject{
-			User: common.SubjectUserClusterProxyAgent,
-			Groups: []string{
-				common.SubjectGroupClusterProxy,
-			},
-			OrganizationUnits: []string{
-				fmt.Sprintf("signer-%x", base64.StdEncoding.EncodeToString(signerHash[:])),
-			},
+		User:       common.SubjectUserClusterProxyAgent,
+		Groups: []string{
+			common.SubjectGroupClusterProxy,
+		},
+		OrganizationUnits: []string{
+			fmt.Sprintf("signer-%x", base64.StdEncoding.EncodeToString(signerHash[:])),
 		},
 	})
 
 	agentFactory := addonfactory.NewAgentAddonFactory(common.AddonName, FS, "manifests/charts/addon-agent").
 		WithAgentRegistrationOption(&agent.RegistrationOption{
-			CSRConfigurations: func(cluster *clusterv1.ManagedCluster, addon *addonv1alpha1.ManagedClusterAddOn) ([]addonv1alpha1.RegistrationConfig, error) {
+			Configurations: func(ctx context.Context, cluster *clusterv1.ManagedCluster, addon *addonv1beta1.ManagedClusterAddOn) ([]agent.RegistrationConfig, error) {
 				return regConfigs, nil
 			},
-			CSRApproveCheck: func(cluster *clusterv1.ManagedCluster, addon *addonv1alpha1.ManagedClusterAddOn, csr *csrv1.CertificateSigningRequest) bool {
+			CSRApproveCheck: func(ctx context.Context, cluster *clusterv1.ManagedCluster, addon *addonv1beta1.ManagedClusterAddOn, csr *csrv1.CertificateSigningRequest) bool {
 				return cluster.Spec.HubAcceptsClient
 			},
 			PermissionConfig: utils.NewRBACPermissionConfigBuilder(nativeClient).
@@ -149,9 +144,9 @@ func NewAgentAddon(
 
 // agentInstallNamespaceFunc returns namespace from AddonDeploymentConfig, and config.DefaultAddonInstallNamespace if
 // AddonDeploymentConfig is not set.
-func agentInstallNamespaceFunc(getter utils.AddOnDeploymentConfigGetter) func(*addonv1alpha1.ManagedClusterAddOn) (string, error) {
-	return func(addon *addonv1alpha1.ManagedClusterAddOn) (string, error) {
-		ns, err := utils.AgentInstallNamespaceFromDeploymentConfigFunc(getter)(addon)
+func agentInstallNamespaceFunc(getter utils.AddOnDeploymentConfigGetter) func(context.Context, *addonv1beta1.ManagedClusterAddOn) (string, error) {
+	return func(ctx context.Context, addon *addonv1beta1.ManagedClusterAddOn) (string, error) {
+		ns, err := utils.AgentInstallNamespaceFromDeploymentConfigFunc(getter)(ctx, addon)
 		if err != nil {
 			return config.DefaultAddonInstallNamespace, err
 		}
@@ -170,7 +165,7 @@ func GetClusterProxyValueFunc(
 	enableKubeApiProxy bool, //nolint:revive // parameter name is part of the public API
 ) addonfactory.GetValuesFunc {
 	return func(cluster *clusterv1.ManagedCluster,
-		addon *addonv1alpha1.ManagedClusterAddOn) (addonfactory.Values, error) {
+		addon *addonv1beta1.ManagedClusterAddOn) (addonfactory.Values, error) {
 		proxyConfig := &proxyv1alpha1.ManagedProxyConfiguration{}
 		if err := runtimeClient.Get(context.TODO(), types.NamespacedName{
 			Name: ManagedClusterConfigurationName,
@@ -261,7 +256,7 @@ func GetClusterProxyValueFunc(
 			"agentDeploymentName":          "cluster-proxy-proxy-agent",
 			"serviceDomain":                serviceDomain,
 			"includeNamespaceCreation":     true,
-			"spokeAddonNamespace":          addon.Spec.InstallNamespace, //nolint:staticcheck // deprecated but still needed for backward compatibility
+			"spokeAddonNamespace":          namespace,
 			"additionalProxyAgentArgs":     proxyConfig.Spec.ProxyAgent.AdditionalArgs,
 			"additionalServiceProxyArgs":   proxyConfig.Spec.ProxyAgent.AdditionalServiceProxyArgs,
 			"clusterName":                  cluster.Name,
@@ -294,11 +289,11 @@ type serviceToExpose struct {
 }
 
 func CustomSignerWithExpiry(customSignerName string, caKey, caData []byte, duration time.Duration) agent.CSRSignerFunc {
-	return func(cluster *clusterv1.ManagedCluster, addon *addonv1alpha1.ManagedClusterAddOn, csr *csrv1.CertificateSigningRequest) ([]byte, error) {
+	return func(ctx context.Context, cluster *clusterv1.ManagedCluster, addon *addonv1beta1.ManagedClusterAddOn, csr *csrv1.CertificateSigningRequest) ([]byte, error) {
 		if csr.Spec.SignerName != customSignerName {
 			return nil, nil
 		}
-		return utils.DefaultSignerWithExpiry(caKey, caData, duration)(cluster, addon, csr)
+		return utils.DefaultSignerWithExpiry(caKey, caData, duration)(ctx, cluster, addon, csr)
 	}
 }
 
@@ -329,8 +324,8 @@ func removeDupAndSortServices(services []serviceToExpose) []serviceToExpose {
 	return newServices
 }
 
-func toAgentAddOnChartValues(caCertData []byte) func(config addonv1alpha1.AddOnDeploymentConfig) (addonfactory.Values, error) {
-	return func(config addonv1alpha1.AddOnDeploymentConfig) (addonfactory.Values, error) {
+func toAgentAddOnChartValues(caCertData []byte) func(config addonv1beta1.AddOnDeploymentConfig) (addonfactory.Values, error) {
+	return func(config addonv1beta1.AddOnDeploymentConfig) (addonfactory.Values, error) {
 		values := addonfactory.Values{}
 		for _, variable := range config.Spec.CustomizedVariables {
 			values[variable.Name] = variable.Value

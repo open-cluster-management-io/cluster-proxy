@@ -15,7 +15,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 
-	addonapiv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
+	addonapiv1beta1 "open-cluster-management.io/api/addon/v1beta1"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 	"open-cluster-management.io/cluster-proxy/pkg/common"
 	"open-cluster-management.io/cluster-proxy/pkg/proxyagent/agent"
@@ -28,7 +28,7 @@ var _ = Describe("Certificate rotation Test", Label("certificate", "rotation"),
 				Eventually(
 					func() error {
 						By("ManagedClusterAddon should be present firstly")
-						addon := &addonapiv1alpha1.ManagedClusterAddOn{}
+						addon := &addonapiv1beta1.ManagedClusterAddOn{}
 						if err := hubRuntimeClient.Get(context.TODO(), types.NamespacedName{
 							Namespace: managedClusterName,
 							Name:      common.AddonName,
