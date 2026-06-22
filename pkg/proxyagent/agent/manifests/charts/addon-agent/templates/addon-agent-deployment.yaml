@@ -175,6 +175,10 @@ spec:
               port: 8000
             initialDelaySeconds: 2
             periodSeconds: 10
+          readinessProbe:
+            tcpSocket:
+              port: 7443
+            periodSeconds: 2
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:

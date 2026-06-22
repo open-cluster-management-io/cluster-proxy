@@ -1,4 +1,4 @@
-apiVersion: addon.open-cluster-management.io/v1alpha1
+apiVersion: addon.open-cluster-management.io/v1beta1
 kind: ClusterManagementAddOn
 metadata:
   name: cluster-proxy
@@ -8,13 +8,10 @@ spec:
   addOnMeta:
     displayName: cluster-proxy
     description: cluster-proxy
-  supportedConfigs:
+  defaultConfigs:
   - group: proxy.open-cluster-management.io
     resource: managedproxyconfigurations
-    defaultConfig:
-      name: cluster-proxy
-  - group: addon.open-cluster-management.io
-    resource: addondeploymentconfigs
+    name: cluster-proxy
   installStrategy:
     type: Placements
     placements:

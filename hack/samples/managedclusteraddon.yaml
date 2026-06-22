@@ -1,7 +1,19 @@
-apiVersion: addon.open-cluster-management.io/v1alpha1
+apiVersion: addon.open-cluster-management.io/v1beta1
+kind: AddOnDeploymentConfig
+metadata:
+  name: cluster-proxy
+  namespace: cluster-test2
+spec:
+  agentInstallNamespace: open-cluster-management-cluster-proxy
+---
+apiVersion: addon.open-cluster-management.io/v1beta1
 kind: ManagedClusterAddOn
 metadata:
   name: cluster-proxy
   namespace: cluster-test2
 spec:
-  installNamespace: "open-cluster-management-cluster-proxy"
+  configs:
+  - group: addon.open-cluster-management.io
+    resource: addondeploymentconfigs
+    namespace: cluster-test2
+    name: cluster-proxy

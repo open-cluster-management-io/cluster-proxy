@@ -26,7 +26,7 @@ helm install cluster-proxy ./charts/cluster-proxy \
 | `image`                                 | Image name                         | `cluster-proxy`                                 |
 | `tag`                                   | Image tag                          | Chart version                                   |
 | `replicas`                              | Number of replicas                 | `1`                                             |
-| `spokeAddonNamespace`                   | Namespace for spoke addon          | `open-cluster-management-cluster-proxy`         |
+| `spokeAddonNamespace`                   | Default agent install namespace    | `open-cluster-management-cluster-proxy`         |
 | `proxyServerImage`                      | Proxy server image                 | `quay.io/open-cluster-management/cluster-proxy` |
 | `proxyAgentImage`                       | Proxy agent image                  | `quay.io/open-cluster-management/cluster-proxy` |
 | `proxyServer.entrypointLoadBalancer`    | Enable LoadBalancer for entrypoint | `false`                                         |

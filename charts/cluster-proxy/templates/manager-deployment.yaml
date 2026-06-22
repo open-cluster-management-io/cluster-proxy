@@ -35,6 +35,7 @@ spec:
             - --enable-kube-api-proxy={{ .Values.enableKubeApiProxy }}
             - --enable-service-proxy={{ .Values.enableServiceProxy }}
             - --image-pull-policy={{ .Values.proxyServer.imagePullPolicy }}
+            - --agent-install-namespace={{ .Values.spokeAddonNamespace }}
             {{- if .Values.featureGates }}
             - --feature-gates=ClusterProfile={{ .Values.featureGates.clusterProfile | default false}}
             {{- end}}
