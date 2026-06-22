@@ -16,6 +16,7 @@
 
 /apiserver.local.config
 /bin
+/hack/tools/bin/
 /default.etcd
 /kubeconfig
 /config/crds/
