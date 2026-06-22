@@ -40,6 +40,7 @@ import (
 	fakeaddon "open-cluster-management.io/api/client/addon/clientset/versioned/fake"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
+	"open-cluster-management.io/cluster-proxy/pkg/constant"
 	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/operator/authentication/selfsigned"
 )
 
@@ -270,6 +271,9 @@ func TestNewAgentAddon(t *testing.T) {
 		"cluster-proxy-addon-agent-impersonator:open-cluster-management-cluster-proxy", // clusterrolebinding for impersonation
 	}
 
+	expectedManifestNamesWithServiceProxy := append([]string{}, expectedManifestNames...)
+	expectedManifestNamesWithServiceProxy = append(expectedManifestNamesWithServiceProxy, "cluster-proxy-service-proxy-server-certificates")
+
 	cases := []struct {
 		name                    string
 		cluster                 *clusterv1.ManagedCluster
@@ -278,6 +282,7 @@ func TestNewAgentAddon(t *testing.T) {
 		addOndDeploymentConfigs []runtime.Object
 		kubeObjs                []runtime.Object
 		enableKubeApiProxy      bool
+		enableServiceProxy      bool
 		expectedErrorMsg        string
 		verifyManifests         func(t *testing.T, manifests []runtime.Object)
 	}{
@@ -409,6 +414,32 @@ func TestNewAgentAddon(t *testing.T) {
 				agentDeploy := getAgentDeployment(manifests)
 				assert.NotNil(t, agentDeploy)
 				assert.Equal(t, getProxyServerHost(agentDeploy), "127.0.0.1")
+			},
+		},
+		{
+			name:    "port forward proxy server with service proxy",
+			cluster: newCluster(clusterName, true),
+			addon: func() *addonv1beta1.ManagedClusterAddOn {
+				addOn := newAddOn(addOnName, clusterName)
+				addOn.Status.ConfigReferences = []addonv1beta1.ConfigReference{newManagedProxyConfigReference(managedProxyConfigName)}
+				return addOn
+			}(),
+			managedProxyConfig:      newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypePortForward),
+			addOndDeploymentConfigs: []runtime.Object{},
+			kubeObjs:                []runtime.Object{},
+			enableKubeApiProxy:      true,
+			enableServiceProxy:      true,
+			verifyManifests: func(t *testing.T, manifests []runtime.Object) {
+				assert.Len(t, manifests, len(expectedManifestNamesWithServiceProxy))
+				assert.ElementsMatch(t, expectedManifestNamesWithServiceProxy, manifestNames(manifests))
+				agentDeploy := getAgentDeployment(manifests)
+				assert.NotNil(t, agentDeploy)
+				serviceProxy := getDeploymentContainer(agentDeploy, "service-proxy")
+				if assert.NotNil(t, serviceProxy) &&
+					assert.NotNil(t, serviceProxy.ReadinessProbe) &&
+					assert.NotNil(t, serviceProxy.ReadinessProbe.TCPSocket) {
+					assert.Equal(t, int32(constant.ServiceProxyPort), serviceProxy.ReadinessProbe.TCPSocket.Port.IntVal)
+				}
 			},
 		},
 		{
@@ -718,7 +749,7 @@ func TestNewAgentAddon(t *testing.T) {
 				fakeRuntimeClient,
 				fakeKubeClient,
 				c.enableKubeApiProxy,
-				false, // enableServiceProxy
+				c.enableServiceProxy,
 				fakeAddonClient,
 			)
 			assert.NoError(t, err)
@@ -1071,6 +1102,18 @@ func getAgentDeployment(manifests []runtime.Object) *appsv1.Deployment {
 		}
 	}
 
+	return nil
+}
+
+func getDeploymentContainer(deploy *appsv1.Deployment, name string) *corev1.Container {
+	if deploy == nil {
+		return nil
+	}
+	for i := range deploy.Spec.Template.Spec.Containers {
+		if deploy.Spec.Template.Spec.Containers[i].Name == name {
+			return &deploy.Spec.Template.Spec.Containers[i]
+		}
+	}
 	return nil
 }
 

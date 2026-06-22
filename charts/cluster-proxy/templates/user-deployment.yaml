@@ -59,7 +59,7 @@ spec:
             - --server-key=/user-tls/tls.key
             - --server-cert=/user-tls/tls.crt
             - --service-proxy-ca-cert=/proxy-ca/ca.crt
-            - --agent-install-namespace=open-cluster-management-agent-addon
+            - --agent-install-namespace={{ .Values.spokeAddonNamespace }}
           env:
             - name: POD_NAMESPACE
               valueFrom:
