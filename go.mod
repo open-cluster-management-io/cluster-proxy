@@ -3,8 +3,8 @@ module open-cluster-management.io/cluster-proxy
 go 1.26.2
 
 require (
-	github.com/onsi/ginkgo/v2 v2.28.1
-	github.com/onsi/gomega v1.39.1
+	github.com/onsi/ginkgo/v2 v2.32.0
+	github.com/onsi/gomega v1.40.0
 	github.com/openshift/library-go v0.0.0-20250711143941-47604345e7ea
 	github.com/pkg/errors v0.9.1
 	github.com/stretchr/testify v1.11.1
@@ -67,7 +67,7 @@ require (
 	github.com/gobwas/glob v0.2.3 // indirect
 	github.com/google/gnostic-models v0.7.1 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
-	github.com/google/pprof v0.0.0-20260115054156-294ebfa9ad83 // indirect
+	github.com/google/pprof v0.0.0-20260402051712-545e8a4df936 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674 // indirect
 	github.com/huandu/xstrings v1.5.0 // indirect
