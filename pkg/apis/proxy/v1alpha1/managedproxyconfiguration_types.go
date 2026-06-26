@@ -169,7 +169,54 @@ type NodePlacement struct {
 	// the triple <key,value,effect> using the matching operator <operator>.
 	// The default is an empty list.
 	// +optional
-	Tolerations []v1.Toleration `json:"tolerations,omitempty"`
+	Tolerations Tolerations `json:"tolerations,omitempty"`
+}
+
+// Tolerations is a list of Kubernetes node tolerations for the proxy server pods.
+type Tolerations []Toleration
+
+func (in Tolerations) ToCoreV1() []v1.Toleration {
+	if in == nil {
+		return nil
+	}
+
+	out := make([]v1.Toleration, len(in))
+	for i := range in {
+		out[i] = v1.Toleration(in[i])
+	}
+	return out
+}
+
+// Toleration is attached by pods to tolerate any taint that matches
+// the triple <key,value,effect> using the matching operator <operator>.
+type Toleration struct {
+	// Key is the taint key that the toleration applies to. Empty means match all taint keys.
+	// If the key is empty, operator must be Exists; this combination means to match all values and all keys.
+	// +optional
+	Key string `json:"key,omitempty"`
+	// Operator represents a key's relationship to the value.
+	// Valid operators are Exists, Equal, Lt, and Gt. Defaults to Equal.
+	// Exists is equivalent to wildcard for value, so that a pod can
+	// tolerate all taints of a particular category.
+	// Lt and Gt perform numeric comparisons (requires feature gate TaintTolerationComparisonOperators).
+	// +optional
+	// +kubebuilder:default=Equal
+	// +kubebuilder:validation:Enum="";Exists;Equal;Lt;Gt
+	Operator v1.TolerationOperator `json:"operator,omitempty"`
+	// Value is the taint value the toleration matches to.
+	// If the operator is Exists, the value should be empty, otherwise just a regular string.
+	// +optional
+	Value string `json:"value,omitempty"`
+	// Effect indicates the taint effect to match. Empty means match all taint effects.
+	// When specified, allowed values are NoSchedule, PreferNoSchedule and NoExecute.
+	// +optional
+	Effect v1.TaintEffect `json:"effect,omitempty"`
+	// TolerationSeconds represents the period of time the toleration (which must be
+	// of effect NoExecute, otherwise this field is ignored) tolerates the taint. By default,
+	// it is not set, which means tolerate the taint forever (do not evict). Zero and
+	// negative values will be treated as 0 (evict immediately) by the system.
+	// +optional
+	TolerationSeconds *int64 `json:"tolerationSeconds,omitempty"`
 }
 
 // ManagedProxyConfigurationDeployPorts is the expected port for wiring up proxy servers
