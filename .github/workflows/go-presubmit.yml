@@ -139,5 +139,7 @@ jobs:
         run: make images
       - name: Setup environment
         run: make setup-env-for-e2e && make deploy-cluster-proxy-e2e
+      - name: Wait for cluster-proxy readiness
+        run: make wait-cluster-proxy-e2e
       - name: Run e2e tests
-        run: make test-e2e
+        run: make run-e2e-job
