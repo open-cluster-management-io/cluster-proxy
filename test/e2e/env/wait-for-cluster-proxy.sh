@@ -12,41 +12,32 @@ HUB_NAMESPACE="${HUB_NAMESPACE:-open-cluster-management-addon}"
 AGENT_NAMESPACE="${AGENT_NAMESPACE:-open-cluster-management-cluster-proxy}"
 PLACEMENT_NAME="${PLACEMENT_NAME:-cluster-proxy-placement}"
 
-condition_status() {
-    local resource="$1"
-    local name="$2"
-    local namespace="$3"
-    local condition="$4"
-    local namespace_args=()
-
-    if [ -n "$namespace" ]; then
-        namespace_args=(-n "$namespace")
-    fi
-
-    kubectl get "$resource" "$name" "${namespace_args[@]}" \
-        -o "jsonpath={.status.conditions[?(@.type==\"$condition\")].status}"
-}
-
+# Guards below echo the error and `return 1` inline on purpose: the require_*
+# functions only run inside an `if` condition (set -e suspended), where a
+# `return` in a shared error helper would exit the helper alone and let the
+# caller fall through past the guard.
 require_condition_true() {
     local resource="$1"
     local name="$2"
     local namespace="$3"
     local condition="$4"
+    local namespace_args=()
     local status
 
-    status="$(condition_status "$resource" "$name" "$namespace" "$condition" 2>/dev/null || true)"
+    if [ -n "$namespace" ]; then
+        namespace_args=(-n "$namespace")
+    fi
+
+    status="$(kubectl get "$resource" "$name" "${namespace_args[@]}" \
+        -o "jsonpath={.status.conditions[?(@.type==\"$condition\")].status}" 2>/dev/null || true)"
     if [ "$status" != "True" ]; then
         if [ -n "$namespace" ]; then
-            return_with_error "$resource/$name in namespace $namespace condition $condition is $status"
+            echo "$resource/$name in namespace $namespace condition $condition is $status"
         else
-            return_with_error "$resource/$name condition $condition is $status"
+            echo "$resource/$name condition $condition is $status"
         fi
+        return 1
     fi
-}
-
-return_with_error() {
-    echo "$1"
-    return 1
 }
 
 require_deployment_ready() {
@@ -58,7 +49,8 @@ require_deployment_ready() {
 
     fields="$(kubectl get deployment "$name" -n "$namespace" -o jsonpath='{.metadata.generation}{"\n"}{.status.observedGeneration}{"\n"}{.status.replicas}{"\n"}{.status.readyReplicas}{"\n"}{.status.updatedReplicas}{"\n"}{.status.availableReplicas}{"\n"}{.status.unavailableReplicas}{"\n"}{.spec.replicas}{"\n"}' 2>/dev/null || true)"
     if [ -z "$fields" ]; then
-        return_with_error "deployment/$name in namespace $namespace does not exist"
+        echo "deployment/$name in namespace $namespace does not exist"
+        return 1
     fi
 
     mapfile -t deployment_fields <<<"$fields"
@@ -71,16 +63,9 @@ require_deployment_ready() {
     unavailable="${deployment_fields[6]:-0}"
     spec_replicas="${deployment_fields[7]:-1}"
 
-    if [ -z "$observed" ]; then observed=0; fi
-    if [ -z "$replicas" ]; then replicas=0; fi
-    if [ -z "$ready" ]; then ready=0; fi
-    if [ -z "$updated" ]; then updated=0; fi
-    if [ -z "$available" ]; then available=0; fi
-    if [ -z "$unavailable" ]; then unavailable=0; fi
-    if [ -z "$spec_replicas" ]; then spec_replicas=1; fi
-
     if [ "$observed" -lt "$generation" ]; then
-        return_with_error "deployment/$name in namespace $namespace has not observed generation $generation"
+        echo "deployment/$name in namespace $namespace has not observed generation $generation"
+        return 1
     fi
 
     if [ "$replicas" -ne "$spec_replicas" ] ||
@@ -88,7 +73,8 @@ require_deployment_ready() {
         [ "$updated" -ne "$spec_replicas" ] ||
         [ "$available" -ne "$spec_replicas" ] ||
         [ "$unavailable" -ne 0 ]; then
-        return_with_error "deployment/$name in namespace $namespace is not ready: replicas=$replicas ready=$ready updated=$updated available=$available unavailable=$unavailable expected=$spec_replicas"
+        echo "deployment/$name in namespace $namespace is not ready: replicas=$replicas ready=$ready updated=$updated available=$available unavailable=$unavailable expected=$spec_replicas"
+        return 1
     fi
 }
 
@@ -96,37 +82,48 @@ require_service() {
     local namespace="$1"
     local name="$2"
 
-    kubectl get service "$name" -n "$namespace" >/dev/null 2>&1 ||
-        return_with_error "service/$name in namespace $namespace does not exist"
+    if ! kubectl get service "$name" -n "$namespace" >/dev/null 2>&1; then
+        echo "service/$name in namespace $namespace does not exist"
+        return 1
+    fi
+}
+
+require_clustermanagementaddon() {
+    if ! kubectl get clustermanagementaddon cluster-proxy >/dev/null 2>&1; then
+        echo "clustermanagementaddon/cluster-proxy does not exist"
+        return 1
+    fi
 }
 
 require_cluster_proxy_configuration() {
     local condition
 
-    kubectl get managedproxyconfiguration cluster-proxy >/dev/null 2>&1 ||
-        return_with_error "managedproxyconfiguration/cluster-proxy does not exist"
+    if ! kubectl get managedproxyconfiguration cluster-proxy >/dev/null 2>&1; then
+        echo "managedproxyconfiguration/cluster-proxy does not exist"
+        return 1
+    fi
 
     for condition in ProxyServerDeployed ProxyServerSecretSigned AgentServerSecretSigned UserServerSecretSigned; do
-        require_condition_true managedproxyconfiguration cluster-proxy "" "$condition"
+        require_condition_true managedproxyconfiguration cluster-proxy "" "$condition" || return 1
     done
 }
 
 require_placement_decision() {
     local clusters
 
-    kubectl get placement "$PLACEMENT_NAME" -n "$HUB_NAMESPACE" >/dev/null 2>&1 ||
-        return_with_error "placement/$PLACEMENT_NAME in namespace $HUB_NAMESPACE does not exist"
+    if ! kubectl get placement "$PLACEMENT_NAME" -n "$HUB_NAMESPACE" >/dev/null 2>&1; then
+        echo "placement/$PLACEMENT_NAME in namespace $HUB_NAMESPACE does not exist"
+        return 1
+    fi
 
     clusters="$(kubectl get placementdecision -n "$HUB_NAMESPACE" \
         -l "cluster.open-cluster-management.io/placement=$PLACEMENT_NAME" \
         -o 'jsonpath={range .items[*].status.decisions[*]}{.clusterName}{"\n"}{end}' 2>/dev/null || true)"
-    if [ -z "$clusters" ]; then
-        clusters="$(kubectl get placementdecision -n "$HUB_NAMESPACE" \
-            -o 'jsonpath={range .items[*].status.decisions[*]}{.clusterName}{"\n"}{end}' 2>/dev/null || true)"
-    fi
 
-    echo "$clusters" | grep -Fxq "$MANAGED_CLUSTER_NAME" ||
-        return_with_error "placement/$PLACEMENT_NAME has not selected managed cluster $MANAGED_CLUSTER_NAME"
+    if ! echo "$clusters" | grep -Fxq "$MANAGED_CLUSTER_NAME"; then
+        echo "placement/$PLACEMENT_NAME has not selected managed cluster $MANAGED_CLUSTER_NAME"
+        return 1
+    fi
 }
 
 require_cluster_proxy_ready() {
@@ -139,8 +136,7 @@ require_cluster_proxy_ready() {
         require_deployment_ready "$HUB_NAMESPACE" cluster-proxy &&
         require_service "$HUB_NAMESPACE" cluster-proxy-addon-user &&
         require_condition_true managedcluster "$MANAGED_CLUSTER_NAME" "" ManagedClusterConditionAvailable &&
-        { kubectl get clustermanagementaddon cluster-proxy >/dev/null 2>&1 ||
-            return_with_error "clustermanagementaddon/cluster-proxy does not exist"; } &&
+        require_clustermanagementaddon &&
         require_placement_decision &&
         require_cluster_proxy_configuration &&
         require_condition_true managedclusteraddon cluster-proxy "$MANAGED_CLUSTER_NAME" Available &&
