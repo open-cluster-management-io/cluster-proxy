@@ -4,6 +4,7 @@ IMAGE_REGISTRY_NAME ?= quay.io/open-cluster-management
 IMAGE_NAME = cluster-proxy
 IMAGE_TAG ?= latest
 E2E_TEST_CLUSTER_NAME ?= e2e
+E2E_READINESS_TIMEOUT ?= 600
 CONTAINER_ENGINE ?= docker
 HELM ?= helm
 # Produce CRDs that work back to Kubernetes 1.11 (no version conversion)
@@ -209,6 +210,10 @@ deploy-cluster-proxy-e2e: delete-cluster-proxy-image-from-kind load-cluster-prox
 	@echo "Cluster-proxy deployed successfully!"
 .PHONY: deploy-cluster-proxy-e2e
 
+wait-cluster-proxy-e2e:
+	@./test/e2e/env/wait-for-cluster-proxy.sh $(E2E_READINESS_TIMEOUT)
+.PHONY: wait-cluster-proxy-e2e
+
 # Build e2e test container image
 build-e2e-image:
 	@echo "Building e2e test container image..."
@@ -233,9 +238,10 @@ delete-e2e-image-from-kind:
 	done
 .PHONY: delete-e2e-image-from-kind
 
-# Run e2e tests in cluster using container image (Kubernetes-native approach)
-# Use LABEL_FILTER to run specific tests, e.g.: make test-e2e LABEL_FILTER="install"
-test-e2e: delete-e2e-image-from-kind build-e2e-image load-e2e-image-kind
+# Run e2e test job in cluster using container image.
+# This target assumes cluster-proxy readiness was already checked by the caller.
+# Use LABEL_FILTER to run specific tests, e.g.: make run-e2e-job LABEL_FILTER="install"
+run-e2e-job: delete-e2e-image-from-kind build-e2e-image load-e2e-image-kind
 	@echo "Deleting existing e2e test job if present..."
 	@kubectl delete job cluster-proxy-e2e -n open-cluster-management-addon --ignore-not-found
 	@echo "Deploying e2e test job..."
@@ -246,21 +252,18 @@ test-e2e: delete-e2e-image-from-kind build-e2e-image load-e2e-image-kind
 	     -e 's|image: quay.io/open-cluster-management/cluster-proxy-e2e:latest|image: $(IMAGE_REGISTRY_NAME)/$(IMAGE_NAME)-e2e:$(IMAGE_TAG)|g' \
 	     test/e2e/env/job.yaml | kubectl apply -f -
 	@./test/e2e/env/wait-for-job.sh cluster-proxy-e2e open-cluster-management-addon 1200
+.PHONY: run-e2e-job
+
+# Run e2e tests in cluster using container image (Kubernetes-native approach)
+# Use LABEL_FILTER to run specific tests, e.g.: make test-e2e LABEL_FILTER="install"
+test-e2e: wait-cluster-proxy-e2e
+	@$(MAKE) run-e2e-job
 .PHONY: test-e2e
 
 # Rapid iteration workflow for e2e tests (cleans up everything first)
 # Use LABEL_FILTER to run specific tests, e.g.: make retest-e2e LABEL_FILTER="connectivity"
-retest-e2e: clean-e2e delete-e2e-image-from-kind build-e2e-image load-e2e-image-kind
-	@echo "Deleting existing e2e test job if present..."
-	@kubectl delete job cluster-proxy-e2e -n open-cluster-management-addon --ignore-not-found
-	@echo "Deploying e2e test job..."
-	@if [ -n "$(LABEL_FILTER)" ]; then \
-		echo "Running tests with label filter: $(LABEL_FILTER)"; \
-	fi
-	@sed -e '/name: LABEL_FILTER/{n;s|value: ""|value: "$(LABEL_FILTER)"|;}' \
-	     -e 's|image: quay.io/open-cluster-management/cluster-proxy-e2e:latest|image: $(IMAGE_REGISTRY_NAME)/$(IMAGE_NAME)-e2e:$(IMAGE_TAG)|g' \
-	     test/e2e/env/job.yaml | kubectl apply -f -
-	@./test/e2e/env/wait-for-job.sh cluster-proxy-e2e open-cluster-management-addon 1200
+retest-e2e: clean-e2e
+	@$(MAKE) test-e2e
 .PHONY: retest-e2e
 
 # Clean up e2e test job and related resources
