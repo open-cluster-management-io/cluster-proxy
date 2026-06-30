@@ -70,8 +70,6 @@ var (
 )
 
 const (
-	eventuallyTimeout              = 600 // seconds
-	eventuallyInterval             = 30  // seconds
 	hubInstallNamespace            = "open-cluster-management-addon"
 	managedClusterInstallNamespace = "open-cluster-management-cluster-proxy"
 	serviceAccountName             = "cluster-proxy-test"
@@ -125,61 +123,61 @@ var _ = BeforeSuite(func() {
 })
 
 func checkAddonStatus() {
-	var err error
-
 	By("Check resources are running")
-	Eventually(func() error {
-		// deployments on hub is running
-		deployments := []string{
-			"cluster-proxy-addon-manager",
-			"cluster-proxy-addon-user",
-			"cluster-proxy",
-		}
-		for _, deployment := range deployments {
-			fmt.Fprintf(GinkgoWriter, "[DEBUG] Checking deployment: %s in namespace: %s\n", deployment, hubInstallNamespace)
-			d, err := hubKubeClient.AppsV1().Deployments(hubInstallNamespace).Get(context.Background(), deployment, metav1.GetOptions{})
-			if err != nil {
-				fmt.Fprintf(GinkgoWriter, "[ERROR] Failed to get deployment %s: %v\n", deployment, err)
-				return err
-			}
-			fmt.Fprintf(GinkgoWriter, "[DEBUG] Deployment %s status - Replicas: %d, Available: %d, Ready: %d, Updated: %d\n",
-				deployment, d.Status.Replicas, d.Status.AvailableReplicas, d.Status.ReadyReplicas, d.Status.UpdatedReplicas)
-			if d.Status.AvailableReplicas < 1 {
-				errMsg := fmt.Errorf("available replicas for %s should >= 1, but get %d", deployment, d.Status.AvailableReplicas)
-				fmt.Fprintf(GinkgoWriter, "[ERROR] %v\n", errMsg)
-				return errMsg
-			}
-			fmt.Fprintf(GinkgoWriter, "[SUCCESS] Deployment %s is ready\n", deployment)
-		}
+	Expect(checkAddonResourcesReady()).ToNot(HaveOccurred())
+}
 
-		// service on hub exist
-		fmt.Fprintf(GinkgoWriter, "[DEBUG] Checking service: cluster-proxy-addon-user in namespace: %s\n", hubInstallNamespace)
-		_, err = hubKubeClient.CoreV1().Services(hubInstallNamespace).Get(context.Background(), "cluster-proxy-addon-user", metav1.GetOptions{})
+func checkAddonResourcesReady() error {
+	// deployments on hub is running
+	deployments := []string{
+		"cluster-proxy-addon-manager",
+		"cluster-proxy-addon-user",
+		"cluster-proxy",
+	}
+	for _, deployment := range deployments {
+		fmt.Fprintf(GinkgoWriter, "[DEBUG] Checking deployment: %s in namespace: %s\n", deployment, hubInstallNamespace)
+		d, err := hubKubeClient.AppsV1().Deployments(hubInstallNamespace).Get(context.Background(), deployment, metav1.GetOptions{})
 		if err != nil {
-			fmt.Fprintf(GinkgoWriter, "[ERROR] Failed to get service cluster-proxy-addon-user: %v\n", err)
+			fmt.Fprintf(GinkgoWriter, "[ERROR] Failed to get deployment %s: %v\n", deployment, err)
 			return err
 		}
-		fmt.Fprintf(GinkgoWriter, "[SUCCESS] Service cluster-proxy-addon-user exists\n")
-
-		// deployment on managedcluster is running
-		fmt.Fprintf(GinkgoWriter, "[DEBUG] Checking deployment: cluster-proxy-proxy-agent in namespace: %s\n", managedClusterInstallNamespace)
-		anpAgent, err := hubKubeClient.AppsV1().Deployments(managedClusterInstallNamespace).Get(context.Background(), "cluster-proxy-proxy-agent", metav1.GetOptions{})
-		if err != nil {
-			fmt.Fprintf(GinkgoWriter, "[ERROR] Failed to get deployment cluster-proxy-proxy-agent: %v\n", err)
-			return err
-		}
-		fmt.Fprintf(GinkgoWriter, "[DEBUG] Deployment cluster-proxy-proxy-agent status - Replicas: %d, Available: %d, Ready: %d, Updated: %d\n",
-			anpAgent.Status.Replicas, anpAgent.Status.AvailableReplicas, anpAgent.Status.ReadyReplicas, anpAgent.Status.UpdatedReplicas)
-		if anpAgent.Status.AvailableReplicas < 1 {
-			errMsg := fmt.Errorf("available replicas for %s should be more than 1, but get %d", "anp-agent", anpAgent.Status.AvailableReplicas)
+		fmt.Fprintf(GinkgoWriter, "[DEBUG] Deployment %s status - Replicas: %d, Available: %d, Ready: %d, Updated: %d\n",
+			deployment, d.Status.Replicas, d.Status.AvailableReplicas, d.Status.ReadyReplicas, d.Status.UpdatedReplicas)
+		if d.Status.AvailableReplicas < 1 {
+			errMsg := fmt.Errorf("available replicas for %s should >= 1, but get %d", deployment, d.Status.AvailableReplicas)
 			fmt.Fprintf(GinkgoWriter, "[ERROR] %v\n", errMsg)
 			return errMsg
 		}
-		fmt.Fprintf(GinkgoWriter, "[SUCCESS] Deployment cluster-proxy-proxy-agent is ready\n")
+		fmt.Fprintf(GinkgoWriter, "[SUCCESS] Deployment %s is ready\n", deployment)
+	}
 
-		fmt.Fprintf(GinkgoWriter, "[SUCCESS] All resources are running\n")
-		return nil
-	}, eventuallyTimeout, eventuallyInterval).ShouldNot(HaveOccurred())
+	// service on hub exist
+	fmt.Fprintf(GinkgoWriter, "[DEBUG] Checking service: cluster-proxy-addon-user in namespace: %s\n", hubInstallNamespace)
+	_, err := hubKubeClient.CoreV1().Services(hubInstallNamespace).Get(context.Background(), "cluster-proxy-addon-user", metav1.GetOptions{})
+	if err != nil {
+		fmt.Fprintf(GinkgoWriter, "[ERROR] Failed to get service cluster-proxy-addon-user: %v\n", err)
+		return err
+	}
+	fmt.Fprintf(GinkgoWriter, "[SUCCESS] Service cluster-proxy-addon-user exists\n")
+
+	// deployment on managedcluster is running
+	fmt.Fprintf(GinkgoWriter, "[DEBUG] Checking deployment: cluster-proxy-proxy-agent in namespace: %s\n", managedClusterInstallNamespace)
+	anpAgent, err := hubKubeClient.AppsV1().Deployments(managedClusterInstallNamespace).Get(context.Background(), "cluster-proxy-proxy-agent", metav1.GetOptions{})
+	if err != nil {
+		fmt.Fprintf(GinkgoWriter, "[ERROR] Failed to get deployment cluster-proxy-proxy-agent: %v\n", err)
+		return err
+	}
+	fmt.Fprintf(GinkgoWriter, "[DEBUG] Deployment cluster-proxy-proxy-agent status - Replicas: %d, Available: %d, Ready: %d, Updated: %d\n",
+		anpAgent.Status.Replicas, anpAgent.Status.AvailableReplicas, anpAgent.Status.ReadyReplicas, anpAgent.Status.UpdatedReplicas)
+	if anpAgent.Status.AvailableReplicas < 1 {
+		errMsg := fmt.Errorf("available replicas for %s should >= 1, but get %d", "cluster-proxy-proxy-agent", anpAgent.Status.AvailableReplicas)
+		fmt.Fprintf(GinkgoWriter, "[ERROR] %v\n", errMsg)
+		return errMsg
+	}
+	fmt.Fprintf(GinkgoWriter, "[SUCCESS] Deployment cluster-proxy-proxy-agent is ready\n")
+
+	fmt.Fprintf(GinkgoWriter, "[SUCCESS] All resources are running\n")
+	return nil
 }
 
 func prepareTestServiceAccount() {
