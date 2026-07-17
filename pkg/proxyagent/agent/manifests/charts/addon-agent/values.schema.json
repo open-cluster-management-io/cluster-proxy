@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["oidcReservedNamePrefixes"],
+  "properties": {
+    "oidcIssuerURL": {
+      "type": "string"
+    },
+    "oidcClientID": {
+      "type": "string"
+    },
+    "oidcUsernameClaim": {
+      "type": "string"
+    },
+    "oidcUsernamePrefix": {
+      "type": "string"
+    },
+    "oidcGroupsClaim": {
+      "type": "string"
+    },
+    "oidcGroupsPrefix": {
+      "type": "string"
+    },
+    "oidcReservedNamePrefixes": {
+      "oneOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        {
+          "type": "string",
+          "pattern": "^(|[^,]+(,[^,]+)*)$"
+        }
+      ]
+    },
+    "oidcCAConfigMap": {
+      "type": "string"
+    },
+    "oidcSigningAlgs": {
+      "oneOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        {
+          "type": "string"
+        }
+      ]
+    },
+    "oidcRequiredClaimsJSON": {
+      "type": "string"
+    }
+  }
+}

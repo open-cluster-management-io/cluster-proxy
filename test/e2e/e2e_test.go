@@ -73,6 +73,7 @@ const (
 	hubInstallNamespace            = "open-cluster-management-addon"
 	managedClusterInstallNamespace = "open-cluster-management-cluster-proxy"
 	serviceAccountName             = "cluster-proxy-test"
+	podRoleName                    = "podrole"
 )
 
 var _ = BeforeSuite(func() {
@@ -195,7 +196,7 @@ func prepareTestServiceAccount() {
 	By("Create a role")
 	_, err = hubKubeClient.RbacV1().Roles(hubInstallNamespace).Create(context.Background(), &v1.Role{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "podrole",
+			Name:      podRoleName,
 			Namespace: hubInstallNamespace,
 		},
 		Rules: []v1.PolicyRule{
@@ -228,7 +229,7 @@ func prepareTestServiceAccount() {
 		RoleRef: v1.RoleRef{
 			APIGroup: "rbac.authorization.k8s.io",
 			Kind:     "Role",
-			Name:     "podrole",
+			Name:     podRoleName,
 		},
 		Subjects: []v1.Subject{
 			{
