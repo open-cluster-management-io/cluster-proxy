@@ -17,13 +17,22 @@ reverse proxy tunnels from the managed cluster to the hub cluster, enabling
 clients from the hub network to access services in the managed clusters'
 network even when all the clusters are isolated in different VPCs.
 
-Cluster Proxy consists of two components:
+The core addon lifecycle consists of two components:
 
 - **Addon-Manager**: Manages the installation of proxy servers (proxy ingress)
   in the hub cluster.
   
 - **Addon-Agent**: Manages the installation of proxy agents for each managed 
   cluster.
+
+When service proxying is enabled, cluster-proxy also deploys:
+
+- **User-Server**: Accepts authenticated HTTP requests on the hub and sends
+  them through the cluster-proxy tunnel.
+
+- **Service-Proxy**: Runs beside the proxy agent on each managed cluster,
+  authenticates Kubernetes API requests, and supports managed-cluster tokens,
+  hub-token impersonation, and optional external OIDC ID tokens.
 
 The overall architecture is shown below:
 
@@ -34,7 +43,7 @@ The overall architecture is shown below:
 
 ### Prerequisites
 
-- Open Cluster Management (OCM) registration component (>= 0.5.0)
+- Open Cluster Management (OCM) registration component installed
 - A Kubernetes cluster serving as the hub cluster
 - One or more managed Kubernetes clusters registered with the hub
 
@@ -52,8 +61,8 @@ helm search repo ocm/cluster-proxy
 
 Expected output:
 ```
-NAME                       	CHART VERSION	APP VERSION	DESCRIPTION                   
-ocm/cluster-proxy          	<..>       	    1.0.0      	A Helm chart for Cluster-Proxy
+NAME                        CHART VERSION   APP VERSION   DESCRIPTION
+ocm/cluster-proxy           <chart-version> <app-version> A Helm chart for Cluster-Proxy
 ```
 
 2. Install the Helm chart:
@@ -105,7 +114,7 @@ dialer of the Kubernetes client config object, e.g.:
   // instantiate a gRPC proxy dialer
   tunnel, err := konnectivity.CreateSingleUseGrpcTunnel(
       context.TODO(),
-      <proxy service>,
+      proxyServiceAddress,
       grpc.WithTransportCredentials(grpccredentials.NewTLS(proxyTLSCfg)),
   )
   cfg, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
@@ -117,6 +126,24 @@ dialer of the Kubernetes client config object, e.g.:
   // Override the default TCP dialer
   cfg.Dial = tunnel.DialContext 
 ```
+
+#### HTTP service proxy and OIDC authentication
+
+The optional user-server and service-proxy provide an HTTPS endpoint for
+proxying HTTP traffic to managed cluster Services through the tunnel.
+Kubernetes API requests can authenticate with a managed cluster token, a hub
+token that is impersonated on the managed cluster, or a per-cluster external
+OIDC issuer.
+
+Service proxying is disabled by default. Enable it with the Helm values
+`enableServiceProxy=true` and `enableImpersonation=true`; use
+`userServer.enabled=true` when the controller should generate and rotate the
+user-server serving certificate.
+
+See the [service-proxy authentication and impersonation guide](./pkg/serviceproxy/readme.md)
+for the complete OpenShift LDAP and OIDC configuration procedures. See the
+[Helm chart documentation](./charts/cluster-proxy/README.md) for installation
+and certificate options.
 
 ### Performance
 

@@ -101,6 +101,27 @@ test-helm: verify-helm-dependencies ## Lint and render Helm charts.
 		--set enableServiceProxy=true \
 		--set serviceProxySecretCert=dGVzdA== \
 		--set serviceProxySecretKey=dGVzdA== >/dev/null
+	$(HELM) template addon-agent pkg/proxyagent/agent/manifests/charts/addon-agent \
+		--namespace open-cluster-management-agent-addon \
+		--set enableServiceProxy=true \
+		--set serviceProxySecretCert=dGVzdA== \
+		--set serviceProxySecretKey=dGVzdA== \
+		--set oidcIssuerURL=https://issuer.example.com/dex \
+		--set oidcClientID=cluster-proxy \
+		--set oidcUsernameClaim=email \
+		--set oidcUsernamePrefix=oidc: \
+		--set oidcGroupsClaim=groups \
+		--set oidcGroupsPrefix=oidc: \
+		--set 'oidcReservedNamePrefixes={system:,dev:}' \
+		--set 'oidcSigningAlgs={RS256,ES256}' \
+		--set oidcCAConfigMap=oidc-ca >/dev/null
+	# the render is expected to fail, so negate it inside the group to keep pipefail happy
+	{ ! $(HELM) template addon-agent pkg/proxyagent/agent/manifests/charts/addon-agent \
+		--namespace open-cluster-management-agent-addon \
+		--set 'oidcReservedNamePrefixes[0]=' 2>&1; } | grep -q oidcReservedNamePrefixes
+	{ ! $(HELM) template addon-agent pkg/proxyagent/agent/manifests/charts/addon-agent \
+		--namespace open-cluster-management-agent-addon \
+		--set oidcReservedNamePrefixes=null 2>&1; } | grep -q oidcReservedNamePrefixes
 
 ##@ Build
 

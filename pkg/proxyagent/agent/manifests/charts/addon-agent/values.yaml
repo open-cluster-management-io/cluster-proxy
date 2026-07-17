@@ -56,5 +56,18 @@ enableImpersonation: "true"
 networkPolicies:
   enabled: false
 
+# OIDC authentication for service-proxy; see pkg/serviceproxy/readme.md section 5
+oidcIssuerURL: ""
+oidcClientID: ""
+oidcUsernameClaim: ""
+oidcUsernamePrefix: ""
+oidcGroupsClaim: ""
+oidcGroupsPrefix: ""
+oidcReservedNamePrefixes:
+  - "system:"
+oidcCAConfigMap: ""
+oidcSigningAlgs: []
+oidcRequiredClaimsJSON: ""
+
 global:
   resourceRequirements: []

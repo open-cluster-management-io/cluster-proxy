@@ -144,6 +144,12 @@ spec:
                 fieldRef:
                   fieldPath: metadata.namespace
         {{- if .Values.enableServiceProxy }}
+        {{- if ne (empty .Values.oidcIssuerURL) (empty .Values.oidcClientID) }}
+          {{- fail "oidcIssuerURL and oidcClientID must be specified together" }}
+        {{- end }}
+        {{- if and .Values.oidcIssuerURL (ne .Values.enableImpersonation "true") }}
+          {{- fail "oidcIssuerURL requires enableImpersonation=true" }}
+        {{- end }}
         - name: service-proxy
           {{- $reverseResourceRequirements := reverse .Values.global.resourceRequirements }}
           {{- range $item := $reverseResourceRequirements }}
@@ -166,6 +172,42 @@ spec:
             - --cert=/server-cert/tls.crt
             - --key=/server-cert/tls.key
             - --hub-kubeconfig=/etc/kubeconfig/kubeconfig
+          {{- if .Values.oidcIssuerURL }}
+            {{- /* values such as prefixes may end with a colon, so quote every arg */}}
+            - {{ printf "--oidc-issuer-url=%s" .Values.oidcIssuerURL | quote }}
+            - {{ printf "--oidc-client-id=%s" .Values.oidcClientID | quote }}
+            {{- if .Values.oidcUsernameClaim }}
+            - {{ printf "--oidc-username-claim=%s" .Values.oidcUsernameClaim | quote }}
+            {{- end }}
+            {{- if .Values.oidcUsernamePrefix }}
+            - {{ printf "--oidc-username-prefix=%s" .Values.oidcUsernamePrefix | quote }}
+            {{- end }}
+            {{- if .Values.oidcGroupsClaim }}
+            - {{ printf "--oidc-groups-claim=%s" .Values.oidcGroupsClaim | quote }}
+            {{- end }}
+            {{- if .Values.oidcGroupsPrefix }}
+            - {{ printf "--oidc-groups-prefix=%s" .Values.oidcGroupsPrefix | quote }}
+            {{- end }}
+            - {{ printf "--oidc-reserved-name-prefixes=%s" (join "," .Values.oidcReservedNamePrefixes) | quote }}
+            {{- if .Values.oidcSigningAlgs }}
+            - {{ printf "--oidc-signing-algs=%s" (join "," .Values.oidcSigningAlgs) | quote }}
+            {{- end }}
+            {{- if .Values.oidcRequiredClaimsJSON }}
+              {{- $requiredClaims := mustFromJson .Values.oidcRequiredClaimsJSON }}
+              {{- if not (kindIs "map" $requiredClaims) }}
+                {{- fail "oidcRequiredClaimsJSON must be a JSON object" }}
+              {{- end }}
+              {{- range $claim, $value := $requiredClaims }}
+                {{- if not (kindIs "string" $value) }}
+                  {{- fail "oidcRequiredClaimsJSON values must be strings" }}
+                {{- end }}
+            - {{ printf "--oidc-required-claim=%s=%s" $claim $value | quote }}
+              {{- end }}
+            {{- end }}
+            {{- if .Values.oidcCAConfigMap }}
+            - --oidc-ca-file=/oidc-ca/ca.crt
+            {{- end }}
+          {{- end }}
             {{- range .Values.additionalServiceProxyArgs }}
             - {{ . }}
             {{- end }}
@@ -199,6 +241,11 @@ spec:
               mountPath: /additional-service-ca
               readOnly: true
             {{- end }}
+            {{- if and .Values.oidcIssuerURL .Values.oidcCAConfigMap }}
+            - name: oidc-ca
+              mountPath: /oidc-ca
+              readOnly: true
+            {{- end }}
             - name: service-proxy-server-cert
               mountPath: /server-cert
               readOnly: true
@@ -223,6 +270,12 @@ spec:
         - name: additional-service-ca
           configMap:
             name: {{ .Values.additionalServiceCAConfigMap }}
+            optional: true
+        {{- end }}
+        {{- if and .Values.oidcIssuerURL .Values.oidcCAConfigMap }}
+        - name: oidc-ca
+          configMap:
+            name: {{ .Values.oidcCAConfigMap }}
             optional: true
         {{- end }}
         - name: service-proxy-server-cert
