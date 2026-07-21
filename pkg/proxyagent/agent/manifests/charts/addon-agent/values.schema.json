@@ -1,27 +1,86 @@
 {
-  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
-  "required": ["oidcReservedNamePrefixes"],
+  "required": [
+    "oidcReservedNamePrefixes"
+  ],
   "properties": {
-    "oidcIssuerURL": {
+    "additionalProxyAgentArgs": {
+      "type": "array"
+    },
+    "additionalServiceProxyArgs": {
+      "type": "array"
+    },
+    "addonAgentArgs": {
+      "type": "array"
+    },
+    "agentDeploymentAnnotations": {
+      "type": "object"
+    },
+    "agentDeploymentName": {
+      "type": "string"
+    },
+    "base64EncodedCAData": {
+      "type": "string"
+    },
+    "clusterName": {
+      "type": "string"
+    },
+    "enableImpersonation": {
+      "description": "Enable service-proxy impersonation for hub and external OIDC identities.",
+      "type": "string"
+    },
+    "global": {
+      "type": "object",
+      "properties": {
+        "resourceRequirements": {
+          "type": "array"
+        }
+      }
+    },
+    "image": {
+      "type": "string"
+    },
+    "includeNamespaceCreation": {
+      "type": "boolean"
+    },
+    "networkPolicies": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        }
+      }
+    },
+    "nodeSelector": {
+      "type": "object"
+    },
+    "oidcCAConfigMap": {
+      "description": "Managed cluster ConfigMap containing the private issuer CA in the ca.crt key. Empty uses system root CAs.",
       "type": "string"
     },
     "oidcClientID": {
-      "type": "string"
-    },
-    "oidcUsernameClaim": {
-      "type": "string"
-    },
-    "oidcUsernamePrefix": {
+      "description": "OIDC client ID required in the token audience. Set together with oidcIssuerURL.",
       "type": "string"
     },
     "oidcGroupsClaim": {
+      "description": "Claim containing a group string or array of group strings. Empty disables IdP group mapping.",
       "type": "string"
     },
     "oidcGroupsPrefix": {
+      "description": "Prefix added to every mapped OIDC group.",
+      "type": "string"
+    },
+    "oidcIssuerURL": {
+      "description": "HTTPS OIDC issuer URL. Empty disables the OIDC authentication fallback.",
+      "type": "string"
+    },
+    "oidcRequiredClaimsJSON": {
+      "description": "JSON object of string claims and required values that every accepted OIDC token must contain.",
       "type": "string"
     },
     "oidcReservedNamePrefixes": {
+      "description": "Username and group prefixes that OIDC claims must not use. Customized variables use a comma-separated string.",
       "oneOf": [
         {
           "type": "array",
@@ -34,12 +93,13 @@
           "type": "string",
           "pattern": "^(|[^,]+(,[^,]+)*)$"
         }
-      ]
-    },
-    "oidcCAConfigMap": {
-      "type": "string"
+      ],
+      "items": {
+        "type": "string"
+      }
     },
     "oidcSigningAlgs": {
+      "description": "Allowed JOSE asymmetric signing algorithms. Empty keeps the service-proxy default of RS256.",
       "oneOf": [
         {
           "type": "array",
@@ -52,8 +112,96 @@
         }
       ]
     },
-    "oidcRequiredClaimsJSON": {
+    "oidcUsernameClaim": {
+      "description": "Claim mapped to the username. Empty keeps the service-proxy default of sub.",
       "type": "string"
+    },
+    "oidcUsernamePrefix": {
+      "description": "Prefix added to usernames. Empty uses the issuer URL for non-email claims; \"-\" disables prefixing.",
+      "type": "string"
+    },
+    "proxyAgentImage": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "proxyAgentImagePullSecrets": {
+      "type": "array"
+    },
+    "proxyConfig": {
+      "type": "object",
+      "properties": {
+        "HTTPS_PROXY": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "HTTP_PROXY": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "NO_PROXY": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "registry": {
+      "type": "string"
+    },
+    "replicas": {
+      "type": [
+        "integer",
+        "string"
+      ]
+    },
+    "serviceDomain": {
+      "type": "string"
+    },
+    "serviceEntryPoint": {
+      "type": "string"
+    },
+    "serviceEntryPointPort": {
+      "type": [
+        "integer",
+        "string"
+      ]
+    },
+    "spokeAddonNamespace": {
+      "type": "string"
+    },
+    "tag": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "tolerations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "effect": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "operator": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        }
+      }
     }
-  }
+  },
+  "additionalProperties": true
 }
