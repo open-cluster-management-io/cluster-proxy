@@ -83,10 +83,11 @@ func TestProcessAuthentication_ManagedClusterToken(t *testing.T) {
 		}),
 	}
 
-	req, _ := http.NewRequest("GET", "https://example.com/api", nil)
+	ctx := t.Context()
+	req, _ := http.NewRequestWithContext(ctx, "GET", "https://example.com/api", nil)
 	req.Header.Set("Authorization", "Bearer mc-token")
 
-	if err := s.processAuthentication(context.Background(), req); err != nil {
+	if err := s.processAuthentication(ctx, req); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -115,10 +116,11 @@ func TestProcessAuthentication_HubServiceAccountToken(t *testing.T) {
 		},
 	}
 
-	req, _ := http.NewRequest("GET", "https://example.com/api", nil)
+	ctx := t.Context()
+	req, _ := http.NewRequestWithContext(ctx, "GET", "https://example.com/api", nil)
 	req.Header.Set("Authorization", "Bearer hub-token")
 
-	err := s.processAuthentication(context.Background(), req)
+	err := s.processAuthentication(ctx, req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -145,10 +147,11 @@ func TestProcessAuthentication_UnauthenticatedToken(t *testing.T) {
 		}),
 	}
 
-	req, _ := http.NewRequest("GET", "https://example.com/api", nil)
+	ctx := t.Context()
+	req, _ := http.NewRequestWithContext(ctx, "GET", "https://example.com/api", nil)
 	req.Header.Set("Authorization", "Bearer invalid-token")
 
-	err := s.processAuthentication(context.Background(), req)
+	err := s.processAuthentication(ctx, req)
 	if err == nil {
 		t.Fatal("expected authentication error")
 	}
@@ -163,14 +166,15 @@ func TestProcessHubUser_RegularUser(t *testing.T) {
 			return "fake-sa-token", nil
 		},
 	}
-	req, _ := http.NewRequest("GET", "https://example.com/api", nil)
+	ctx := t.Context()
+	req, _ := http.NewRequestWithContext(ctx, "GET", "https://example.com/api", nil)
 
 	hubUser := &user.DefaultInfo{
 		Name:   "admin@example.com",
 		Groups: []string{"system:authenticated", "admins"},
 	}
 
-	if err := s.processHubUser(context.Background(), req, hubUser); err != nil {
+	if err := s.processHubUser(ctx, req, hubUser); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -191,14 +195,15 @@ func TestProcessHubUser_ServiceAccount(t *testing.T) {
 			return "fake-sa-token", nil
 		},
 	}
-	req, _ := http.NewRequest("GET", "https://example.com/api", nil)
+	ctx := t.Context()
+	req, _ := http.NewRequestWithContext(ctx, "GET", "https://example.com/api", nil)
 
 	hubUser := &user.DefaultInfo{
 		Name:   "system:serviceaccount:proxy-test:proxy-bench",
 		Groups: []string{"system:serviceaccounts", "system:authenticated"},
 	}
 
-	if err := s.processHubUser(context.Background(), req, hubUser); err != nil {
+	if err := s.processHubUser(ctx, req, hubUser); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -378,10 +383,11 @@ func TestProcessAuthentication_GetImpersonateTokenError(t *testing.T) {
 		},
 	}
 
-	req, _ := http.NewRequest("GET", "https://example.com/api", nil)
+	ctx := t.Context()
+	req, _ := http.NewRequestWithContext(ctx, "GET", "https://example.com/api", nil)
 	req.Header.Set("Authorization", "Bearer hub-token")
 
-	err := s.processAuthentication(context.Background(), req)
+	err := s.processAuthentication(ctx, req)
 	if err == nil {
 		t.Fatal("expected error from getImpersonateTokenFunc")
 	}
@@ -402,10 +408,11 @@ func TestProcessAuthentication_ManagedClusterFatalError(t *testing.T) {
 		}),
 	}
 
-	req, _ := http.NewRequest("GET", "https://example.com/api", nil)
+	ctx := t.Context()
+	req, _ := http.NewRequestWithContext(ctx, "GET", "https://example.com/api", nil)
 	req.Header.Set("Authorization", "Bearer some-token")
 
-	err := s.processAuthentication(context.Background(), req)
+	err := s.processAuthentication(ctx, req)
 	if err == nil {
 		t.Fatal("expected fatal error when managed cluster auth has infrastructure failure")
 	}
@@ -436,10 +443,11 @@ func TestProcessAuthentication_OpenShiftTokenReviewError_FallsBackToHub(t *testi
 		},
 	}
 
-	req, _ := http.NewRequest("GET", "https://example.com/api", nil)
+	ctx := t.Context()
+	req, _ := http.NewRequestWithContext(ctx, "GET", "https://example.com/api", nil)
 	req.Header.Set("Authorization", "Bearer hub-only-token")
 
-	err := s.processAuthentication(context.Background(), req)
+	err := s.processAuthentication(ctx, req)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -464,10 +472,11 @@ func TestProcessAuthentication_HubAuthError(t *testing.T) {
 			}),
 	}
 
-	req, _ := http.NewRequest("GET", "https://example.com/api", nil)
+	ctx := t.Context()
+	req, _ := http.NewRequestWithContext(ctx, "GET", "https://example.com/api", nil)
 	req.Header.Set("Authorization", "Bearer some-token")
 
-	err := s.processAuthentication(context.Background(), req)
+	err := s.processAuthentication(ctx, req)
 	if err == nil {
 		t.Fatal("expected error")
 	}

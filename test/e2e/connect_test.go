@@ -227,11 +227,11 @@ var _ = Describe("Requests through Cluster-Proxy", Label("serviceproxy", "connec
 
 	// Note: hello-world service is deployed during environment initialization in test/e2e/env/init.sh
 	Describe("Access hello-world service", Label("service-access"), func() {
-		It("should return hello-world with http code 200", Label("hello-world", "http"), func() {
+		It("should return hello-world with http code 200", Label("hello-world", "http"), func(ctx SpecContext) {
 			targetHost := fmt.Sprintf(`https://%s/%s/api/v1/namespaces/default/services/http:hello-world:8000/proxy-service/index.html`, userServerServiceAddress, managedClusterName)
 			fmt.Println("The targetHost: ", targetHost)
 
-			req, err := http.NewRequest("GET", targetHost, nil)
+			req, err := http.NewRequestWithContext(ctx, "GET", targetHost, nil)
 			Expect(err).To(BeNil())
 
 			resp, err := clusterProxyHttpClient.Do(req)
@@ -258,11 +258,11 @@ var _ = Describe("Requests through Cluster-Proxy", Label("serviceproxy", "connec
 	// without including error details in the response body. Therefore, we accept 502 status
 	// as success since it indicates the request was routed but TLS verification failed.
 	Describe("Access hello-world-https service", Label("service-access-https"), func() {
-		It("should route request to hello-world-https backend service", Label("hello-world-https", "https"), func() {
+		It("should route request to hello-world-https backend service", Label("hello-world-https", "https"), func(ctx SpecContext) {
 			targetHost := fmt.Sprintf(`https://%s/%s/api/v1/namespaces/default/services/https:hello-world-https:8443/proxy-service/index.html`, userServerServiceAddress, managedClusterName)
 			fmt.Println("The targetHost: ", targetHost)
 
-			req, err := http.NewRequest("GET", targetHost, nil)
+			req, err := http.NewRequestWithContext(ctx, "GET", targetHost, nil)
 			Expect(err).To(BeNil())
 
 			resp, err := clusterProxyHttpClient.Do(req)
