@@ -37,6 +37,7 @@ import (
 	runtimeclient "sigs.k8s.io/controller-runtime/pkg/client"
 	fakeruntime "sigs.k8s.io/controller-runtime/pkg/client/fake"
 
+	"open-cluster-management.io/addon-framework/pkg/addonfactory"
 	addonv1beta1 "open-cluster-management.io/api/addon/v1beta1"
 	fakeaddon "open-cluster-management.io/api/client/addon/clientset/versioned/fake"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
@@ -54,6 +55,61 @@ var (
 func init() {
 	_ = proxyv1alpha1.AddToScheme(testscheme)
 	_ = addonv1beta1.Install(testscheme)
+}
+
+func TestMergeAndNormalizeValuesFuncs(t *testing.T) {
+	t.Run("normalizes each result before merging", func(t *testing.T) {
+		getValues := mergeAndNormalizeValuesFuncs(
+			func(cluster *clusterv1.ManagedCluster,
+				addon *addonv1beta1.ManagedClusterAddOn) (addonfactory.Values, error) {
+				return addonfactory.Values{
+					"global": map[string]interface{}{
+						"nodeSelector": map[string]string{
+							"existing": "preserved",
+							"shared":   "first",
+						},
+					},
+				}, nil
+			},
+			func(cluster *clusterv1.ManagedCluster,
+				addon *addonv1beta1.ManagedClusterAddOn) (addonfactory.Values, error) {
+				return addonfactory.Values{
+					"global": map[string]interface{}{
+						"nodeSelector": map[string]string{
+							"added":  "new",
+							"shared": "second",
+						},
+					},
+				}, nil
+			},
+		)
+
+		values, err := getValues(nil, nil)
+		if !assert.NoError(t, err) {
+			return
+		}
+		assert.Equal(t, addonfactory.Values{
+			"global": map[string]interface{}{
+				"nodeSelector": map[string]interface{}{
+					"existing": "preserved",
+					"added":    "new",
+					"shared":   "second",
+				},
+			},
+		}, values)
+	})
+
+	t.Run("returns a contextual normalization error", func(t *testing.T) {
+		getValues := mergeAndNormalizeValuesFuncs(
+			func(cluster *clusterv1.ManagedCluster,
+				addon *addonv1beta1.ManagedClusterAddOn) (addonfactory.Values, error) {
+				return addonfactory.Values{"unsupported": make(chan string)}, nil
+			},
+		)
+
+		_, err := getValues(nil, nil)
+		assert.ErrorContains(t, err, "failed to normalize Helm values:")
+	})
 }
 
 func TestRemoveDupAndSortservicesToExpose(t *testing.T) {

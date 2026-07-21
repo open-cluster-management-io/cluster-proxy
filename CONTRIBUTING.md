@@ -8,6 +8,7 @@
     - [Contributing a patch](#contributing-a-patch)
     - [Issue and pull request management](#issue-and-pull-request-management)
     - [Pre-check before submitting a PR](#pre-check-before-submitting-a-pr)
+        - [Addon-agent Helm values schema](#addon-agent-helm-values-schema)
 
 # Contributing guidelines
 
@@ -41,7 +42,7 @@ The Open Cluster Management project has adopted the CNCF Code of Conduct. Refer 
 
 ## Issue and pull request management
 
-Anyone can comment on issues and submit reviews for pull requests. In order to be assigned an issue or pull request, you can leave a `/assign <your Github ID>` comment on the issue or pull request (PR).
+Anyone can comment on issues and submit reviews for pull requests. In order to be assigned an issue or pull request, you can leave a `/assign <your GitHub ID>` comment on the issue or pull request (PR).
 
 ## Pre-check before submitting a PR
 <!-- Customize this template for your repository -->
@@ -51,9 +52,23 @@ Before submitting a PR, please perform the following steps:
 - Run `make build`.
 - Run `make verify`.
 - Run `make test`.
+- Run `make test-helm` for Helm values, schema, dependency, or template changes.
 - Run `make test-integration` for controller or manifest behavior changes.
 - Run `make test-e2e` for user-facing proxy behavior changes.
 
 Use these make targets as the official test interface. A raw `go test ./...`
 does not include generated manifests, envtest asset setup, linting, or the e2e
 packaging used by CI.
+
+### Addon-agent Helm values schema
+
+The embedded addon-agent chart keeps
+`pkg/proxyagent/agent/manifests/charts/addon-agent/values.schema.json` as a
+generated artifact. When changing its `values.yaml` or schema annotations:
+
+1. Run `make generate-values-schema`.
+2. Commit the updated `values.schema.json` with the source change.
+3. Run `make validate-values-schema` to confirm the generated file is current.
+
+`make test-helm` includes schema validation and is the final local check for
+Helm-related changes.

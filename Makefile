@@ -7,6 +7,9 @@ E2E_TEST_CLUSTER_NAME ?= e2e
 E2E_READINESS_TIMEOUT ?= 600
 CONTAINER_ENGINE ?= docker
 HELM ?= helm
+HELM_VALUES_SCHEMA_CHART := pkg/proxyagent/agent/manifests/charts/addon-agent
+HELM_SCHEMA_VERSION ?= 2.5.0
+HELM_SCHEMA := go run github.com/losisin/helm-values-schema-json/v2@v$(HELM_SCHEMA_VERSION)
 # Produce CRDs that work back to Kubernetes 1.11 (no version conversion)
 CRD_OPTIONS ?= "crd:crdVersions={v1},allowDangerousTypes=true,generateEmbeddedObjectMeta=true"
 
@@ -82,11 +85,25 @@ sync-helm-dependencies: ## Sync local Helm chart dependencies into charts/ direc
 verify-helm-dependencies: ## Verify Helm chart dependencies are committed and current.
 	./hack/verify-helm-dependencies.sh
 
+.PHONY: generate-values-schema
+generate-values-schema: ## Generate the addon-agent Helm values schema.
+	cd $(HELM_VALUES_SCHEMA_CHART) && $(HELM_SCHEMA)
+
+.PHONY: validate-values-schema
+validate-values-schema: ## Verify the generated addon-agent Helm values schema is current.
+	@set -e; \
+	tmp=$$(mktemp -d); \
+	trap 'rm -rf "$$tmp"' EXIT; \
+	cd $(HELM_VALUES_SCHEMA_CHART); \
+	$(HELM_SCHEMA) lint --strict; \
+	$(HELM_SCHEMA) --output "$$tmp/values.schema.json"; \
+	diff -u values.schema.json "$$tmp/values.schema.json"
+
 test: manifests generate fmt vet envtest-setup ## Run tests.
 	go test ./pkg/... -coverprofile cover.out
 
 .PHONY: test-helm
-test-helm: verify-helm-dependencies ## Lint and render Helm charts.
+test-helm: verify-helm-dependencies validate-values-schema ## Lint and render Helm charts.
 	$(HELM) lint charts/cluster-proxy
 	$(HELM) template cluster-proxy charts/cluster-proxy \
 		--namespace open-cluster-management-addon >/dev/null
