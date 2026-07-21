@@ -277,6 +277,8 @@ func GetClusterProxyValueFunc(
 			"serviceProxyHost":   serviceProxyHost,
 			"servicesToExpose":   servicesToExpose,
 			"enableKubeApiProxy": enableKubeApiProxy,
+			"networkPoliciesEnabled": proxyConfig.Spec.NetworkPolicies != nil &&
+				proxyConfig.Spec.NetworkPolicies.Enabled,
 		}
 
 		return values, nil

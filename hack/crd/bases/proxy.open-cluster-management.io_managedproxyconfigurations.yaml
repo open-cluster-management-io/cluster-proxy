@@ -135,6 +135,20 @@ spec:
                 required:
                 - ports
                 type: object
+              networkPolicies:
+                description: |-
+                  `networkPolicies` configures NetworkPolicies for proxy-server (hub) and
+                  proxy-agent (managed) workloads. When enabled is false or unset, no
+                  NetworkPolicies are applied by the controller/agent (default).
+                  Hub chart components (addon-manager, user-server) are gated by the same
+                  Helm value that sets this field.
+                properties:
+                  enabled:
+                    description: |-
+                      Enabled controls whether NetworkPolicies are applied for managed components.
+                      Defaults to false.
+                    type: boolean
+                type: object
               proxyAgent:
                 description: '`proxyServer` structurelized the arguments for running
                   proxy agents.'

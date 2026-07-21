@@ -41,6 +41,21 @@ type ManagedProxyConfigurationSpec struct {
 	// `userServer` configures certificate rotation for the user server.
 	// When configured, certificates will be automatically generated and rotated.
 	UserServer *ManagedProxyConfigurationUserServer `json:"userServer,omitempty"`
+	// +optional
+	// `networkPolicies` configures NetworkPolicies for proxy-server (hub) and
+	// proxy-agent (managed) workloads. When enabled is false or unset, no
+	// NetworkPolicies are applied by the controller/agent (default).
+	// Hub chart components (addon-manager, user-server) are gated by the same
+	// Helm value that sets this field.
+	NetworkPolicies *NetworkPoliciesConfig `json:"networkPolicies,omitempty"`
+}
+
+// NetworkPoliciesConfig configures NetworkPolicies for cluster-proxy components.
+type NetworkPoliciesConfig struct {
+	// Enabled controls whether NetworkPolicies are applied for managed components.
+	// Defaults to false.
+	// +optional
+	Enabled bool `json:"enabled,omitempty"`
 }
 
 // ManagedProxyConfigurationStatus defines the observed state of ManagedProxyConfiguration

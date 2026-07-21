@@ -161,5 +161,54 @@ var _ = Describe("ManagedProxyConfigurationReconciler Test", func() {
 				return err
 			}, timeout, interval).Should(Succeed())
 		})
+
+		It("Should create and remove proxy-server NetworkPolicy based on spec.networkPolicies.enabled", func() {
+			npName := configName + "-proxy-server"
+
+			Eventually(func() error {
+				_, err := kubeClient.NetworkingV1().NetworkPolicies(proxyServerNamespace).Get(ctx, npName, metav1.GetOptions{})
+				if apierrors.IsNotFound(err) {
+					return nil
+				}
+				if err != nil {
+					return err
+				}
+				return fmt.Errorf("NetworkPolicy %s should not exist when networkPolicies is unset", npName)
+			}, timeout, interval).Should(Succeed())
+
+			Eventually(func() error {
+				current := &proxyv1alpha1.ManagedProxyConfiguration{}
+				if err := ctrlClient.Get(ctx, client.ObjectKeyFromObject(config), current); err != nil {
+					return err
+				}
+				current.Spec.NetworkPolicies = &proxyv1alpha1.NetworkPoliciesConfig{Enabled: true}
+				return ctrlClient.Update(ctx, current)
+			}, timeout, interval).Should(Succeed())
+
+			Eventually(func() error {
+				_, err := kubeClient.NetworkingV1().NetworkPolicies(proxyServerNamespace).Get(ctx, npName, metav1.GetOptions{})
+				return err
+			}, timeout, interval).Should(Succeed())
+
+			Eventually(func() error {
+				current := &proxyv1alpha1.ManagedProxyConfiguration{}
+				if err := ctrlClient.Get(ctx, client.ObjectKeyFromObject(config), current); err != nil {
+					return err
+				}
+				current.Spec.NetworkPolicies = &proxyv1alpha1.NetworkPoliciesConfig{Enabled: false}
+				return ctrlClient.Update(ctx, current)
+			}, timeout, interval).Should(Succeed())
+
+			Eventually(func() error {
+				_, err := kubeClient.NetworkingV1().NetworkPolicies(proxyServerNamespace).Get(ctx, npName, metav1.GetOptions{})
+				if apierrors.IsNotFound(err) {
+					return nil
+				}
+				if err != nil {
+					return err
+				}
+				return fmt.Errorf("NetworkPolicy %s should be deleted when networkPolicies.enabled=false", npName)
+			}, timeout, interval).Should(Succeed())
+		})
 	})
 })

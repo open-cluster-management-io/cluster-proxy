@@ -29,6 +29,8 @@ spec:
   proxyAgent:
     image: {{ $proxyAgentImage }}
     replicas: {{ .Values.replicas }}
+  networkPolicies:
+    enabled: {{ .Values.networkPolicies.enabled | default false }}
   {{- if .Values.userServer.enabled }}
   userServer:
   {{- if .Values.userServer.additionalSANs }}

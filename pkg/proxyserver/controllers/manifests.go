@@ -7,8 +7,10 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
 
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
@@ -237,6 +239,70 @@ func newProxyServerRoleBinding(config *proxyv1alpha1.ManagedProxyConfiguration) 
 		},
 	}
 
+}
+
+// newProxyServerNetworkPolicy returns a NetworkPolicy for the ANP proxy-server pods.
+// Applied only when ManagedProxyConfiguration.spec.networkPolicies.enabled=true.
+// Allows ingress on service ports 8090/8091 (empty from for portability);
+// allows DNS and Kubernetes API egress.
+func newProxyServerNetworkPolicy(config *proxyv1alpha1.ManagedProxyConfiguration) *networkingv1.NetworkPolicy {
+	tcp := corev1.ProtocolTCP
+	udp := corev1.ProtocolUDP
+	port8090 := intstr.FromInt32(8090)
+	port8091 := intstr.FromInt32(8091)
+	port53 := intstr.FromInt32(53)
+	port5353 := intstr.FromInt32(5353)
+	port443 := intstr.FromInt32(443)
+	port6443 := intstr.FromInt32(6443)
+
+	return &networkingv1.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: config.Spec.ProxyServer.Namespace,
+			Name:      config.Name + "-proxy-server",
+			OwnerReferences: []metav1.OwnerReference{
+				newOwnerReference(config),
+			},
+			Labels: map[string]string{
+				common.LabelKeyComponentName: common.ComponentNameProxyServer,
+			},
+		},
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					common.LabelKeyComponentName: common.ComponentNameProxyServer,
+				},
+			},
+			PolicyTypes: []networkingv1.PolicyType{
+				networkingv1.PolicyTypeIngress,
+				networkingv1.PolicyTypeEgress,
+			},
+			Ingress: []networkingv1.NetworkPolicyIngressRule{
+				{
+					// Empty From: port-based allow (ingress / in-cluster clients).
+					Ports: []networkingv1.NetworkPolicyPort{
+						{Protocol: &tcp, Port: &port8090},
+						{Protocol: &tcp, Port: &port8091},
+					},
+				},
+			},
+			Egress: []networkingv1.NetworkPolicyEgressRule{
+				{
+					Ports: []networkingv1.NetworkPolicyPort{
+						{Protocol: &udp, Port: &port53},
+						{Protocol: &tcp, Port: &port53},
+						{Protocol: &udp, Port: &port5353},
+						{Protocol: &tcp, Port: &port5353},
+					},
+				},
+				{
+					Ports: []networkingv1.NetworkPolicyPort{
+						{Protocol: &tcp, Port: &port443},
+						{Protocol: &tcp, Port: &port6443},
+					},
+				},
+			},
+		},
+	}
 }
 
 func proxyServerArgs(config *proxyv1alpha1.ManagedProxyConfiguration, tlsConfig *sdktls.TLSConfig) []string {

@@ -1,0 +1,50 @@
+{{- if .Values.networkPoliciesEnabled }}
+# NetworkPolicy for the proxy-agent pod (proxy-agent, addon-agent, service-proxy).
+# Applied when ManagedProxyConfiguration.spec.networkPolicies.enabled=true.
+# Allows optional local health/proxy ingress; allows DNS, spoke API, hub API,
+# hub ingress (:443), and the configured ANP entrypoint port egress via
+# port-based empty peers.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: cluster-proxy-proxy-agent
+  namespace: {{ .Release.Namespace }}
+  labels:
+    open-cluster-management.io/addon: cluster-proxy
+    proxy.open-cluster-management.io/component-name: proxy-agent
+spec:
+  podSelector:
+    matchLabels:
+      open-cluster-management.io/addon: cluster-proxy
+      proxy.open-cluster-management.io/component-name: proxy-agent
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # service-proxy health / readiness and proxied service traffic
+  - ports:
+    - protocol: TCP
+      port: 8000
+    - protocol: TCP
+      port: 7443
+  egress:
+  # DNS
+  - ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+    - protocol: UDP
+      port: 5353
+    - protocol: TCP
+      port: 5353
+  # Hub ingress (:443), hub kubeconfig API, spoke API, ANP entrypoint
+  # (aligned with --proxy-server-port / .Values.serviceEntryPointPort)
+  - ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 6443
+    - protocol: TCP
+      port: {{ .Values.serviceEntryPointPort }}
+{{- end }}

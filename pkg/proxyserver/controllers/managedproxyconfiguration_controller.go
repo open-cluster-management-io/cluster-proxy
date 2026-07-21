@@ -139,6 +139,13 @@ func (c *ManagedProxyConfigurationReconciler) Reconcile(ctx context.Context, req
 		klog.Infof("Proxy server resources are up-to-date")
 	}
 
+	// apply or remove NetworkPolicy for proxy-server based on the opt-in toggle
+	npModified, err := c.ensureProxyServerNetworkPolicy(config)
+	if err != nil {
+		return reconcile.Result{}, errors.Wrapf(err, "fails to ensure proxy-server NetworkPolicy")
+	}
+	isModified = isModified || npModified
+
 	// refreshing status
 	if err := c.refreshStatus(isModified, config); err != nil {
 		return reconcile.Result{}, err
@@ -214,6 +221,56 @@ func (c *ManagedProxyConfigurationReconciler) deployProxyServer(config *proxyv1a
 			Eventf("ProxyServerUpdated", "Resources are updated: %v", updatedKinds)
 	}
 	return anyCreated || anyUpdated, nil
+}
+
+func networkPoliciesEnabled(config *proxyv1alpha1.ManagedProxyConfiguration) bool {
+	return config.Spec.NetworkPolicies != nil && config.Spec.NetworkPolicies.Enabled
+}
+
+func (c *ManagedProxyConfigurationReconciler) ensureProxyServerNetworkPolicy(config *proxyv1alpha1.ManagedProxyConfiguration) (bool, error) {
+	np := newProxyServerNetworkPolicy(config)
+	if !networkPoliciesEnabled(config) {
+		return c.deleteIfExists(np)
+	}
+	gvks, _, err := c.Scheme().ObjectKinds(np)
+	if err != nil {
+		return false, err
+	}
+	if len(gvks) != 1 {
+		return false, fmt.Errorf("invalid gvks received for NetworkPolicy: %v", gvks)
+	}
+	created, updated, err := c.ensure(config.Generation, gvks[0], np)
+	return created || updated, err
+}
+
+func (c *ManagedProxyConfigurationReconciler) deleteIfExists(resource client.Object) (bool, error) {
+	current := &unstructured.Unstructured{}
+	gvks, _, err := c.Scheme().ObjectKinds(resource)
+	if err != nil {
+		return false, err
+	}
+	if len(gvks) != 1 {
+		return false, fmt.Errorf("invalid gvks received: %v", gvks)
+	}
+	current.SetGroupVersionKind(gvks[0])
+	if err := c.Get(context.TODO(), types.NamespacedName{
+		Namespace: resource.GetNamespace(),
+		Name:      resource.GetName(),
+	}, current); err != nil {
+		if apierrors.IsNotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	if err := c.Delete(context.TODO(), current); err != nil {
+		if apierrors.IsNotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	c.EventRecorder.ForComponent("ClusterManagementAddonReconciler").
+		Eventf("ProxyServerNetworkPolicyDeleted", "Deleted NetworkPolicy %s/%s", resource.GetNamespace(), resource.GetName())
+	return true, nil
 }
 
 func (c *ManagedProxyConfigurationReconciler) ensure(incomingGeneration int64, gvk schema.GroupVersionKind, resource client.Object) (bool, bool, error) {

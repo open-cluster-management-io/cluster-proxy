@@ -37,6 +37,16 @@ helm install cluster-proxy ./charts/cluster-proxy \
 | `enableServiceProxy`                    | Enable user server deployment      | `false`                                         |
 | `userServer.enabled`                    | Auto-manage user-server cert       | `false`                                         |
 | `userServer.additionalSANs`             | Extra SANs for the generated cert  | `[]`                                            |
+| `networkPolicies.enabled`               | Apply NetworkPolicies for components | `false`                                       |
+
+### Network Policies
+
+Opt-in NetworkPolicies for hub and managed workloads. See [NETWORK_POLICIES.md](../../docs/NETWORK_POLICIES.md).
+
+```bash
+helm install cluster-proxy ./charts/cluster-proxy \
+  --set networkPolicies.enabled=true
+```
 
 ### User Server Configuration
 

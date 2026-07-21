@@ -1,0 +1,36 @@
+{{- if .Values.networkPolicies.enabled }}
+# NetworkPolicy for the addon-manager. Applied when networkPolicies.enabled=true.
+# Denies all ingress; allows DNS and Kubernetes API egress.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: cluster-proxy-addon-manager
+  namespace: {{ .Release.Namespace }}
+  labels:
+    component: cluster-proxy-manager
+spec:
+  podSelector:
+    matchLabels:
+      open-cluster-management.io/addon: cluster-proxy
+      component: cluster-proxy-manager
+  policyTypes:
+  - Ingress
+  - Egress
+  egress:
+  # DNS
+  - ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+    - protocol: UDP
+      port: 5353
+    - protocol: TCP
+      port: 5353
+  # Kubernetes API
+  - ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 6443
+{{- end }}

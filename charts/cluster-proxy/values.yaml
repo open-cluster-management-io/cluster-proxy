@@ -52,3 +52,11 @@ userServer:
   # Additional SANs for the certificate (e.g., external hostnames)
   # Example: ["user-server.example.com", "10.0.0.100"]
   additionalSANs: []
+
+# networkPolicies configures whether NetworkPolicies are applied for cluster-proxy
+# components (hub addon-manager / user-server via this chart; proxy-server and
+# managed proxy-agent via ManagedProxyConfiguration.spec.networkPolicies).
+# When enabled is false (default), no NetworkPolicies are applied.
+# See docs/NETWORK_POLICIES.md.
+networkPolicies:
+  enabled: false

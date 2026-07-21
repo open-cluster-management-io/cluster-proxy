@@ -50,5 +50,8 @@ proxyConfig:
 
 enableImpersonation: "true"
 
+# Set from ManagedProxyConfiguration.spec.networkPolicies.enabled by the hub addon.
+networkPoliciesEnabled: false
+
 global:
   resourceRequirements: []

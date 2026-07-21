@@ -98,6 +98,35 @@ func TestNewProxyServerDeployment_SetsPodSecurityContext(t *testing.T) {
 	assert.Equal(t, expected, deploy.Spec.Template.Spec.SecurityContext)
 }
 
+func TestNewProxyServerNetworkPolicy(t *testing.T) {
+	config := newTestConfig(1)
+	config.Name = "cluster-proxy"
+	config.Spec.ProxyServer.Namespace = "hub-ns"
+
+	np := newProxyServerNetworkPolicy(config)
+	assert.Equal(t, "cluster-proxy-proxy-server", np.Name)
+	assert.Equal(t, "hub-ns", np.Namespace)
+	assert.Equal(t, "proxy-server", np.Spec.PodSelector.MatchLabels["proxy.open-cluster-management.io/component-name"])
+	assert.Len(t, np.Spec.Ingress, 1)
+	assert.Len(t, np.Spec.Ingress[0].Ports, 2)
+	assert.Empty(t, np.Spec.Ingress[0].From)
+	assert.Len(t, np.Spec.Egress, 2)
+}
+
+func TestNetworkPoliciesEnabled(t *testing.T) {
+	assert.False(t, networkPoliciesEnabled(&proxyv1alpha1.ManagedProxyConfiguration{}))
+	assert.False(t, networkPoliciesEnabled(&proxyv1alpha1.ManagedProxyConfiguration{
+		Spec: proxyv1alpha1.ManagedProxyConfigurationSpec{
+			NetworkPolicies: &proxyv1alpha1.NetworkPoliciesConfig{Enabled: false},
+		},
+	}))
+	assert.True(t, networkPoliciesEnabled(&proxyv1alpha1.ManagedProxyConfiguration{
+		Spec: proxyv1alpha1.ManagedProxyConfigurationSpec{
+			NetworkPolicies: &proxyv1alpha1.NetworkPoliciesConfig{Enabled: true},
+		},
+	}))
+}
+
 func TestTLSConfigHash_Nil(t *testing.T) {
 	assert.Equal(t, "", tlsConfigHash(nil))
 }

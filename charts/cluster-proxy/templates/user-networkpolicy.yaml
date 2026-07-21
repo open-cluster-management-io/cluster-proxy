@@ -1,0 +1,47 @@
+{{- if and .Values.networkPolicies.enabled .Values.enableServiceProxy }}
+# NetworkPolicy for the user-server. Applied when networkPolicies.enabled=true
+# and enableServiceProxy=true.
+# Allows ingress on serving port 9092 and ANP client port 8090 (empty from for
+# portability); allows DNS, API, and in-cluster ANP proxy-server (8090) egress.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: cluster-proxy-addon-user
+  namespace: {{ .Release.Namespace }}
+  labels:
+    component: cluster-proxy-addon-user
+spec:
+  podSelector:
+    matchLabels:
+      open-cluster-management.io/addon: cluster-proxy
+      component: cluster-proxy-addon-user
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Empty from: port-based allow (ingress controllers / in-cluster clients).
+  - ports:
+    - protocol: TCP
+      port: 9092
+    - protocol: TCP
+      port: 8090
+  egress:
+  # DNS
+  - ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+    - protocol: UDP
+      port: 5353
+    - protocol: TCP
+      port: 5353
+  # Kubernetes API and ANP proxy-server (in-cluster :8090)
+  - ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 6443
+    - protocol: TCP
+      port: 8090
+{{- end }}
