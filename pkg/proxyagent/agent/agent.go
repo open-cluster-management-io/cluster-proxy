@@ -55,6 +55,7 @@ func NewAgentAddon(
 	nativeClient kubernetes.Interface,
 	enableKubeApiProxy bool, //nolint:revive // parameter name is part of the public API
 	enableServiceProxy bool,
+	enableNetworkPolicies bool,
 	addonClient addonclient.Interface) (agent.AgentAddon, error) {
 	caCertData, caKeyData, err := signer.CA().Config.GetPEMBytes()
 	if err != nil {
@@ -129,7 +130,7 @@ func NewAgentAddon(
 		WithAgentDeployTriggerClusterFilter(utils.ClusterImageRegistriesAnnotationChanged).
 		WithGetValuesFuncs(
 			GetClusterProxyValueFunc(runtimeClient, nativeClient, signerNamespace, caCertData, enableKubeApiProxy),
-			GetClusterProxyAdditionalValueFunc(runtimeClient, nativeClient, signerNamespace, enableServiceProxy),
+			GetClusterProxyAdditionalValueFunc(runtimeClient, nativeClient, signerNamespace, enableServiceProxy, enableNetworkPolicies),
 			addonfactory.GetAddOnDeploymentConfigValues(
 				utils.NewAddOnDeploymentConfigGetter(addonClient),
 				toAgentAddOnChartValues(caCertData),

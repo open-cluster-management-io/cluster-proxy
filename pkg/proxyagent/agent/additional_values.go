@@ -32,6 +32,7 @@ func GetClusterProxyAdditionalValueFunc(
 	nativeClient kubernetes.Interface,
 	signerNamespace string,
 	enableServiceProxy bool,
+	enableNetworkPolicies bool,
 ) addonfactory.GetValuesFunc {
 	return func(cluster *clusterv1.ManagedCluster,
 		addon *addonv1beta1.ManagedClusterAddOn) (addonfactory.Values, error) {
@@ -71,6 +72,9 @@ func GetClusterProxyAdditionalValueFunc(
 			"image":           image,
 			"tag":             tag,
 			"proxyAgentImage": clusterProxyAddonImage,
+			"networkPolicies": map[string]interface{}{
+				"enabled": enableNetworkPolicies,
+			},
 		}
 
 		// get node selector

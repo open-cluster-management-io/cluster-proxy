@@ -1,0 +1,51 @@
+{{- if .Values.networkPolicies.enabled }}
+# Purpose: Default-deny for ANP proxy-server pods created via
+# ManagedProxyConfiguration, then allow ingress on 8090/8091 (empty "from" for
+# ingress controllers / tunnel clients), same-namespace user-server on 8090,
+# and DNS + API egress.
+# Peers are port-based where destinations are not selectable across vendors.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: cluster-proxy-proxy-server-network-policy
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSelector:
+    matchLabels:
+      proxy.open-cluster-management.io/component-name: proxy-server
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Empty from: port-based allow (ingress controllers / ANP agents).
+  - ports:
+    - protocol: TCP
+      port: 8090
+    - protocol: TCP
+      port: 8091
+  # Reciprocal allow for cluster-proxy-addon-user ANP client → proxy-server :8090
+  - from:
+    - podSelector:
+        matchLabels:
+          component: cluster-proxy-addon-user
+    ports:
+    - protocol: TCP
+      port: 8090
+  egress:
+  # DNS (:53 common; :5353 used by some distributions)
+  - ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+    - protocol: UDP
+      port: 5353
+    - protocol: TCP
+      port: 5353
+  # Kubernetes API
+  - ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 6443
+{{- end }}

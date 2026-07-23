@@ -21,6 +21,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	csrv1 "k8s.io/api/certificates/v1"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -148,6 +149,7 @@ func TestAgentAddonRegistrationOption(t *testing.T) {
 				nil,
 				fakeKubeClient,
 				true,
+				false,
 				false,
 				nil,
 			)
@@ -283,6 +285,7 @@ func TestNewAgentAddon(t *testing.T) {
 		kubeObjs                []runtime.Object
 		enableKubeApiProxy      bool
 		enableServiceProxy      bool
+		enableNetworkPolicies   bool
 		expectedErrorMsg        string
 		verifyManifests         func(t *testing.T, manifests []runtime.Object)
 	}{
@@ -439,6 +442,61 @@ func TestNewAgentAddon(t *testing.T) {
 					assert.NotNil(t, serviceProxy.ReadinessProbe) &&
 					assert.NotNil(t, serviceProxy.ReadinessProbe.TCPSocket) {
 					assert.Equal(t, int32(constant.ServiceProxyPort), serviceProxy.ReadinessProbe.TCPSocket.Port.IntVal)
+				}
+			},
+		},
+		{
+			name:    "port forward proxy server with network policies",
+			cluster: newCluster(clusterName, true),
+			addon: func() *addonv1beta1.ManagedClusterAddOn {
+				addOn := newAddOn(addOnName, clusterName)
+				addOn.Status.ConfigReferences = []addonv1beta1.ConfigReference{newManagedProxyConfigReference(managedProxyConfigName)}
+				return addOn
+			}(),
+			managedProxyConfig:      newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypePortForward),
+			addOndDeploymentConfigs: []runtime.Object{},
+			kubeObjs:                []runtime.Object{},
+			enableKubeApiProxy:      true,
+			enableNetworkPolicies:   true,
+			verifyManifests: func(t *testing.T, manifests []runtime.Object) {
+				expected := append([]string{}, expectedManifestNames...)
+				expected = append(expected, "cluster-proxy-proxy-agent-network-policy")
+				assert.Len(t, manifests, len(expected))
+				assert.ElementsMatch(t, expected, manifestNames(manifests))
+				np := getAgentNetworkPolicy(manifests)
+				if assert.NotNil(t, np) {
+					assert.False(t, networkPolicyHasAllowAllEgress(np),
+						"without service-proxy, agent NP must not allow all egress")
+				}
+			},
+		},
+		{
+			name:    "network policies with service proxy allows arbitrary backend egress",
+			cluster: newCluster(clusterName, true),
+			addon: func() *addonv1beta1.ManagedClusterAddOn {
+				addOn := newAddOn(addOnName, clusterName)
+				addOn.Status.ConfigReferences = []addonv1beta1.ConfigReference{newManagedProxyConfigReference(managedProxyConfigName)}
+				return addOn
+			}(),
+			managedProxyConfig:      newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypePortForward),
+			addOndDeploymentConfigs: []runtime.Object{},
+			kubeObjs:                []runtime.Object{},
+			enableKubeApiProxy:      true,
+			enableServiceProxy:      true,
+			enableNetworkPolicies:   true,
+			verifyManifests: func(t *testing.T, manifests []runtime.Object) {
+				expected := append([]string{}, expectedManifestNamesWithServiceProxy...)
+				expected = append(expected, "cluster-proxy-proxy-agent-network-policy")
+				assert.Len(t, manifests, len(expected))
+				assert.ElementsMatch(t, expected, manifestNames(manifests))
+				np := getAgentNetworkPolicy(manifests)
+				if assert.NotNil(t, np) {
+					// Fixed allowlist covers 443/6443/entrypoint but not e.g. :8080;
+					// service-proxy backends use Cluster-Proxy-Port at request time.
+					assert.False(t, networkPolicyAllowsEgressTCPPort(np, 8080),
+						"fixed allowlist alone must not cover backend port 8080")
+					assert.True(t, networkPolicyHasAllowAllEgress(np),
+						"service-proxy requires allow-all egress exemption for arbitrary backends")
 				}
 			},
 		},
@@ -728,6 +786,7 @@ func TestNewAgentAddon(t *testing.T) {
 				fakeKubeClient,
 				c.enableKubeApiProxy,
 				c.enableServiceProxy,
+				c.enableNetworkPolicies,
 				fakeAddonClient,
 			)
 			assert.NoError(t, err)
@@ -1081,6 +1140,53 @@ func getAgentDeployment(manifests []runtime.Object) *appsv1.Deployment {
 	}
 
 	return nil
+}
+
+func getAgentNetworkPolicy(manifests []runtime.Object) *networkingv1.NetworkPolicy {
+	for _, manifest := range manifests {
+		if np, ok := manifest.(*networkingv1.NetworkPolicy); ok {
+			if np.Name == "cluster-proxy-proxy-agent-network-policy" {
+				return np
+			}
+		}
+	}
+	return nil
+}
+
+// networkPolicyHasAllowAllEgress reports whether any egress rule matches all
+// destinations and ports (empty to and empty ports), used as the service-proxy
+// backend exemption for arbitrary Cluster-Proxy-Port targets.
+func networkPolicyHasAllowAllEgress(np *networkingv1.NetworkPolicy) bool {
+	if np == nil {
+		return false
+	}
+	for _, rule := range np.Spec.Egress {
+		if len(rule.To) == 0 && len(rule.Ports) == 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// networkPolicyAllowsEgressTCPPort is true only when a port-restricted egress
+// rule (non-empty ports) explicitly lists the TCP port — not via allow-all.
+func networkPolicyAllowsEgressTCPPort(np *networkingv1.NetworkPolicy, port int32) bool {
+	if np == nil {
+		return false
+	}
+	for _, rule := range np.Spec.Egress {
+		if len(rule.Ports) == 0 {
+			continue
+		}
+		for _, p := range rule.Ports {
+			if p.Port != nil && p.Port.IntVal == port {
+				if p.Protocol == nil || *p.Protocol == corev1.ProtocolTCP {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 func getDeploymentContainer(deploy *appsv1.Deployment, name string) *corev1.Container {

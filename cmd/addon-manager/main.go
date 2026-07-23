@@ -80,6 +80,7 @@ func main() {
 	var signerSecretNamespace, signerSecretName string
 	var enableKubeAPIProxy bool
 	var enableServiceProxy bool
+	var enableNetworkPolicies bool
 	var imagePullPolicy string
 	var featureGates map[string]bool
 
@@ -100,6 +101,8 @@ func main() {
 		"The name of the addon agent's image")
 	flag.BoolVar(&enableKubeAPIProxy, "enable-kube-api-proxy", true, "Enable proxy to agent kube-apiserver")
 	flag.BoolVar(&enableServiceProxy, "enable-service-proxy", true, "Enable service proxy")
+	flag.BoolVar(&enableNetworkPolicies, "enable-network-policies", false,
+		"Enable NetworkPolicies for the managed-cluster proxy-agent")
 	flag.StringVar(&config.DefaultAddonInstallNamespace, "agent-install-namespace", config.DefaultAddonInstallNamespace,
 		"The default namespace to install the addon agents.")
 	flag.StringVar(&imagePullPolicy, "image-pull-policy", string(corev1.PullIfNotPresent), "The image pull policy for the addon manager")
@@ -234,6 +237,7 @@ func main() {
 		nativeClient,
 		enableKubeAPIProxy,
 		enableServiceProxy,
+		enableNetworkPolicies,
 		addonClient,
 	)
 	if err != nil {

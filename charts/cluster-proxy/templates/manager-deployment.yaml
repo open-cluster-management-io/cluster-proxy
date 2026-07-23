@@ -34,6 +34,7 @@ spec:
             - --signer-secret-namespace={{ .Release.Namespace }}
             - --enable-kube-api-proxy={{ .Values.enableKubeApiProxy }}
             - --enable-service-proxy={{ .Values.enableServiceProxy }}
+            - --enable-network-policies={{ .Values.networkPolicies.enabled }}
             - --image-pull-policy={{ .Values.proxyServer.imagePullPolicy }}
             - --agent-install-namespace={{ .Values.spokeAddonNamespace }}
             {{- if .Values.featureGates }}
