@@ -52,3 +52,10 @@ userServer:
   # Additional SANs for the certificate (e.g., external hostnames)
   # Example: ["user-server.example.com", "10.0.0.100"]
   additionalSANs: []
+
+# Opt-in NetworkPolicies for hub workloads (addon-manager, user-server, ANP
+# proxy-server) and for the managed-cluster proxy-agent (via manager flag
+# --enable-network-policies). Default false so community installs are unchanged.
+# Policies use port-based peers for portability across Kubernetes vendors.
+networkPolicies:
+  enabled: false

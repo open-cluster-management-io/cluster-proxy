@@ -1,0 +1,49 @@
+{{- if and .Values.networkPolicies.enabled .Values.enableServiceProxy }}
+# Purpose: Default-deny for cluster-proxy-addon-user (user-server), then allow
+# ingress on serving port 9092 (empty "from" for ingress controllers / in-cluster
+# clients), plus DNS, API, and ANP client egress to proxy-server on 8090.
+# Probe port 8000 is omitted (kubelet probes are not blocked by NetworkPolicy).
+# Peers are port-based where destinations are not selectable across vendors.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: cluster-proxy-addon-user-network-policy
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSelector:
+    matchLabels:
+      component: cluster-proxy-addon-user
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Empty from: port-based allow (ingress controllers / in-cluster clients).
+  - ports:
+    - protocol: TCP
+      port: 9092
+  egress:
+  # DNS (:53 common; :5353 used by some distributions)
+  - ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+    - protocol: UDP
+      port: 5353
+    - protocol: TCP
+      port: 5353
+  # Kubernetes API
+  - ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 6443
+  # ANP client → same-namespace proxy-server
+  - to:
+    - podSelector:
+        matchLabels:
+          proxy.open-cluster-management.io/component-name: proxy-server
+    ports:
+    - protocol: TCP
+      port: 8090
+{{- end }}

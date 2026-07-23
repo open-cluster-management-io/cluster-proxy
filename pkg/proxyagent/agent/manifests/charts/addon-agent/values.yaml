@@ -50,5 +50,11 @@ proxyConfig:
 
 enableImpersonation: "true"
 
+# Opt-in NetworkPolicy for the spoke proxy-agent Deployment.
+# Set by the hub addon-manager from --enable-network-policies
+# (charts/cluster-proxy values networkPolicies.enabled).
+networkPolicies:
+  enabled: false
+
 global:
   resourceRequirements: []

@@ -1,0 +1,34 @@
+{{- if .Values.networkPolicies.enabled }}
+# Purpose: Default-deny for cluster-proxy addon-manager, then allow DNS and
+# Kubernetes API egress. Manager has no Service/ingress.
+# Peers are port-based (empty "to") for portability across Kubernetes vendors.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: cluster-proxy-addon-manager-network-policy
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSelector:
+    matchLabels:
+      component: cluster-proxy-manager
+  policyTypes:
+  - Ingress
+  - Egress
+  egress:
+  # DNS (:53 common; :5353 used by some distributions)
+  - ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+    - protocol: UDP
+      port: 5353
+    - protocol: TCP
+      port: 5353
+  # Kubernetes API
+  - ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 6443
+{{- end }}
