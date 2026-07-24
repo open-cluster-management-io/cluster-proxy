@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	authenticationv1 "k8s.io/api/authentication/v1"
 	"k8s.io/apiserver/pkg/authentication/authenticator"
 	"k8s.io/apiserver/pkg/authentication/token/cache"
 	"k8s.io/apiserver/pkg/authentication/user"
@@ -352,6 +353,24 @@ func (s *serviceProxy) readImpersonateTokenFromFile() (string, error) {
 	return string(token), nil
 }
 
+// stripClientImpersonationHeaders removes any client-supplied impersonation headers.
+// Without this, Impersonate-Group/Uid/Extra values would be forwarded to the managed
+// cluster apiserver. On the hub-user path the proxy SA has broad impersonate rights on
+// users/groups, so a client could escalate by injecting Impersonate-Group (e.g.
+// system:masters) which Header.Add would keep alongside the authenticated user's groups.
+// Headers must be cleared for every auth path (including managed-cluster tokens), not only
+// inside processHubUser.
+func stripClientImpersonationHeaders(h http.Header) {
+	h.Del(authenticationv1.ImpersonateUserHeader)
+	h.Del(authenticationv1.ImpersonateGroupHeader)
+	h.Del(authenticationv1.ImpersonateUIDHeader)
+	for key := range h {
+		if strings.HasPrefix(key, authenticationv1.ImpersonateUserExtraHeaderPrefix) {
+			h.Del(key)
+		}
+	}
+}
+
 // processAuthentication handles the authentication flow for both managed cluster and hub users.
 // It tries managed cluster TokenReview first; if unauthenticated, falls back to hub TokenReview.
 func (s *serviceProxy) processAuthentication(ctx context.Context, req *http.Request) error {
@@ -362,6 +381,10 @@ func (s *serviceProxy) processAuthentication(ctx context.Context, req *http.Requ
 		"tokenPresent", token != "",
 		"tokenLength", len(token),
 	)
+
+	// Always drop client-provided impersonation headers before any auth path forwards the
+	// request. processHubUser will re-apply Impersonate-User/Group from the TokenReview result.
+	stripClientImpersonationHeaders(req.Header)
 
 	// try managed cluster authentication first
 	managedClusterResp, managedClusterAuthenticated, err := s.managedClusterAuthenticator.AuthenticateToken(ctx, token)
@@ -420,22 +443,23 @@ func (s *serviceProxy) processAuthentication(ctx context.Context, req *http.Requ
 func (s *serviceProxy) processHubUser(ctx context.Context, req *http.Request, hubUser user.Info) error {
 	logger := klog.FromContext(ctx)
 
-	// set impersonate group header
+	// Ensure no leftover client Impersonate-Group values before adding authenticated groups.
+	req.Header.Del(authenticationv1.ImpersonateGroupHeader)
 	for _, group := range hubUser.GetGroups() {
-		// Here using `Add` instead of `Set` to support multiple groups
-		req.Header.Add("Impersonate-Group", group)
+		// Add (not Set) so multiple groups are preserved after the Del above.
+		req.Header.Add(authenticationv1.ImpersonateGroupHeader, group)
 	}
 
 	// check if the hub user is serviceaccount kind, if so, add "cluster:hub:" prefix to the username
 	username := hubUser.GetName()
 	if strings.HasPrefix(username, "system:serviceaccount:") {
-		req.Header.Set("Impersonate-User", fmt.Sprintf("cluster:hub:%s", username))
+		req.Header.Set(authenticationv1.ImpersonateUserHeader, fmt.Sprintf("cluster:hub:%s", username))
 	} else {
-		req.Header.Set("Impersonate-User", username)
+		req.Header.Set(authenticationv1.ImpersonateUserHeader, username)
 	}
 
 	logger.V(4).Info("impersonation headers set for hub user",
-		"impersonateUser", req.Header.Get("Impersonate-User"),
+		"impersonateUser", req.Header.Get(authenticationv1.ImpersonateUserHeader),
 		"impersonateGroups", hubUser.GetGroups(),
 		"isServiceAccount", strings.HasPrefix(username, "system:serviceaccount:"),
 	)
