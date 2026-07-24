@@ -17,7 +17,7 @@ reverse proxy tunnels from the managed cluster to the hub cluster, enabling
 clients from the hub network to access services in the managed clusters'
 network even when all the clusters are isolated in different VPCs.
 
-The core addon lifecycle consists of two components:
+Cluster Proxy always deploys two components:
 
 - **Addon-Manager**: Manages the installation of proxy servers (proxy ingress)
   in the hub cluster.
