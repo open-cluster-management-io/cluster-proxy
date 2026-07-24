@@ -129,18 +129,49 @@ func NewAgentAddon(
 		).
 		WithAgentDeployTriggerClusterFilter(utils.ClusterImageRegistriesAnnotationChanged).
 		WithGetValuesFuncs(
-			GetClusterProxyValueFunc(runtimeClient, nativeClient, signerNamespace, caCertData, enableKubeApiProxy),
-			GetClusterProxyAdditionalValueFunc(runtimeClient, nativeClient, signerNamespace, enableServiceProxy, enableNetworkPolicies),
-			addonfactory.GetAddOnDeploymentConfigValues(
-				utils.NewAddOnDeploymentConfigGetter(addonClient),
-				toAgentAddOnChartValues(caCertData),
-				addonfactory.ToAddOnResourceRequirementsValues,
+			mergeAndNormalizeValuesFuncs(
+				GetClusterProxyValueFunc(runtimeClient, nativeClient, signerNamespace, caCertData, enableKubeApiProxy),
+				GetClusterProxyAdditionalValueFunc(runtimeClient, nativeClient, signerNamespace, enableServiceProxy, enableNetworkPolicies),
+				addonfactory.GetAddOnDeploymentConfigValues(
+					utils.NewAddOnDeploymentConfigGetter(addonClient),
+					toAgentAddOnChartValues(caCertData),
+					addonfactory.ToAddOnResourceRequirementsValues,
+				),
 			),
 		).
 		WithConfigCheckEnabledOption().
 		WithAgentInstallNamespace(agentInstallNamespaceFunc(utils.NewAddOnDeploymentConfigGetter(addonClient)))
 
 	return agentFactory.BuildHelmAgentAddon()
+}
+
+// TODO: Remove this wrapper and pass the value funcs directly to WithGetValuesFuncs
+// after upgrading addon-framework to v1.4.0, which includes this normalization:
+// https://github.com/open-cluster-management-io/addon-framework/pull/389
+//
+// mergeAndNormalizeValuesFuncs preserves value precedence while converting
+// concrete Go collection types into the JSON-compatible values Helm expects
+// when validating a chart values schema.
+func mergeAndNormalizeValuesFuncs(getValuesFuncs ...addonfactory.GetValuesFunc) addonfactory.GetValuesFunc {
+	return func(cluster *clusterv1.ManagedCluster,
+		addon *addonv1beta1.ManagedClusterAddOn) (addonfactory.Values, error) {
+		values := addonfactory.Values{}
+		for _, getValues := range getValuesFuncs {
+			newValues, err := getValues(cluster, addon)
+			if err != nil {
+				return values, err
+			}
+
+			normalizedValues, err := addonfactory.JsonStructToValues(newValues)
+			if err != nil {
+				return values, fmt.Errorf("failed to normalize Helm values: %w", err)
+			}
+
+			values = addonfactory.MergeValues(values, normalizedValues)
+		}
+
+		return values, nil
+	}
 }
 
 // agentInstallNamespaceFunc returns namespace from AddonDeploymentConfig, and config.DefaultAddonInstallNamespace if

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	cliflag "k8s.io/component-base/cli/flag"
 	"k8s.io/klog/v2"
 
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
@@ -82,8 +84,11 @@ type serviceProxy struct {
 
 	enableImpersonation bool
 
+	oidc oidcOptions
+
 	managedClusterAuthenticator authenticator.Token
 	hubAuthenticator            authenticator.Token
+	oidcAuthenticator           authenticator.Token // nil when OIDC authentication is disabled
 
 	// getImpersonateTokenFunc reads the service account token used for impersonation.
 	// Defaults to reading from the mounted service account token file.
@@ -120,6 +125,18 @@ func (s *serviceProxy) AddFlags(cmd *cobra.Command) {
 
 	// token review cache flags
 	flags.DurationVar(&s.tokenReviewCacheTTL, "token-review-cache-ttl", defaultTokenReviewCacheTTL, "TTL for cached TokenReview results. Set to 0 to disable caching.")
+
+	// oidc authentication flags
+	flags.StringVar(&s.oidc.issuerURL, "oidc-issuer-url", "", "The URL of the OIDC issuer, only the https scheme is accepted. Setting this enables OIDC token authentication as a fallback after the managed cluster and hub TokenReviews.")
+	flags.StringVar(&s.oidc.clientID, "oidc-client-id", "", "The client ID that OIDC ID tokens must be issued for. Must be set together with --oidc-issuer-url.")
+	flags.StringVar(&s.oidc.usernameClaim, "oidc-username-claim", "sub", "The OIDC claim to use as the username.")
+	flags.StringVar(&s.oidc.usernamePrefix, "oidc-username-prefix", "", "The prefix prepended to username claims. If unset, non-email claims use '<issuer-url>#'; use '-' to disable prefixing.")
+	flags.StringVar(&s.oidc.groupsClaim, "oidc-groups-claim", "", "The OIDC claim to use as the user's groups. The claim value is expected to be a string or an array of strings.")
+	flags.StringVar(&s.oidc.groupsPrefix, "oidc-groups-prefix", "", "The prefix prepended to group claims to prevent clashes with existing groups.")
+	flags.StringSliceVar(&s.oidc.reservedNamePrefixes, "oidc-reserved-name-prefixes", []string{"system:"}, "Comma-separated list of prefixes that authenticated OIDC usernames and groups must not use. The list replaces the default; set an empty value to disable the check.")
+	flags.StringVar(&s.oidc.caFile, "oidc-ca-file", "", "The path to a CA bundle used to verify the OIDC issuer's serving certificate. Defaults to the host's root CAs.")
+	flags.StringSliceVar(&s.oidc.signingAlgs, "oidc-signing-algs", []string{"RS256"}, "Comma-separated list of allowed JOSE asymmetric signing algorithms for OIDC tokens.")
+	flags.Var(cliflag.NewMapStringStringNoSplit(&s.oidc.requiredClaims), "oidc-required-claim", "A key=value pair that must be present in the OIDC ID token. Repeat this flag to require multiple claims.")
 
 	// kube client rate limiting flags
 	flags.Float32Var(&s.kubeClientQPS, "kube-api-qps", defaultKubeClientQPS, "QPS for kube API clients (managed cluster and hub). Increase if client-side throttling is observed under high concurrency.")
@@ -222,6 +239,14 @@ func (s *serviceProxy) Run(ctx context.Context) error {
 		s.managedClusterAuthenticator = managedClusterAuthn
 		s.hubAuthenticator = hubAuthn
 		klog.Infof("TokenReview cache disabled")
+	}
+
+	// initialize the OIDC authenticator when configured; it is not wrapped in
+	// the token cache because the delegate verifies tokens against its own
+	// cached JWKS instead of calling an apiserver per token
+	if s.oidc.issuerURL != "" {
+		s.oidcAuthenticator = newOIDCAuthenticator(ctx, s.oidc)
+		klog.Infof("OIDC authentication enabled: issuer=%s, clientID=%s, usernameClaim=%s", s.oidc.issuerURL, s.oidc.clientID, s.oidc.usernameClaim)
 	}
 
 	podNamespace := os.Getenv("POD_NAMESPACE")
@@ -340,7 +365,10 @@ func (s *serviceProxy) validate() error {
 	if s.key == "" {
 		return fmt.Errorf("key is required")
 	}
-	return nil
+	if s.oidc.issuerURL != "" && !s.enableImpersonation {
+		return fmt.Errorf("--oidc-issuer-url requires --enable-impersonation=true")
+	}
+	return validateOIDCOptions(s.oidc)
 }
 
 func (s *serviceProxy) readImpersonateTokenFromFile() (string, error) {
@@ -353,7 +381,8 @@ func (s *serviceProxy) readImpersonateTokenFromFile() (string, error) {
 }
 
 // processAuthentication handles the authentication flow for both managed cluster and hub users.
-// It tries managed cluster TokenReview first; if unauthenticated, falls back to hub TokenReview.
+// It tries managed cluster TokenReview first; if unauthenticated, falls back to hub TokenReview,
+// and finally to the configured OIDC issuer.
 func (s *serviceProxy) processAuthentication(ctx context.Context, req *http.Request) error {
 	logger := klog.FromContext(ctx)
 	token := strings.TrimPrefix(req.Header.Get("Authorization"), "Bearer ")
@@ -401,8 +430,38 @@ func (s *serviceProxy) processAuthentication(ctx context.Context, req *http.Requ
 		)
 
 		if !hubAuthenticated {
-			logger.Error(nil, "authentication failed: token is neither valid for managed cluster nor hub cluster")
-			return fmt.Errorf("authentication failed: token is neither valid for managed cluster nor hub cluster")
+			if s.oidcAuthenticator == nil {
+				logger.Error(nil, "authentication failed: token is neither valid for managed cluster nor hub cluster")
+				return fmt.Errorf("authentication failed: token is neither valid for managed cluster nor hub cluster")
+			}
+
+			// try oidc authentication as the last fallback when configured
+			oidcResp, oidcAuthenticated, err := s.oidcAuthenticator.AuthenticateToken(ctx, token)
+			if err != nil {
+				if errors.Is(err, ErrTokenNotAuthenticated) {
+					logger.V(4).Info("oidc token not authenticated", "error", err)
+					oidcAuthenticated = false
+				} else {
+					logger.Error(err, "oidc authentication failed")
+					return fmt.Errorf("authentication failed: managed cluster auth: not authenticated, hub cluster auth: not authenticated, oidc auth error: %v", err)
+				}
+			}
+			logger.V(4).Info("oidc authentication result",
+				"authenticated", oidcAuthenticated,
+			)
+
+			if !oidcAuthenticated {
+				logger.Error(nil, "authentication failed: token is not valid for managed cluster, hub cluster, or the configured OIDC issuer")
+				return fmt.Errorf("authentication failed: token is not valid for managed cluster, hub cluster, or the configured OIDC issuer")
+			}
+
+			if err := s.processOIDCUser(ctx, req, oidcResp.User); err != nil {
+				logger.Error(err, "failed to process oidc user")
+				return fmt.Errorf("failed to process oidc user: %v", err)
+			}
+
+			logger.V(6).Info("oidc user processed successfully, impersonation headers applied")
+			return nil
 		}
 
 		if err := s.processHubUser(ctx, req, hubResp.User); err != nil {
@@ -416,31 +475,46 @@ func (s *serviceProxy) processAuthentication(ctx context.Context, req *http.Requ
 	return nil
 }
 
+// processOIDCUser handles the oidc user specific operations including impersonation
+func (s *serviceProxy) processOIDCUser(ctx context.Context, req *http.Request, oidcUser user.Info) error {
+	// the oidc identity is unknown to the managed cluster, so the group the
+	// apiserver would have added itself has to be carried over explicitly
+	groups := slices.Clone(oidcUser.GetGroups())
+	if !slices.Contains(groups, user.AllAuthenticated) {
+		groups = append(groups, user.AllAuthenticated)
+	}
+	return s.impersonateUser(ctx, req, oidcUser.GetName(), groups)
+}
+
 // processHubUser handles the hub user specific operations including impersonation
 func (s *serviceProxy) processHubUser(ctx context.Context, req *http.Request, hubUser user.Info) error {
+	// check if the hub user is serviceaccount kind, if so, add "cluster:hub:" prefix to the username
+	username := hubUser.GetName()
+	if strings.HasPrefix(username, "system:serviceaccount:") {
+		username = fmt.Sprintf("cluster:hub:%s", username)
+	}
+	return s.impersonateUser(ctx, req, username, hubUser.GetGroups())
+}
+
+// impersonateUser sets the impersonation headers for the given identity and
+// replaces the original token with the cluster-proxy service-account token
+// which has impersonate permission.
+func (s *serviceProxy) impersonateUser(ctx context.Context, req *http.Request, username string, groups []string) error {
 	logger := klog.FromContext(ctx)
 
 	// set impersonate group header
-	for _, group := range hubUser.GetGroups() {
+	for _, group := range groups {
 		// Here using `Add` instead of `Set` to support multiple groups
 		req.Header.Add("Impersonate-Group", group)
 	}
 
-	// check if the hub user is serviceaccount kind, if so, add "cluster:hub:" prefix to the username
-	username := hubUser.GetName()
-	if strings.HasPrefix(username, "system:serviceaccount:") {
-		req.Header.Set("Impersonate-User", fmt.Sprintf("cluster:hub:%s", username))
-	} else {
-		req.Header.Set("Impersonate-User", username)
-	}
+	req.Header.Set("Impersonate-User", username)
 
-	logger.V(4).Info("impersonation headers set for hub user",
-		"impersonateUser", req.Header.Get("Impersonate-User"),
-		"impersonateGroups", hubUser.GetGroups(),
-		"isServiceAccount", strings.HasPrefix(username, "system:serviceaccount:"),
+	logger.V(4).Info("impersonation headers set",
+		"impersonateUser", username,
+		"impersonateGroups", groups,
 	)
 
-	// replace the original token with cluster-proxy service-account token which has impersonate permission
 	token, err := s.getImpersonateTokenFunc()
 	if err != nil {
 		return fmt.Errorf("failed to get impersonate token: %v", err)
