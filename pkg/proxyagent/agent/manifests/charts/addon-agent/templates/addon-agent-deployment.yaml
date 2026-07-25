@@ -33,6 +33,9 @@ spec:
         - {{ .Values.serviceProxyHost }}
       {{- end }}
       serviceAccount: cluster-proxy
+      # Binaries drain for up to 30s after SIGTERM; the extra 10s lets forced
+      # cleanup finish before the kubelet sends SIGKILL.
+      terminationGracePeriodSeconds: 40
       securityContext:
         runAsNonRoot: true
         seccompProfile:

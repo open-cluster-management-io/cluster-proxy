@@ -1016,6 +1016,7 @@ func assertPodSecurityContext(t *testing.T, deploy *appsv1.Deployment) {
 		},
 	}
 	assert.Equal(t, expected, deploy.Spec.Template.Spec.SecurityContext)
+	assert.Equal(t, ptr.To(int64(40)), deploy.Spec.Template.Spec.TerminationGracePeriodSeconds)
 }
 
 type fakeSelfSigner struct {

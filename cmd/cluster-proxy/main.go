@@ -1,9 +1,14 @@
 package main
 
 import (
+	"context"
+	"errors"
 	goflag "flag"
 	"fmt"
+	"io"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -24,24 +29,40 @@ func main() {
 	pflag.CommandLine.AddGoFlagSet(goflag.CommandLine)
 
 	logs.InitLogs()
-	defer logs.FlushLogs()
+	os.Exit(runMain(execute, os.Stderr, logs.FlushLogs))
+}
 
-	command := newClusterProxyCommand()
-	if err := command.Execute(); err != nil {
-		fmt.Fprintf(os.Stderr, "%v\n", err)
-		os.Exit(1)
+func runMain(executeCommand func() error, stderr io.Writer, flushLogs func()) int {
+	defer flushLogs()
+
+	if err := executeCommand(); err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
 	}
+
+	return 0
+}
+
+func execute() error {
+	ctx, stop := newSignalContext(context.Background())
+	defer stop()
+
+	return newClusterProxyCommand().ExecuteContext(ctx)
+}
+
+func newSignalContext(parent context.Context) (context.Context, context.CancelFunc) {
+	return signal.NotifyContext(parent, os.Interrupt, syscall.SIGTERM)
 }
 
 func newClusterProxyCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "cluster-proxy",
 		Short: "cluster-proxy",
-		Run: func(cmd *cobra.Command, args []string) {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := cmd.Help(); err != nil {
-				klog.Errorf("cmd help err: %v", err)
+				return err
 			}
-			os.Exit(1)
+			return errors.New("a subcommand is required")
 		},
 	}
 

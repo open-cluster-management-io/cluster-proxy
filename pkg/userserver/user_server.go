@@ -148,7 +148,11 @@ func (k *userServer) init(ctx context.Context) error {
 		return tunnel, nil
 	}
 
-	addonClient, err := addonclient.NewForConfig(ctrl.GetConfigOrDie())
+	kubeConfig, err := ctrl.GetConfig()
+	if err != nil {
+		return fmt.Errorf("failed to get Kubernetes config for add-on informer: %w", err)
+	}
+	addonClient, err := addonclient.NewForConfig(kubeConfig)
 	if err != nil {
 		return err
 	}
@@ -227,40 +231,47 @@ func (k *userServer) ServeHTTP(wr http.ResponseWriter, req *http.Request) {
 }
 
 func (k *userServer) Run(ctx context.Context) error {
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	var err error
 
 	klog.Info("begin to run user server")
 
 	if err = k.Validate(); err != nil {
-		klog.Fatal(err)
+		return err
 	}
 
-	if err = k.init(ctx); err != nil {
-		klog.Fatal(err)
+	if err = k.init(runCtx); err != nil {
+		return err
 	}
 
 	podNamespace := os.Getenv("POD_NAMESPACE")
 	if len(podNamespace) == 0 {
-		klog.Fatalf("Pod namespace is empty, please set the ENV for POD_NAMESPACE")
+		return fmt.Errorf("pod namespace is empty, please set the POD_NAMESPACE environment variable")
 	}
 
-	kubeClient, err := kubernetes.NewForConfig(ctrl.GetConfigOrDie())
+	kubeConfig, err := ctrl.GetConfig()
 	if err != nil {
-		klog.Fatalf("failed to create kube client for TLS watcher: %v", err)
+		return fmt.Errorf("failed to get Kubernetes config for TLS watcher: %w", err)
 	}
-	sdkTLSConfig, err := sdktls.StartTLSConfigMapWatcher(ctx, kubeClient, podNamespace, func() {
-		klog.Info("TLS ConfigMap changed, restarting")
-		os.Exit(0)
+	kubeClient, err := kubernetes.NewForConfig(kubeConfig)
+	if err != nil {
+		return fmt.Errorf("failed to create kube client for TLS watcher: %w", err)
+	}
+	sdkTLSConfig, err := sdktls.StartTLSConfigMapWatcher(runCtx, kubeClient, podNamespace, func() {
+		klog.Info("TLS ConfigMap changed, shutting down gracefully for restart")
+		cancel()
 	})
 	if err != nil {
-		klog.Fatalf("failed to start TLS ConfigMap watcher: %v", err)
+		return fmt.Errorf("failed to start TLS ConfigMap watcher: %w", err)
 	}
 	klog.Infof("TLS config loaded: minVersion=%s, ciphersuites=%s", sdktls.VersionToString(sdkTLSConfig.MinVersion),
 		sdktls.CipherSuitesToString(sdkTLSConfig.CipherSuites))
 
 	cc, err := addonutils.NewConfigChecker("user-server", k.proxyCACertPath, k.proxyCertPath, k.proxyKeyPath, k.serverCert, k.serverKey, k.serviceProxyCACertPath)
 	if err != nil {
-		klog.Fatal(err)
+		return err
 	}
 
 	tlsConfig := &tls.Config{
@@ -268,28 +279,26 @@ func (k *userServer) Run(ctx context.Context) error {
 		CipherSuites: sdkTLSConfig.CipherSuites,
 	}
 
-	go func() {
-		// Currently ServeHealthProbes uses HTTP so our tlsConfig is not needed, however passing through for
-		// consistency and in case it's ever updated to use HTTPS in the future
-		if err = utils.ServeHealthProbes(":8000", tlsConfig, cc.Check); err != nil {
-			klog.Fatal(err)
-		}
-	}()
+	healthServer := utils.NewHealthProbeServer(":8000", tlsConfig, cc.Check)
+	publicServer := utils.NewHTTPServer(fmt.Sprintf(":%d", k.serverPort), tlsConfig, k)
 
-	klog.Infof("start https server on %d", k.serverPort)
-
-	s := &http.Server{
-		Addr:      fmt.Sprintf(":%d", k.serverPort),
-		TLSConfig: tlsConfig,
-		Handler:   k,
-	}
-
-	err = s.ListenAndServeTLS(k.serverCert, k.serverKey)
-	if err != nil {
-		klog.Fatalf("failed to start user proxy server: %v", err)
-	}
-
-	return nil
+	klog.Infof("starting user HTTPS server on %d and health server on 8000", k.serverPort)
+	return utils.RunHTTPServers(
+		runCtx,
+		utils.DefaultHTTPShutdownTimeout,
+		utils.RunnableHTTPServer{
+			Name:   "user proxy",
+			Server: publicServer,
+			Serve: func() error {
+				return publicServer.ListenAndServeTLS(k.serverCert, k.serverKey)
+			},
+		},
+		utils.RunnableHTTPServer{
+			Name:   "health probe",
+			Server: healthServer,
+			Serve:  healthServer.ListenAndServe,
+		},
+	)
 }
 
 // serviceProxyURL is used to generate the URL of the service proxy server.

@@ -103,7 +103,7 @@ test: manifests generate fmt vet envtest-setup ## Run tests.
 	go test ./pkg/... -coverprofile cover.out
 
 .PHONY: test-helm
-test-helm: verify-helm-dependencies validate-values-schema ## Lint and render Helm charts.
+test-helm: verify-helm-dependencies validate-values-schema verify-shutdown-grace-periods ## Lint and render Helm charts.
 	$(HELM) lint charts/cluster-proxy
 	$(HELM) template cluster-proxy charts/cluster-proxy \
 		--namespace open-cluster-management-addon >/dev/null
@@ -139,6 +139,19 @@ test-helm: verify-helm-dependencies validate-values-schema ## Lint and render He
 	{ ! $(HELM) template addon-agent pkg/proxyagent/agent/manifests/charts/addon-agent \
 		--namespace open-cluster-management-agent-addon \
 		--set oidcReservedNamePrefixes=null 2>&1; } | grep -q oidcReservedNamePrefixes
+
+.PHONY: verify-shutdown-grace-periods
+verify-shutdown-grace-periods:
+	@$(HELM) template cluster-proxy charts/cluster-proxy \
+		--namespace open-cluster-management-addon \
+		--set enableServiceProxy=true \
+		--show-only templates/user-deployment.yaml | \
+		grep -Eq '^[[:space:]]+terminationGracePeriodSeconds: 40$$'
+	@$(HELM) template addon-agent pkg/proxyagent/agent/manifests/charts/addon-agent \
+		--namespace open-cluster-management-agent-addon \
+		--set enableServiceProxy=true \
+		--show-only templates/addon-agent-deployment.yaml | \
+		grep -Eq '^[[:space:]]+terminationGracePeriodSeconds: 40$$'
 
 ##@ Build
 
