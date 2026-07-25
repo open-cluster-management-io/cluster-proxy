@@ -16,7 +16,9 @@ import (
 	"google.golang.org/grpc"
 	"k8s.io/apimachinery/pkg/api/errors"
 
+	authenticationv1 "k8s.io/api/authentication/v1"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/watch"
@@ -165,6 +167,72 @@ var _ = Describe("Requests through Cluster-Proxy", Label("serviceproxy", "connec
 		})
 	})
 
+	Describe("Impersonate a user", Label("impersonation"), func() {
+		It("should delegate authentication and authorization to the managed kube-apiserver", Label("impersonate-user"), func() {
+			targetUser := "cluster-proxy-e2e-impersonated-user"
+			deniedUser := "cluster-proxy-e2e-denied-user"
+
+			impersonateRole, err := hubKubeClient.RbacV1().ClusterRoles().Create(context.Background(), &rbacv1.ClusterRole{
+				ObjectMeta: v1.ObjectMeta{GenerateName: "cluster-proxy-e2e-impersonate-"},
+				Rules: []rbacv1.PolicyRule{
+					{
+						APIGroups:     []string{""},
+						Resources:     []string{"users"},
+						ResourceNames: []string{targetUser},
+						Verbs:         []string{"impersonate"},
+					},
+				},
+			}, v1.CreateOptions{})
+			Expect(err).To(BeNil())
+			DeferCleanup(func() {
+				err := hubKubeClient.RbacV1().ClusterRoles().Delete(context.Background(), impersonateRole.Name, v1.DeleteOptions{})
+				Expect(err).To(BeNil())
+			})
+
+			impersonateBinding, err := hubKubeClient.RbacV1().ClusterRoleBindings().Create(context.Background(), &rbacv1.ClusterRoleBinding{
+				ObjectMeta: v1.ObjectMeta{GenerateName: "cluster-proxy-e2e-impersonate-"},
+				RoleRef: rbacv1.RoleRef{
+					APIGroup: rbacv1.GroupName,
+					Kind:     "ClusterRole",
+					Name:     impersonateRole.Name,
+				},
+				Subjects: []rbacv1.Subject{
+					{
+						Kind:      rbacv1.ServiceAccountKind,
+						Name:      serviceAccountName,
+						Namespace: hubInstallNamespace,
+					},
+				},
+			}, v1.CreateOptions{})
+			Expect(err).To(BeNil())
+			DeferCleanup(func() {
+				err := hubKubeClient.RbacV1().ClusterRoleBindings().Delete(context.Background(), impersonateBinding.Name, v1.DeleteOptions{})
+				Expect(err).To(BeNil())
+			})
+
+			// SelfSubjectReview reports the identity the managed kube-apiserver ended up with, and
+			// every authenticated user may create one, so no extra RBAC is needed on the impersonated
+			// users and the denied request below can only fail on the impersonation check.
+			authorizedClient := impersonatingClusterProxyClient(targetUser)
+			Eventually(func() error {
+				review, err := authorizedClient.AuthenticationV1().SelfSubjectReviews().Create(
+					context.Background(), &authenticationv1.SelfSubjectReview{}, v1.CreateOptions{})
+				if err != nil {
+					return err
+				}
+				if review.Status.UserInfo.Username != targetUser {
+					return fmt.Errorf("expected impersonated user %s, got %s", targetUser, review.Status.UserInfo.Username)
+				}
+				return nil
+			}, timeout, time.Second).Should(Succeed())
+
+			_, err = impersonatingClusterProxyClient(deniedUser).AuthenticationV1().SelfSubjectReviews().Create(
+				context.Background(), &authenticationv1.SelfSubjectReview{}, v1.CreateOptions{})
+			Expect(err).ToNot(BeNil())
+			Expect(errors.IsForbidden(err)).To(Equal(true))
+		})
+	})
+
 	Describe("Get Logs of a pod", Label("logs"), func() {
 		It("should return logs information", Label("pod-logs"), func() {
 			req := clusterProxyKubeClient.CoreV1().Pods(hubInstallNamespace).GetLogs(podName, &corev1.PodLogOptions{})
@@ -298,6 +366,16 @@ var _ = Describe("Requests through Cluster-Proxy", Label("serviceproxy", "connec
 		})
 	})
 })
+
+// impersonatingClusterProxyClient returns a cluster-proxy client that asks the managed cluster
+// apiserver to impersonate the given user.
+func impersonatingClusterProxyClient(userName string) kubernetes.Interface {
+	cfg := rest.CopyConfig(clusterProxyCfg)
+	cfg.Impersonate = rest.ImpersonationConfig{UserName: userName}
+	client, err := kubernetes.NewForConfig(cfg)
+	Expect(err).To(BeNil())
+	return client
+}
 
 func waitForClusterProxyKubeAPIAvailable() {
 	Eventually(func() error {

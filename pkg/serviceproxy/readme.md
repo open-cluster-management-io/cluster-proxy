@@ -13,10 +13,11 @@ For Kubernetes API requests, service-proxy tries authentication in this order:
 2. Hub cluster TokenReview
 3. External OIDC ID token verification, when configured
 
-The three paths have different forwarding behavior:
+The forwarding behavior is:
 
 | Authentication path | Forwarded identity |
 | --- | --- |
+| Client-supplied `Impersonate-*` headers | The original bearer token and impersonation headers are forwarded unchanged. |
 | Managed cluster TokenReview | The original bearer token is forwarded unchanged. |
 | Hub cluster TokenReview | The request uses the service-proxy service account token and impersonates the hub username and groups. |
 | External OIDC | The request uses the service-proxy service account token and impersonates the mapped OIDC username and groups. |
@@ -51,18 +52,22 @@ flowchart TD
     D -->|No| P[Forward request]
     D -->|Yes| E{Impersonation enabled?}
     E -->|No| P
-    E -->|Yes| F{Managed TokenReview succeeds?}
-    F -->|Yes| P
-    F -->|No| G{Hub TokenReview succeeds?}
-    G -->|Yes| H[Set hub user and group impersonation]
-    G -->|No| I{OIDC configured?}
-    I -->|No| U[Return 401 Unauthorized]
-    I -->|Yes| J{OIDC token valid?}
-    J -->|No| U
-    J -->|Yes| K[Map OIDC claims to user and groups]
-    H --> L[Replace bearer token with proxy ServiceAccount token]
-    K --> L
-    L --> P
+    E -->|Yes| F{Has client Impersonate-* headers?}
+    F -->|Yes| Q[Keep original token and headers]
+    Q --> P
+    Q -.-> R[Managed API server authenticates token<br/>and authorizes impersonation]
+    F -->|No| G{Managed TokenReview succeeds?}
+    G -->|Yes| P
+    G -->|No| H{Hub TokenReview succeeds?}
+    H -->|Yes| I[Set hub user and group impersonation]
+    H -->|No| J{OIDC configured?}
+    J -->|No| U[Return 401 Unauthorized]
+    J -->|Yes| K{OIDC token valid?}
+    K -->|No| U
+    K -->|Yes| L[Map OIDC claims to user and groups]
+    I --> M[Replace bearer token with proxy ServiceAccount token]
+    L --> M
+    M --> P
 ```
 
 ## Enable service-proxy

@@ -407,39 +407,43 @@ func (s *serviceProxy) readImpersonateTokenFromFile() (string, error) {
 	return string(token), nil
 }
 
-// stripClientImpersonationHeaders removes any client-supplied impersonation headers.
-// Without this, Impersonate-Group/Uid/Extra values would be forwarded to the managed
-// cluster apiserver. On the hub-user path the proxy SA has broad impersonate rights on
-// users/groups, so a client could escalate by injecting Impersonate-Group (e.g.
-// system:masters) which Header.Add would keep alongside the authenticated user's groups.
-// Headers must be cleared for every auth path (including managed-cluster tokens), not only
-// inside processHubUser.
-func stripClientImpersonationHeaders(h http.Header) {
-	h.Del(authenticationv1.ImpersonateUserHeader)
-	h.Del(authenticationv1.ImpersonateGroupHeader)
-	h.Del(authenticationv1.ImpersonateUIDHeader)
-	for key := range h {
-		if strings.HasPrefix(key, authenticationv1.ImpersonateUserExtraHeaderPrefix) {
-			h.Del(key)
+// impersonateHeaderPrefix is the common prefix of the impersonation headers declared by
+// authenticationv1: Impersonate-User, Impersonate-Group, Impersonate-Uid and Impersonate-Extra-<key>.
+const impersonateHeaderPrefix = "Impersonate-"
+
+// hasClientImpersonationHeaders reports whether the request contains a Kubernetes impersonation
+// header. Matching the complete prefix case-insensitively also covers future impersonation headers.
+func hasClientImpersonationHeaders(headers http.Header) bool {
+	for key := range headers {
+		if len(key) >= len(impersonateHeaderPrefix) &&
+			strings.EqualFold(key[:len(impersonateHeaderPrefix)], impersonateHeaderPrefix) {
+			return true
 		}
 	}
+	return false
 }
 
 // processAuthentication handles the authentication flow for both managed cluster and hub users.
-// It tries managed cluster TokenReview first; if unauthenticated, falls back to hub TokenReview,
-// and finally to the configured OIDC issuer.
+// Requests that already carry client impersonation headers are forwarded untouched so that the
+// managed cluster apiserver authenticates the caller and authorizes the impersonation itself.
+// Otherwise it tries managed cluster TokenReview first; if unauthenticated, falls back to hub
+// TokenReview, and finally to the configured OIDC issuer.
 func (s *serviceProxy) processAuthentication(ctx context.Context, req *http.Request) error {
 	logger := klog.FromContext(ctx)
+
+	// Keep this guard before all proxy-side authentication so the original token and
+	// impersonation headers are delegated unchanged to the managed API server.
+	if hasClientImpersonationHeaders(req.Header) {
+		logger.V(4).Info("client impersonation requested, delegating authentication to the managed cluster API server")
+		return nil
+	}
+
 	token := strings.TrimPrefix(req.Header.Get("Authorization"), "Bearer ")
 
 	logger.V(6).Info("processing authentication for request",
 		"tokenPresent", token != "",
 		"tokenLength", len(token),
 	)
-
-	// Always drop client-provided impersonation headers before any auth path forwards the
-	// request. processHubUser will re-apply Impersonate-User/Group from the TokenReview result.
-	stripClientImpersonationHeaders(req.Header)
 
 	// try managed cluster authentication first
 	managedClusterResp, managedClusterAuthenticated, err := s.managedClusterAuthenticator.AuthenticateToken(ctx, token)

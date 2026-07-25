@@ -170,3 +170,4 @@ to avoid transferring data-intensive traffic over the proxy when possible.
 
 - Design: [https://github.com/open-cluster-management-io/enhancements/tree/main/enhancements/sig-architecture/14-addon-cluster-proxy](https://github.com/open-cluster-management-io/enhancements/tree/main/enhancements/sig-architecture/14-addon-cluster-proxy)
 - Addon-Framework: [https://github.com/open-cluster-management-io/addon-framework](https://github.com/open-cluster-management-io/addon-framework)
+- Service-proxy impersonation: [pkg/serviceproxy/readme.md](./pkg/serviceproxy/readme.md)
