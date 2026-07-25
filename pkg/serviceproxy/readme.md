@@ -627,3 +627,47 @@ user-server -> tunnel -> service-proxy -> OIDC verification
 
 It also verifies the impersonated identity, denial before RBAC is granted, and
 successful authorization after the matching RoleBinding is created.
+
+## Graceful shutdown
+
+The user-server and service-proxy drain HTTP requests on SIGTERM and TLS
+configuration reloads:
+
+1. The readiness endpoint starts returning an error so Services and load
+   balancers can remove the Pod from rotation.
+2. The public listener remains available for at least 10 seconds by default,
+   allowing endpoint updates to propagate.
+3. The listener stops accepting new connections, idle HTTP connections close,
+   and the server waits for active requests managed by `net/http` until they
+   finish or the 30-second drain deadline expires.
+4. The process exits, disconnecting any requests or upgraded connections still
+   open.
+
+Connections hijacked from `net/http`, including WebSocket and SPDY exec,
+attach, and port-forward sessions, are not included in the drain. Waiting for
+them could allow some sessions to close naturally, but cluster-proxy cannot
+send a common shutdown notification or transfer them to another Pod. The
+implementation therefore favors the standard `http.Server.Shutdown` lifecycle
+over custom TCP connection tracking. The minimum drain duration is included in
+the overall timeout rather than added to it.
+
+On a TLS configuration change, the affected container completes this shutdown
+flow and exits. The kubelet then restarts that container in the existing Pod so
+it loads the new configuration.
+
+The `user-server` and `service-proxy` subcommands accept `--drain-timeout` and
+`--min-drain-duration`. Both values must be non-negative, and the minimum
+duration must not exceed the overall timeout. Set both to `0` for immediate
+shutdown. The controller subcommand uses controller-runtime's graceful
+shutdown default.
+
+Service-proxy flags can be overridden by adding the following fragment to the
+existing `ManagedProxyConfiguration`:
+
+```yaml
+spec:
+  proxyAgent:
+    additionalServiceProxyArgs:
+    - --drain-timeout=20s
+    - --min-drain-duration=5s
+```

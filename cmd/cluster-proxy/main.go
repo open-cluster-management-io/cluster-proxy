@@ -13,6 +13,7 @@ import (
 	utilflag "k8s.io/component-base/cli/flag"
 	"k8s.io/component-base/logs"
 	"k8s.io/klog/v2"
+	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 
 	"open-cluster-management.io/cluster-proxy/pkg/controllers"
 	"open-cluster-management.io/cluster-proxy/pkg/serviceproxy"
@@ -41,7 +42,7 @@ func runMain(executeCommand func() error, stderr io.Writer, flushLogs func()) in
 }
 
 func execute() error {
-	return newClusterProxyCommand().Execute()
+	return newClusterProxyCommand().ExecuteContext(signals.SetupSignalHandler())
 }
 
 func newClusterProxyCommand() *cobra.Command {

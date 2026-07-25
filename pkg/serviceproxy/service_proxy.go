@@ -74,6 +74,7 @@ type serviceProxy struct {
 	idleConnTimeout       time.Duration
 	tLSHandshakeTimeout   time.Duration
 	expectContinueTimeout time.Duration
+	drain                 utils.DrainConfig
 
 	tokenReviewCacheTTL time.Duration
 	kubeClientQPS       float32
@@ -129,6 +130,7 @@ func (s *serviceProxy) AddFlags(cmd *cobra.Command) {
 	flags.DurationVar(&s.idleConnTimeout, "idle-conn-timeout", 90*time.Second, "The maximum amount of time an idle (keep-alive) connection will remain idle before closing itself.")
 	flags.DurationVar(&s.tLSHandshakeTimeout, "tls-handshake-timeout", 10*time.Second, "The maximum amount of time waiting to wait for a TLS handshake.")
 	flags.DurationVar(&s.expectContinueTimeout, "expect-continue-timeout", 1*time.Second, "The amount of time to wait for a server's first response headers after fully writing the request headers if the request has an \"Expect: 100-continue\" header.")
+	s.drain.AddFlags(flags)
 	flags.BoolVar(&s.enableImpersonation, "enable-impersonation", true, "Whether to enable impersonation")
 
 	// token review cache flags
@@ -155,6 +157,9 @@ func (s *serviceProxy) Run(ctx context.Context) error {
 	const (
 		rootCAFile = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
 	)
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	var err error
 	customChecks := []healthz.Checker{}
 
@@ -265,9 +270,9 @@ func (s *serviceProxy) Run(ctx context.Context) error {
 		return errors.New("pod namespace is empty, please set the POD_NAMESPACE environment variable")
 	}
 
-	sdkTLSConfig, err := sdktls.StartTLSConfigMapWatcher(ctx, s.managedClusterKubeClient, podNamespace, func() {
-		klog.Info("TLS ConfigMap changed, restarting")
-		os.Exit(0)
+	sdkTLSConfig, err := sdktls.StartTLSConfigMapWatcher(runCtx, s.managedClusterKubeClient, podNamespace, func() {
+		klog.Info("TLS ConfigMap changed, shutting down gracefully for restart")
+		cancel()
 	})
 	if err != nil {
 		return fmt.Errorf("failed to start TLS ConfigMap watcher: %w", err)
@@ -280,21 +285,22 @@ func (s *serviceProxy) Run(ctx context.Context) error {
 		CipherSuites: sdkTLSConfig.CipherSuites,
 	}
 
-	go func() {
-		// Currently ServeHealthProbes uses HTTP so our tlsConfig is not needed, however passing through for
-		// consistency and in case it's ever updated to use HTTPS in the future
-		if err = utils.ServeHealthProbes(":8000", tlsConfig, customChecks...); err != nil {
-			klog.Fatal(err)
-		}
-	}()
-
-	httpserver := &http.Server{
+	healthServer := utils.NewHealthProbeServer(":8000", customChecks...)
+	publicServer := &http.Server{
 		Addr:      fmt.Sprintf(":%d", constant.ServiceProxyPort),
 		TLSConfig: tlsConfig,
 		Handler:   s,
 	}
 
-	return httpserver.ListenAndServeTLS(s.cert, s.key)
+	klog.Infof("starting service proxy HTTPS server on %d and health server on 8000", constant.ServiceProxyPort)
+	return utils.RunHTTPServers(
+		runCtx,
+		s.drain,
+		publicServer,
+		s.cert,
+		s.key,
+		healthServer,
+	)
 }
 
 func (s *serviceProxy) ServeHTTP(wr http.ResponseWriter, req *http.Request) {
@@ -393,6 +399,9 @@ func (s *serviceProxy) closeIdleConnections() {
 }
 
 func (s *serviceProxy) validate() error {
+	if err := s.drain.Validate(); err != nil {
+		return err
+	}
 	if s.cert == "" {
 		return fmt.Errorf("cert is required")
 	}

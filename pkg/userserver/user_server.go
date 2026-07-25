@@ -68,6 +68,7 @@ type userServer struct {
 
 	serviceProxyCACertPath string
 	agentInstallNamespace  string
+	drain                  utils.DrainConfig
 
 	addonLister addonlisterv1beta1.ManagedClusterAddOnLister
 }
@@ -89,9 +90,14 @@ func (k *userServer) AddFlags(cmd *cobra.Command) {
 	flags.StringVar(&k.serviceProxyCACertPath, "service-proxy-ca-cert", k.serviceProxyCACertPath, "The path to the CA certificate of the service proxy server")
 
 	flags.StringVar(&k.agentInstallNamespace, "agent-install-namespace", k.agentInstallNamespace, "The namespace of the agent install")
+	k.drain.AddFlags(flags)
 }
 
 func (k *userServer) Validate() error {
+	if err := k.drain.Validate(); err != nil {
+		return err
+	}
+
 	if k.serverCert == "" {
 		return fmt.Errorf("the server-cert is required")
 	}
@@ -231,6 +237,9 @@ func (k *userServer) ServeHTTP(wr http.ResponseWriter, req *http.Request) {
 }
 
 func (k *userServer) Run(ctx context.Context) error {
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	var err error
 
 	klog.Info("begin to run user server")
@@ -239,7 +248,7 @@ func (k *userServer) Run(ctx context.Context) error {
 		return err
 	}
 
-	if err = k.init(ctx); err != nil {
+	if err = k.init(runCtx); err != nil {
 		return err
 	}
 
@@ -256,9 +265,9 @@ func (k *userServer) Run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to create kube client for TLS watcher: %w", err)
 	}
-	sdkTLSConfig, err := sdktls.StartTLSConfigMapWatcher(ctx, kubeClient, podNamespace, func() {
-		klog.Info("TLS ConfigMap changed, restarting")
-		os.Exit(0)
+	sdkTLSConfig, err := sdktls.StartTLSConfigMapWatcher(runCtx, kubeClient, podNamespace, func() {
+		klog.Info("TLS ConfigMap changed, shutting down gracefully for restart")
+		cancel()
 	})
 	if err != nil {
 		return fmt.Errorf("failed to start TLS ConfigMap watcher: %w", err)
@@ -276,28 +285,22 @@ func (k *userServer) Run(ctx context.Context) error {
 		CipherSuites: sdkTLSConfig.CipherSuites,
 	}
 
-	go func() {
-		// Currently ServeHealthProbes uses HTTP so our tlsConfig is not needed, however passing through for
-		// consistency and in case it's ever updated to use HTTPS in the future
-		if err = utils.ServeHealthProbes(":8000", tlsConfig, cc.Check); err != nil {
-			klog.Fatal(err)
-		}
-	}()
-
-	klog.Infof("start https server on %d", k.serverPort)
-
-	s := &http.Server{
+	healthServer := utils.NewHealthProbeServer(":8000", cc.Check)
+	publicServer := &http.Server{
 		Addr:      fmt.Sprintf(":%d", k.serverPort),
 		TLSConfig: tlsConfig,
 		Handler:   k,
 	}
 
-	err = s.ListenAndServeTLS(k.serverCert, k.serverKey)
-	if err != nil {
-		return fmt.Errorf("failed to start user proxy server: %w", err)
-	}
-
-	return nil
+	klog.Infof("starting user HTTPS server on %d and health server on 8000", k.serverPort)
+	return utils.RunHTTPServers(
+		runCtx,
+		k.drain,
+		publicServer,
+		k.serverCert,
+		k.serverKey,
+		healthServer,
+	)
 }
 
 // serviceProxyURL is used to generate the URL of the service proxy server.

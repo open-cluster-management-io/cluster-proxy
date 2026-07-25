@@ -42,7 +42,6 @@ import (
 	fakeaddon "open-cluster-management.io/api/client/addon/clientset/versioned/fake"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
-	"open-cluster-management.io/cluster-proxy/pkg/constant"
 	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/operator/authentication/selfsigned"
 )
 
@@ -505,8 +504,9 @@ func TestNewAgentAddon(t *testing.T) {
 				serviceProxy := getDeploymentContainer(agentDeploy, "service-proxy")
 				if assert.NotNil(t, serviceProxy) {
 					if assert.NotNil(t, serviceProxy.ReadinessProbe) &&
-						assert.NotNil(t, serviceProxy.ReadinessProbe.TCPSocket) {
-						assert.Equal(t, int32(constant.ServiceProxyPort), serviceProxy.ReadinessProbe.TCPSocket.Port.IntVal)
+						assert.NotNil(t, serviceProxy.ReadinessProbe.HTTPGet) {
+						assert.Equal(t, "/readyz", serviceProxy.ReadinessProbe.HTTPGet.Path)
+						assert.Equal(t, int32(8000), serviceProxy.ReadinessProbe.HTTPGet.Port.IntVal)
 					}
 					// oidc flags must not be rendered when the oidc variables are unset
 					for _, arg := range serviceProxy.Args {

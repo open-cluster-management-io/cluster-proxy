@@ -33,6 +33,9 @@ spec:
         - {{ .Values.serviceProxyHost }}
       {{- end }}
       serviceAccount: cluster-proxy
+      # By default, shutdown can take up to 30s after SIGTERM; the extra 10s
+      # lets process cleanup finish before the kubelet sends SIGKILL.
+      terminationGracePeriodSeconds: 40
       securityContext:
         runAsNonRoot: true
         seccompProfile:
@@ -218,8 +221,9 @@ spec:
             initialDelaySeconds: 2
             periodSeconds: 10
           readinessProbe:
-            tcpSocket:
-              port: 7443
+            httpGet:
+              path: /readyz
+              port: 8000
             periodSeconds: 2
           securityContext:
             allowPrivilegeEscalation: false
