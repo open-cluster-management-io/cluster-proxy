@@ -329,10 +329,10 @@ func (s *serviceProxy) ServeHTTP(wr http.ResponseWriter, req *http.Request) {
 	logger.V(4).Info("service proxy received request",
 		"targetScheme", url.Scheme,
 		"enableImpersonation", s.enableImpersonation,
-		"isKubeAPIServer", url.Host == "kubernetes.default.svc",
+		"isKubeAPIServer", url.Host == utils.KubeAPIServerHost,
 	)
 
-	if url.Host == "kubernetes.default.svc" {
+	if url.Host == utils.KubeAPIServerHost {
 		if s.enableImpersonation {
 			if err := s.processAuthentication(ctx, req); err != nil {
 				logger.Error(err, "authentication failed")

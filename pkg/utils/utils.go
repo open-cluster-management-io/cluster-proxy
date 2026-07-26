@@ -18,6 +18,11 @@ const (
 	HEADERSERVICECERT = "Service-Client-Cert"
 	HEADERSERVICEKEY  = "Service-Client-Key"
 
+	KubeAPIServerHost = "kubernetes.default.svc"
+
+	kubeAPIServerService   = "kubernetes"
+	kubeAPIServerNamespace = "default"
+
 	// Cluster-Proxy custom headers for service proxy
 	HeaderClusterProxyProto     = "Cluster-Proxy-Proto"
 	HeaderClusterProxyNamespace = "Cluster-Proxy-Namespace"
@@ -123,8 +128,8 @@ func GetTargetServiceURLFromRequest(req *http.Request) (*url.URL, error) {
 
 	var targetServiceURL string
 	// check if the request is meant to proxy to kube-apiserver
-	if proto == "https" && service == "kubernetes" && namespace == "default" && port == "443" {
-		targetServiceURL = "https://kubernetes.default.svc"
+	if strings.EqualFold(service, kubeAPIServerService) && strings.EqualFold(namespace, kubeAPIServerNamespace) {
+		targetServiceURL = "https://" + KubeAPIServerHost
 	} else {
 		targetServiceURL = fmt.Sprintf("%s://%s.%s.svc:%s", proto, service, namespace, port)
 	}
