@@ -144,6 +144,10 @@ test-helm: verify-helm-dependencies validate-values-schema verify-shutdown-grace
 verify-shutdown-grace-periods:
 	@$(HELM) template cluster-proxy charts/cluster-proxy \
 		--namespace open-cluster-management-addon \
+		--show-only templates/manager-deployment.yaml | \
+		grep -Eq '^[[:space:]]+terminationGracePeriodSeconds: 40$$'
+	@$(HELM) template cluster-proxy charts/cluster-proxy \
+		--namespace open-cluster-management-addon \
 		--set enableServiceProxy=true \
 		--show-only templates/user-deployment.yaml | \
 		grep -Eq '^[[:space:]]+terminationGracePeriodSeconds: 40$$'
