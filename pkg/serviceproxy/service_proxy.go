@@ -91,10 +91,17 @@ type serviceProxy struct {
 	hubAuthenticator            authenticator.Token
 	oidcAuthenticator           authenticator.Token // nil when OIDC authentication is disabled
 
+	proxyTransport closeIdleRoundTripper
+
 	// getImpersonateTokenFunc reads the service account token used for impersonation.
 	// Defaults to reading from the mounted service account token file.
 	// Can be overridden in tests.
 	getImpersonateTokenFunc func() (string, error)
+}
+
+type closeIdleRoundTripper interface {
+	http.RoundTripper
+	CloseIdleConnections()
 }
 
 func newServiceProxy() *serviceProxy {
@@ -191,6 +198,9 @@ func (s *serviceProxy) Run(ctx context.Context) error {
 			customChecks = append(customChecks, cc.Check)
 		}
 	}
+
+	s.proxyTransport = s.newProxyTransport()
+	defer s.closeIdleConnections()
 
 	// init managedClusterKubeClient
 	// managedClusterKubeClient is the kubeClient of current cluster using in-cluster config
@@ -336,8 +346,20 @@ func (s *serviceProxy) ServeHTTP(wr http.ResponseWriter, req *http.Request) {
 		"targetURL", url.String(),
 	)
 
+	if s.proxyTransport == nil {
+		err := errors.New("service proxy transport is not initialized")
+		logger.Error(err, "cannot forward request")
+		http.Error(wr, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
 	proxy := httputil.NewSingleHostReverseProxy(url)
-	proxy.Transport = &http.Transport{
+	proxy.Transport = s.proxyTransport
+	proxy.ServeHTTP(wr, req)
+}
+
+func (s *serviceProxy) newProxyTransport() *http.Transport {
+	return &http.Transport{
 		DialContext: (&net.Dialer{
 			Timeout:   30 * time.Second,
 			KeepAlive: 30 * time.Second,
@@ -355,8 +377,12 @@ func (s *serviceProxy) ServeHTTP(wr http.ResponseWriter, req *http.Request) {
 		// set ForceAttemptHTTP2 = false to prevent auto http2 upgration
 		ForceAttemptHTTP2: false,
 	}
+}
 
-	proxy.ServeHTTP(wr, req)
+func (s *serviceProxy) closeIdleConnections() {
+	if s.proxyTransport != nil {
+		s.proxyTransport.CloseIdleConnections()
+	}
 }
 
 func (s *serviceProxy) validate() error {
