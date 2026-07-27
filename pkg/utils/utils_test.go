@@ -247,6 +247,66 @@ func TestGetTargetServiceURLFromRequest(t *testing.T) {
 			expect: "https://kubernetes.default.svc",
 		},
 		{
+			name: "kubernetes apiserver with a non-canonical port",
+			req: &http.Request{
+				Header: map[string][]string{
+					HeaderClusterProxyProto:     {"https"},
+					HeaderClusterProxyPort:      {"0443"},
+					HeaderClusterProxyService:   {"kubernetes"},
+					HeaderClusterProxyNamespace: {"default"},
+				},
+			},
+			expect: "https://kubernetes.default.svc",
+		},
+		{
+			name: "kubernetes apiserver with a non-canonical scheme",
+			req: &http.Request{
+				Header: map[string][]string{
+					HeaderClusterProxyProto:     {"http"},
+					HeaderClusterProxyPort:      {"80"},
+					HeaderClusterProxyService:   {"kubernetes"},
+					HeaderClusterProxyNamespace: {"default"},
+				},
+			},
+			expect: "https://kubernetes.default.svc",
+		},
+		{
+			name: "kubernetes apiserver with a mixed-case service",
+			req: &http.Request{
+				Header: map[string][]string{
+					HeaderClusterProxyProto:     {"https"},
+					HeaderClusterProxyPort:      {"443"},
+					HeaderClusterProxyService:   {"Kubernetes"},
+					HeaderClusterProxyNamespace: {"default"},
+				},
+			},
+			expect: "https://kubernetes.default.svc",
+		},
+		{
+			name: "kubernetes apiserver with a mixed-case namespace",
+			req: &http.Request{
+				Header: map[string][]string{
+					HeaderClusterProxyProto:     {"https"},
+					HeaderClusterProxyPort:      {"443"},
+					HeaderClusterProxyService:   {"kubernetes"},
+					HeaderClusterProxyNamespace: {"Default"},
+				},
+			},
+			expect: "https://kubernetes.default.svc",
+		},
+		{
+			name: "service named kubernetes in another namespace",
+			req: &http.Request{
+				Header: map[string][]string{
+					HeaderClusterProxyProto:     {"https"},
+					HeaderClusterProxyPort:      {"443"},
+					HeaderClusterProxyService:   {"kubernetes"},
+					HeaderClusterProxyNamespace: {"other"},
+				},
+			},
+			expect: "https://kubernetes.other.svc:443",
+		},
+		{
 			name: "other services",
 			req: &http.Request{
 				Header: map[string][]string{
