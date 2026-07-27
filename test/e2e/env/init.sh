@@ -19,6 +19,10 @@ echo ""
 echo "[2] Initializing Open Cluster Management (OCM)..."
 echo "Running: clusteradm init"
 clusteradm init --output-join-command-file join.sh --wait
+echo "Waiting for OCM placement controller rollout..."
+kubectl rollout status deployment/cluster-manager-placement-controller \
+  --namespace open-cluster-management-hub \
+  --timeout=300s
 echo "✓ OCM hub initialized"
 echo ""
 
@@ -44,6 +48,31 @@ kubectl apply -f test/e2e/env/hello-world-https.yaml
 echo "Waiting for hello-world-https pod to be ready..."
 kubectl wait --for=condition=ready pod/hello-world-https -n default --timeout=120s
 echo "✓ hello-world-https HTTPS test service deployed and ready"
+echo ""
+
+echo "[6] Deploying Dex OIDC identity provider..."
+kubectl create namespace dex --dry-run=client -o yaml | kubectl apply -f -
+DEX_CERT_DIR=$(mktemp -d)
+# Note: the CN/SANs must cover the issuer host in test/e2e/env/dex.yaml
+openssl req -x509 -newkey rsa:2048 -nodes -days 30 \
+  -keyout "${DEX_CERT_DIR}/tls.key" -out "${DEX_CERT_DIR}/tls.crt" \
+  -subj "/CN=dex.dex.svc.cluster.local" \
+  -addext "subjectAltName=DNS:dex.dex.svc.cluster.local,DNS:dex.dex.svc"
+# the certificate is self-signed, so it doubles as the CA bundle (ca.crt)
+kubectl -n dex create secret generic dex-tls \
+  --from-file=tls.crt="${DEX_CERT_DIR}/tls.crt" \
+  --from-file=tls.key="${DEX_CERT_DIR}/tls.key" \
+  --from-file=ca.crt="${DEX_CERT_DIR}/tls.crt" \
+  --dry-run=client -o yaml | kubectl apply -f -
+rm -rf "${DEX_CERT_DIR}"
+helm upgrade --install dex dex \
+  --repo https://charts.dexidp.io \
+  --version 0.21.1 \
+  --namespace dex \
+  --values test/e2e/env/dex.yaml \
+  --wait \
+  --timeout 180s
+echo "✓ Dex OIDC identity provider deployed and ready"
 echo ""
 
 echo "=============================================="

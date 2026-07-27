@@ -1,0 +1,59 @@
+# Helm values for the Dex OIDC identity provider used by the e2e suite.
+#
+# The chart serves HTTPS on container port 5554, which the service publishes on
+# the issuer port 5556.
+#
+# The built-in "local" password connector does not emit a groups claim, so the
+# e2e covers username mapping only; groups mapping is covered by unit tests in
+# pkg/serviceproxy.
+#
+# The dex namespace and dex-tls secret (tls.crt/tls.key/ca.crt) are created by
+# test/e2e/env/init.sh before the chart is installed.
+fullnameOverride: dex
+
+https:
+  enabled: true
+
+service:
+  ports:
+    http:
+      port: 5555
+    https:
+      port: 5556
+
+volumes:
+  - name: tls
+    secret:
+      secretName: dex-tls
+
+volumeMounts:
+  - name: tls
+    mountPath: /etc/dex/tls
+    readOnly: true
+
+config:
+  issuer: https://dex.dex.svc.cluster.local:5556/dex
+  storage:
+    type: kubernetes
+    config:
+      inCluster: true
+  web:
+    tlsCert: /etc/dex/tls/tls.crt
+    tlsKey: /etc/dex/tls/tls.key
+  oauth2:
+    skipApprovalScreen: true
+    # required for grant_type=password; delegates to the built-in password DB
+    passwordConnector: local
+  staticClients:
+    - id: cluster-proxy-e2e
+      secret: cluster-proxy-e2e-secret
+      name: cluster-proxy-e2e
+      redirectURIs:
+        - http://127.0.0.1/callback
+  enablePasswordDB: true
+  staticPasswords:
+    - email: admin@example.com
+      # bcrypt hash of "password"
+      hash: "$2a$10$2b2cU8CPhOTaGrs1HRQuAueS7JTT5ZHsHSzYiFPm1leZck7Mc8T4W"
+      username: admin
+      userID: 08a8684b-db88-4b73-90a9-3cd1661f5466

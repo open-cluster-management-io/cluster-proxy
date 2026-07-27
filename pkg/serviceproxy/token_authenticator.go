@@ -14,9 +14,9 @@ import (
 	"k8s.io/klog/v2"
 )
 
-// ErrTokenNotAuthenticated is returned when a TokenReview explicitly rejects a
-// token with a known authentication error. Callers use errors.Is to distinguish
-// this from infrastructure errors (network, TLS, etc.).
+// ErrTokenNotAuthenticated is returned when an authenticator (TokenReview or
+// OIDC) explicitly rejects a token. Callers use errors.Is to distinguish this
+// from infrastructure errors (network, TLS, etc.).
 var ErrTokenNotAuthenticated = errors.New("token not authenticated")
 
 // authRejectionPatterns contains substrings of TokenReview Status.Error that

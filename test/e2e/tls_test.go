@@ -58,13 +58,10 @@ var _ = Describe("TLS Profile Test", Serial, Label("tls", "profile", "configurat
 			var expectedData map[string]string
 			By("Restoring original TLS ConfigMap state")
 			if configMapExisted {
-				applyTLSProfile(tlsConfigMapName, originalConfigMapData)
+				applyConfigMap(hubInstallNamespace, tlsConfigMapName, originalConfigMapData)
 				expectedData = originalConfigMapData
 			} else {
-				err := hubKubeClient.CoreV1().ConfigMaps(hubInstallNamespace).Delete(context.TODO(), tlsConfigMapName, metav1.DeleteOptions{})
-				if err != nil && !apierrors.IsNotFound(err) {
-					Expect(err).ToNot(HaveOccurred(), "Failed to delete ConfigMap in cleanup")
-				}
+				deleteConfigMap(hubInstallNamespace, tlsConfigMapName)
 			}
 
 			By("Waiting for deployment to be reconciled after ConfigMap cleanup")
@@ -83,7 +80,7 @@ var _ = Describe("TLS Profile Test", Serial, Label("tls", "profile", "configurat
 				sdktls.ConfigMapKeyMinVersion:   "VersionTLS12",
 				sdktls.ConfigMapKeyCipherSuites: "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
 			}
-			applyTLSProfile(tlsConfigMapName, tlsProfile)
+			applyConfigMap(hubInstallNamespace, tlsConfigMapName, tlsProfile)
 
 			By("Ensuring the proxy-server is configured with TLS 1.2 and cipher suites")
 			waitForProxyServerTLSProfile(generationBeforeUpdate, expectedTLSArgs(tlsProfile))
@@ -101,7 +98,7 @@ var _ = Describe("TLS Profile Test", Serial, Label("tls", "profile", "configurat
 				sdktls.ConfigMapKeyMinVersion:   "VersionTLS13",
 				sdktls.ConfigMapKeyCipherSuites: "TLS_AES_128_GCM_SHA256,TLS_AES_256_GCM_SHA384",
 			}
-			applyTLSProfile(tlsConfigMapName, tlsProfile)
+			applyConfigMap(hubInstallNamespace, tlsConfigMapName, tlsProfile)
 
 			By("Ensuring the proxy-server is configured with TLS 1.3 and cipher suites")
 			waitForProxyServerTLSProfile(generationBeforeUpdate, expectedTLSArgs(tlsProfile))
@@ -120,13 +117,13 @@ func getProxyServerDeployment() (*appsv1.Deployment, error) {
 	return deploy, err
 }
 
-// applyTLSProfile creates or updates the ocm-tls-profile ConfigMap with the given data.
-func applyTLSProfile(name string, data map[string]string) {
-	configMaps := hubKubeClient.CoreV1().ConfigMaps(hubInstallNamespace)
+// applyConfigMap creates or updates a ConfigMap with the given data.
+func applyConfigMap(namespace, name string, data map[string]string) {
+	configMaps := hubKubeClient.CoreV1().ConfigMaps(namespace)
 	configMap, err := configMaps.Get(context.TODO(), name, metav1.GetOptions{})
 	if apierrors.IsNotFound(err) {
 		_, err = configMaps.Create(context.TODO(), &corev1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: hubInstallNamespace},
+			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
 			Data:       data,
 		}, metav1.CreateOptions{})
 		Expect(err).ToNot(HaveOccurred())
@@ -136,6 +133,14 @@ func applyTLSProfile(name string, data map[string]string) {
 	configMap.Data = data
 	_, err = configMaps.Update(context.TODO(), configMap, metav1.UpdateOptions{})
 	Expect(err).ToNot(HaveOccurred())
+}
+
+// deleteConfigMap deletes a ConfigMap, tolerating its absence.
+func deleteConfigMap(namespace, name string) {
+	err := hubKubeClient.CoreV1().ConfigMaps(namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
+	if err != nil && !apierrors.IsNotFound(err) {
+		Expect(err).ToNot(HaveOccurred())
+	}
 }
 
 type expectedProxyServerTLSArgs struct {
@@ -176,7 +181,7 @@ func waitForProxyServerTLSProfile(previousGeneration int64, expected expectedPro
 // expectProxyServerArgs verifies the cluster-proxy proxy-server container has
 // the expected TLS args and no stale TLS args from the previous profile.
 func expectProxyServerArgs(deploy *appsv1.Deployment, expected expectedProxyServerTLSArgs) error {
-	container := proxyServerContainer(deploy)
+	container := deploymentContainer(deploy, "proxy-server")
 	if container == nil {
 		return fmt.Errorf("proxy-server container not found in deployment")
 	}
@@ -211,9 +216,9 @@ func expectProxyServerReady(deploy *appsv1.Deployment, _ int64) error {
 	return nil
 }
 
-func proxyServerContainer(deploy *appsv1.Deployment) *corev1.Container {
+func deploymentContainer(deploy *appsv1.Deployment, name string) *corev1.Container {
 	for i := range deploy.Spec.Template.Spec.Containers {
-		if deploy.Spec.Template.Spec.Containers[i].Name == "proxy-server" {
+		if deploy.Spec.Template.Spec.Containers[i].Name == name {
 			return &deploy.Spec.Template.Spec.Containers[i]
 		}
 	}

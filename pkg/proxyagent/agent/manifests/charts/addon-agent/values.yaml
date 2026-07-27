@@ -9,12 +9,15 @@ registry: quay.io/open-cluster-management
 
 # Image of the cluster-gateway instances
 image: cluster-proxy
+# @schema type:[string, null]
 tag:
 
+# @schema type:[string, null]
 proxyAgentImage:
 proxyAgentImagePullSecrets: []
 
 # Number of replicas
+# @schema type:[integer, string]
 replicas: 1
 
 spokeAddonNamespace: "open-cluster-management-cluster-proxy"
@@ -26,6 +29,7 @@ agentDeploymentAnnotations: {}
 addonAgentArgs: []
 
 serviceEntryPoint: ""
+# @schema type:[integer, string]
 serviceEntryPointPort: 8091
 
 base64EncodedCAData: Zm9vCg==
@@ -44,10 +48,14 @@ tolerations:
   effect: NoSchedule
 
 proxyConfig:
+  # @schema type:[string, null]
   HTTP_PROXY: null
+  # @schema type:[string, null]
   HTTPS_PROXY: null
+  # @schema type:[string, null]
   NO_PROXY: null
 
+# -- Enable service-proxy impersonation for hub and external OIDC identities.
 enableImpersonation: "true"
 
 # Opt-in NetworkPolicy for the spoke proxy-agent Deployment.
@@ -55,6 +63,31 @@ enableImpersonation: "true"
 # (charts/cluster-proxy values networkPolicies.enabled).
 networkPolicies:
   enabled: false
+
+# OIDC authentication for service-proxy; see pkg/serviceproxy/readme.md.
+# -- HTTPS OIDC issuer URL. Empty disables the OIDC authentication fallback.
+oidcIssuerURL: ""
+# -- OIDC client ID required in the token audience. Set together with oidcIssuerURL.
+oidcClientID: ""
+# -- Claim mapped to the username. Empty keeps the service-proxy default of sub.
+oidcUsernameClaim: ""
+# -- Prefix added to usernames. Empty uses the issuer URL for non-email claims; "-" disables prefixing.
+oidcUsernamePrefix: ""
+# -- Claim containing a group string or array of group strings. Empty disables IdP group mapping.
+oidcGroupsClaim: ""
+# -- Prefix added to every mapped OIDC group.
+oidcGroupsPrefix: ""
+# @schema required; oneOf:[{type: array, items: {type: string, minLength: 1}}, {type: string, pattern: "^(|[^,]+(,[^,]+)*)$"}]
+# -- Username and group prefixes that OIDC claims must not use. Customized variables use a comma-separated string.
+oidcReservedNamePrefixes:
+  - "system:"
+# -- Managed cluster ConfigMap containing the private issuer CA in the ca.crt key. Empty uses system root CAs.
+oidcCAConfigMap: ""
+# @schema oneOf:[{type: array, items: {type: string}}, {type: string}]
+# -- Allowed JOSE asymmetric signing algorithms. Empty keeps the service-proxy default of RS256.
+oidcSigningAlgs: []
+# -- JSON object of string claims and required values that every accepted OIDC token must contain.
+oidcRequiredClaimsJSON: ""
 
 global:
   resourceRequirements: []

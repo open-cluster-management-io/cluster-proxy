@@ -109,18 +109,12 @@ var _ = Describe("Install Test", Label("install", "deployment"),
 
 			By("Prepare a AddOnDeployMentConfig for cluster-proxy")
 			Eventually(func() error {
-				return hubRuntimeClient.Create(context.TODO(), &addonapiv1beta1.AddOnDeploymentConfig{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      deployConfigName,
-						Namespace: managedClusterName,
+				return createAddOnDeploymentConfig(deployConfigName, addonapiv1beta1.AddOnDeploymentConfigSpec{
+					NodePlacement: &addonapiv1beta1.NodePlacement{
+						NodeSelector: nodeSelector,
+						Tolerations:  tolerations,
 					},
-					Spec: addonapiv1beta1.AddOnDeploymentConfigSpec{
-						NodePlacement: &addonapiv1beta1.NodePlacement{
-							NodeSelector: nodeSelector,
-							Tolerations:  tolerations,
-						},
-						AgentInstallNamespace: config.DefaultAddonInstallNamespace,
-					},
+					AgentInstallNamespace: config.DefaultAddonInstallNamespace,
 				})
 			}).WithTimeout(time.Minute).ShouldNot(HaveOccurred())
 
@@ -271,6 +265,16 @@ func addOnDeploymentConfigReference(name string) addonapiv1beta1.AddOnConfig {
 			Name:      name,
 		},
 	}
+}
+
+func createAddOnDeploymentConfig(name string, spec addonapiv1beta1.AddOnDeploymentConfigSpec) error {
+	return hubRuntimeClient.Create(context.TODO(), &addonapiv1beta1.AddOnDeploymentConfig{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: managedClusterName,
+		},
+		Spec: spec,
+	})
 }
 
 func deleteAddOnDeploymentConfig(name string) error {
