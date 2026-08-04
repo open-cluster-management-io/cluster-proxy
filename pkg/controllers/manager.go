@@ -2,7 +2,7 @@ package controllers
 
 import (
 	"context"
-	"os"
+	"fmt"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -45,11 +45,8 @@ func NewControllersCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "controllers",
 		Short: "controllers",
-		Run: func(cmd *cobra.Command, args []string) {
-			err := runControllerManager()
-			if err != nil {
-				klog.Fatal(err, "unable to run controller manager")
-			}
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runControllerManager()
 		},
 	}
 
@@ -71,12 +68,15 @@ func runControllerManager() error {
 	defer cancel()
 
 	// Setup clients, informers and listers.
-	kubeConfig := config.GetConfigOrDie()
+	kubeConfig, err := config.GetConfig()
+	if err != nil {
+		return fmt.Errorf("get Kubernetes config: %w", err)
+	}
 
 	// secret client and lister
 	nativeClient, err := kubernetes.NewForConfig(kubeConfig)
 	if err != nil {
-		return err
+		return fmt.Errorf("create Kubernetes client: %w", err)
 	}
 	secertClient := nativeClient.CoreV1()
 	informerFactory := informers.NewSharedInformerFactory(nativeClient, 10*time.Minute)
@@ -99,20 +99,18 @@ func runControllerManager() error {
 	})
 	if err != nil {
 		klog.Error(err, "unable to set up overall controller manager")
-		return err
+		return fmt.Errorf("set up controller manager: %w", err)
 	}
 
 	// loading ManagedProxyConfiguration for owner reference
 	proxyClient, err := proxyclient.NewForConfig(mgr.GetConfig())
 	if err != nil {
-		klog.Error(err, "unable to set up proxy client")
-		os.Exit(1)
+		return fmt.Errorf("set up proxy client: %w", err)
 	}
 	proxyConfig, err := proxyClient.ProxyV1alpha1().ManagedProxyConfigurations().Get(
 		context.TODO(), "cluster-proxy", metav1.GetOptions{})
 	if err != nil {
-		klog.Error(err, "failed to get ManagedProxyConfiguration 'cluster-proxy'")
-		os.Exit(1)
+		return fmt.Errorf("get ManagedProxyConfiguration %q: %w", "cluster-proxy", err)
 	}
 	ownerRef := selfsigned.NewOwnerReferenceFromConfig(proxyConfig)
 
@@ -121,12 +119,12 @@ func runControllerManager() error {
 		secertLister, secertClient, ownerRef, mgr)
 	if err != nil {
 		klog.Error(err, "unable to set up cert-controller")
-		return err
+		return fmt.Errorf("set up cert controller: %w", err)
 	}
 
 	if err := mgr.Start(ctx); err != nil {
 		klog.Error(err, "problem running manager")
-		return err
+		return fmt.Errorf("run controller manager: %w", err)
 	}
 	return nil
 }

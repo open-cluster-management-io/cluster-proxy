@@ -262,7 +262,7 @@ func (s *serviceProxy) Run(ctx context.Context) error {
 
 	podNamespace := os.Getenv("POD_NAMESPACE")
 	if len(podNamespace) == 0 {
-		klog.Fatalf("Pod namespace is empty, please set the ENV for POD_NAMESPACE")
+		return errors.New("pod namespace is empty, please set the POD_NAMESPACE environment variable")
 	}
 
 	sdkTLSConfig, err := sdktls.StartTLSConfigMapWatcher(ctx, s.managedClusterKubeClient, podNamespace, func() {
@@ -270,7 +270,7 @@ func (s *serviceProxy) Run(ctx context.Context) error {
 		os.Exit(0)
 	})
 	if err != nil {
-		klog.Fatalf("failed to start TLS ConfigMap watcher: %v", err)
+		return fmt.Errorf("failed to start TLS ConfigMap watcher: %w", err)
 	}
 	klog.Infof("TLS config loaded: minVersion=%s, ciphersuites=%s", sdktls.VersionToString(sdkTLSConfig.MinVersion),
 		sdktls.CipherSuitesToString(sdkTLSConfig.CipherSuites))
