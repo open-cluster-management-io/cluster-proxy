@@ -148,9 +148,13 @@ func (k *userServer) init(ctx context.Context) error {
 		return tunnel, nil
 	}
 
-	addonClient, err := addonclient.NewForConfig(ctrl.GetConfigOrDie())
+	kubeConfig, err := ctrl.GetConfig()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get Kubernetes config for add-on informer: %w", err)
+	}
+	addonClient, err := addonclient.NewForConfig(kubeConfig)
+	if err != nil {
+		return fmt.Errorf("failed to create add-on client: %w", err)
 	}
 	addonInformerFactory := addoninformers.NewSharedInformerFactory(addonClient, 30*time.Minute)
 	k.addonLister = addonInformerFactory.Addon().V1beta1().ManagedClusterAddOns().Lister()
@@ -232,35 +236,39 @@ func (k *userServer) Run(ctx context.Context) error {
 	klog.Info("begin to run user server")
 
 	if err = k.Validate(); err != nil {
-		klog.Fatal(err)
+		return err
 	}
 
 	if err = k.init(ctx); err != nil {
-		klog.Fatal(err)
+		return err
 	}
 
 	podNamespace := os.Getenv("POD_NAMESPACE")
 	if len(podNamespace) == 0 {
-		klog.Fatalf("Pod namespace is empty, please set the ENV for POD_NAMESPACE")
+		return fmt.Errorf("pod namespace is empty, please set the POD_NAMESPACE environment variable")
 	}
 
-	kubeClient, err := kubernetes.NewForConfig(ctrl.GetConfigOrDie())
+	kubeConfig, err := ctrl.GetConfig()
 	if err != nil {
-		klog.Fatalf("failed to create kube client for TLS watcher: %v", err)
+		return fmt.Errorf("failed to get Kubernetes config for TLS watcher: %w", err)
+	}
+	kubeClient, err := kubernetes.NewForConfig(kubeConfig)
+	if err != nil {
+		return fmt.Errorf("failed to create kube client for TLS watcher: %w", err)
 	}
 	sdkTLSConfig, err := sdktls.StartTLSConfigMapWatcher(ctx, kubeClient, podNamespace, func() {
 		klog.Info("TLS ConfigMap changed, restarting")
 		os.Exit(0)
 	})
 	if err != nil {
-		klog.Fatalf("failed to start TLS ConfigMap watcher: %v", err)
+		return fmt.Errorf("failed to start TLS ConfigMap watcher: %w", err)
 	}
 	klog.Infof("TLS config loaded: minVersion=%s, ciphersuites=%s", sdktls.VersionToString(sdkTLSConfig.MinVersion),
 		sdktls.CipherSuitesToString(sdkTLSConfig.CipherSuites))
 
 	cc, err := addonutils.NewConfigChecker("user-server", k.proxyCACertPath, k.proxyCertPath, k.proxyKeyPath, k.serverCert, k.serverKey, k.serviceProxyCACertPath)
 	if err != nil {
-		klog.Fatal(err)
+		return fmt.Errorf("failed to create config checker: %w", err)
 	}
 
 	tlsConfig := &tls.Config{
@@ -286,7 +294,7 @@ func (k *userServer) Run(ctx context.Context) error {
 
 	err = s.ListenAndServeTLS(k.serverCert, k.serverKey)
 	if err != nil {
-		klog.Fatalf("failed to start user proxy server: %v", err)
+		return fmt.Errorf("failed to start user proxy server: %w", err)
 	}
 
 	return nil
