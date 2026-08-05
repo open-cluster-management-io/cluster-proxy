@@ -333,12 +333,19 @@ func (s *serviceProxy) ServeHTTP(wr http.ResponseWriter, req *http.Request) {
 	)
 
 	if url.Host == utils.KubeAPIServerHost {
-		if s.enableImpersonation {
+		clientImpersonationRequested := hasClientImpersonationHeaders(req.Header)
+		// Delegate client impersonation unchanged to the target API server, which authenticates
+		// the original token and authorizes the requested impersonation through its own RBAC.
+		if s.enableImpersonation && !clientImpersonationRequested {
 			if err := s.processAuthentication(ctx, req); err != nil {
 				logger.Error(err, "authentication failed")
 				http.Error(wr, err.Error(), http.StatusUnauthorized)
 				return
 			}
+		} else {
+			logger.V(4).Info("skipping proxy-side authentication",
+				"clientImpersonationRequested", clientImpersonationRequested,
+			)
 		}
 	}
 
@@ -424,19 +431,10 @@ func hasClientImpersonationHeaders(headers http.Header) bool {
 }
 
 // processAuthentication handles the authentication flow for both managed cluster and hub users.
-// Requests that already carry client impersonation headers are forwarded untouched so that the
-// managed cluster apiserver authenticates the caller and authorizes the impersonation itself.
-// Otherwise it tries managed cluster TokenReview first; if unauthenticated, falls back to hub
-// TokenReview, and finally to the configured OIDC issuer.
+// It tries managed cluster TokenReview first; if unauthenticated, falls back to hub TokenReview,
+// and finally to the configured OIDC issuer.
 func (s *serviceProxy) processAuthentication(ctx context.Context, req *http.Request) error {
 	logger := klog.FromContext(ctx)
-
-	// Keep this guard before all proxy-side authentication so the original token and
-	// impersonation headers are delegated unchanged to the managed API server.
-	if hasClientImpersonationHeaders(req.Header) {
-		logger.V(4).Info("client impersonation requested, delegating authentication to the managed cluster API server")
-		return nil
-	}
 
 	token := strings.TrimPrefix(req.Header.Get("Authorization"), "Bearer ")
 

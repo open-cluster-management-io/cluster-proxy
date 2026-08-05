@@ -50,13 +50,11 @@ flowchart TD
     B -->|Invalid target| C[Return 400 Bad Request]
     B --> D{Target is kubernetes.default.svc?}
     D -->|No| P[Forward request]
-    D -->|Yes| E{Impersonation enabled?}
-    E -->|No| P
-    E -->|Yes| F{Has client Impersonate-* headers?}
-    F -->|Yes| Q[Keep original token and headers]
+    D -->|Yes| E{Proxy authentication required?<br/>enableImpersonation AND no client Impersonate-*}
+    E -->|No| Q[Skip proxy authentication<br/>and identity rewriting]
     Q --> P
-    Q -.-> R[Managed API server authenticates token<br/>and authorizes impersonation]
-    F -->|No| G{Managed TokenReview succeeds?}
+    Q -.-> R[If Impersonate-* is present, the managed API server<br/>authenticates the token and authorizes impersonation]
+    E -->|Yes| G{Managed TokenReview succeeds?}
     G -->|Yes| P
     G -->|No| H{Hub TokenReview succeeds?}
     H -->|Yes| I[Set hub user and group impersonation]

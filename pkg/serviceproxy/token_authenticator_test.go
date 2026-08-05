@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
-	"reflect"
+	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
@@ -16,6 +18,8 @@ import (
 	"k8s.io/apiserver/pkg/authentication/user"
 	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
+
+	"open-cluster-management.io/cluster-proxy/pkg/utils"
 )
 
 // newFakeClient creates a fake kubernetes client that responds to TokenReview
@@ -166,41 +170,125 @@ func TestHasClientImpersonationHeaders(t *testing.T) {
 	}
 }
 
-func TestProcessAuthentication_ForwardsClientImpersonationUnchanged(t *testing.T) {
-	failAuthentication := authenticator.TokenFunc(func(ctx context.Context, token string) (*authenticator.Response, bool, error) {
-		t.Fatal("proxy authentication must not run for client impersonation")
-		return nil, false, nil
-	})
-	s := &serviceProxy{
-		enableImpersonation:         true,
-		managedClusterAuthenticator: failAuthentication,
-		hubAuthenticator:            failAuthentication,
-		oidcAuthenticator:           failAuthentication,
-		getImpersonateTokenFunc: func() (string, error) {
-			t.Fatal("proxy service account token must not be read for client impersonation")
-			return "", nil
+type requestCapturingRoundTripper struct {
+	request *http.Request
+}
+
+func (t *requestCapturingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	t.request = req.Clone(req.Context())
+	t.request.Header = req.Header.Clone()
+
+	return &http.Response{
+		StatusCode:    http.StatusOK,
+		Status:        "200 OK",
+		Header:        make(http.Header),
+		Body:          io.NopCloser(strings.NewReader("ok")),
+		ContentLength: 2,
+		Request:       req,
+	}, nil
+}
+
+func (t *requestCapturingRoundTripper) CloseIdleConnections() {}
+
+func TestServeHTTPAuthenticationRouting(t *testing.T) {
+	tests := []struct {
+		name                       string
+		enableImpersonation        bool
+		clientImpersonationHeaders bool
+		wantAuthenticationCalls    int
+	}{
+		{
+			name:                    "disabled without client impersonation headers",
+			enableImpersonation:     false,
+			wantAuthenticationCalls: 0,
+		},
+		{
+			name:                       "disabled with client impersonation headers",
+			enableImpersonation:        false,
+			clientImpersonationHeaders: true,
+			wantAuthenticationCalls:    0,
+		},
+		{
+			name:                       "enabled with client impersonation headers",
+			enableImpersonation:        true,
+			clientImpersonationHeaders: true,
+			wantAuthenticationCalls:    0,
+		},
+		{
+			name:                    "enabled without client impersonation headers",
+			enableImpersonation:     true,
+			wantAuthenticationCalls: 1,
 		},
 	}
 
-	ctx := t.Context()
-	req, _ := http.NewRequestWithContext(ctx, "GET", "https://example.com/api", nil)
-	req.Header.Set("Authorization", "Bearer original-token")
-	req.Header.Set(authenticationv1.ImpersonateUserHeader, "alice")
-	req.Header.Add(authenticationv1.ImpersonateGroupHeader, "developers")
-	req.Header.Add(authenticationv1.ImpersonateGroupHeader, "auditors")
-	req.Header.Set(authenticationv1.ImpersonateUIDHeader, "alice-uid")
-	req.Header.Add("Impersonate-Extra-example.org%2Fscope", "read")
-	req.Header.Add("Impersonate-Extra-example.org%2Fscope", "write")
-	req.Header.Add("X-Unrelated", "first")
-	req.Header.Add("X-Unrelated", "second")
-	originalHeaders := req.Header.Clone()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			authenticationCalls := 0
+			transport := &requestCapturingRoundTripper{}
+			s := &serviceProxy{
+				enableImpersonation: tt.enableImpersonation,
+				managedClusterAuthenticator: authenticator.TokenFunc(
+					func(ctx context.Context, token string) (*authenticator.Response, bool, error) {
+						authenticationCalls++
+						return &authenticator.Response{User: &user.DefaultInfo{Name: "managed-user"}}, true, nil
+					},
+				),
+				hubAuthenticator: authenticator.TokenFunc(
+					func(ctx context.Context, token string) (*authenticator.Response, bool, error) {
+						t.Fatal("hub authenticator should not be called")
+						return nil, false, nil
+					},
+				),
+				oidcAuthenticator: authenticator.TokenFunc(
+					func(ctx context.Context, token string) (*authenticator.Response, bool, error) {
+						t.Fatal("OIDC authenticator should not be called")
+						return nil, false, nil
+					},
+				),
+				getImpersonateTokenFunc: func() (string, error) {
+					t.Fatal("proxy service account token should not be read")
+					return "", nil
+				},
+				proxyTransport: transport,
+			}
 
-	if err := s.processAuthentication(ctx, req); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+			req := httptest.NewRequest(http.MethodGet, "https://service-proxy.example/api/v1/pods", nil)
+			req.Header.Set("Authorization", "Bearer original-token")
+			req.Header.Add("X-Unrelated", "first")
+			req.Header.Add("X-Unrelated", "second")
+			if tt.clientImpersonationHeaders {
+				req.Header.Set(authenticationv1.ImpersonateUserHeader, "alice")
+				req.Header.Add(authenticationv1.ImpersonateGroupHeader, "developers")
+				req.Header.Add(authenticationv1.ImpersonateGroupHeader, "auditors")
+				req.Header.Set(authenticationv1.ImpersonateUIDHeader, "alice-uid")
+				req.Header.Add("Impersonate-Extra-example.org%2Fscope", "read")
+				req.Header.Add("Impersonate-Extra-example.org%2Fscope", "write")
+				req.Header.Set("Impersonate-Future", "future-value")
+			}
+			req.Header.Set(utils.HeaderClusterProxyProto, "https")
+			req.Header.Set(utils.HeaderClusterProxyNamespace, "default")
+			req.Header.Set(utils.HeaderClusterProxyService, "kubernetes")
+			req.Header.Set(utils.HeaderClusterProxyPort, "443")
+			originalHeaders := req.Header.Clone()
+			recorder := httptest.NewRecorder()
 
-	if !reflect.DeepEqual(req.Header, originalHeaders) {
-		t.Fatalf("request headers changed: got %#v, want %#v", req.Header, originalHeaders)
+			s.ServeHTTP(recorder, req)
+
+			if recorder.Code != http.StatusOK {
+				t.Fatalf("unexpected status: got %d, want 200: %s", recorder.Code, recorder.Body.String())
+			}
+			if authenticationCalls != tt.wantAuthenticationCalls {
+				t.Fatalf("authentication called %d times, want %d", authenticationCalls, tt.wantAuthenticationCalls)
+			}
+			if transport.request == nil {
+				t.Fatal("request was not forwarded")
+			}
+			for key, want := range originalHeaders {
+				if got := transport.request.Header.Values(key); !slices.Equal(got, want) {
+					t.Errorf("forwarded %s header values = %q, want %q", key, got, want)
+				}
+			}
+		})
 	}
 }
 
