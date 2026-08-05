@@ -183,8 +183,8 @@ func main() {
 	// So we could alternatively add a watch there on the configmap and simply reconcile.
 	// This way keeps it simpler with common code, but does restart when the configmap changes
 	sdkTLSConfig, err := sdktls.StartTLSConfigMapWatcher(ctx, nativeClient, podNamespace, func() {
-		klog.Info("TLS ConfigMap changed, restarting")
-		os.Exit(0)
+		klog.Info("TLS ConfigMap changed, shutting down gracefully for restart")
+		cancel()
 	})
 	if err != nil {
 		setupLog.Error(err, "failed to start TLS ConfigMap watcher")
