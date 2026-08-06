@@ -55,7 +55,7 @@ proxyConfig:
   # @schema type:[string, null]
   NO_PROXY: null
 
-# -- Enable service-proxy impersonation for hub identities.
+# -- Enable hub token authentication.
 enableImpersonation: "true"
 
 # Opt-in NetworkPolicy for the spoke proxy-agent Deployment.

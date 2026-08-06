@@ -27,7 +27,7 @@
       "type": "string"
     },
     "enableImpersonation": {
-      "description": "Enable service-proxy impersonation for hub identities.",
+      "description": "Enable hub token authentication.",
       "type": "string"
     },
     "global": {

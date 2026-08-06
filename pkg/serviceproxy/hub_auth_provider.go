@@ -49,7 +49,7 @@ func newHubAuthProviderFactory() *hubAuthProviderFactory {
 
 func (f *hubAuthProviderFactory) addFlags(flags *pflag.FlagSet) {
 	flags.StringVar(&f.kubeConfig, "hub-kubeconfig", f.kubeConfig, "The kubeconfig file for connecting to the hub cluster")
-	flags.BoolVar(&f.enableImpersonation, "enable-impersonation", f.enableImpersonation, "Whether to enable impersonation")
+	flags.BoolVar(&f.enableImpersonation, "enable-impersonation", f.enableImpersonation, "Enable hub token authentication")
 }
 
 func (*hubAuthProviderFactory) validate() error {
