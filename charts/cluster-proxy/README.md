@@ -37,7 +37,7 @@ helm install cluster-proxy ./charts/cluster-proxy \
 | `installByPlacement.placementNamespace` | Namespace containing the Placement                               | Release namespace when empty                    |
 | `enableKubeApiProxy`                    | Enable Kubernetes API proxy support                               | `true`                                          |
 | `enableServiceProxy`                    | Deploy the hub user-server and managed cluster service-proxy      | `false`                                         |
-| `enableImpersonation`                   | Grant hub permissions required for service-proxy impersonation    | `true`                                          |
+| `enableImpersonation`                   | Grant hub permissions required for hub TokenReview authentication | `true`                                          |
 | `featureGates.clusterProfile`           | Enable ClusterProfile integration                                | `false`                                         |
 | `userServer.enabled`                    | Generate and rotate the user-server serving certificate          | `false`                                         |
 | `userServer.additionalSANs`             | Extra SANs for the generated user-server certificate             | `[]`                                            |
@@ -59,8 +59,10 @@ helm install cluster-proxy ./charts/cluster-proxy \
   --set userServer.enabled=true
 ```
 
-`enableImpersonation` defaults to true and enables hub token authentication.
-OIDC authentication is configured independently per managed cluster.
+`enableImpersonation` defaults to true. At the top level, it grants the hub
+permissions required by the hub TokenReview path. The per-cluster value controls
+that authentication path on service-proxy. OIDC authentication is configured
+independently per managed cluster.
 
 #### User Server Serving Certificate
 

@@ -96,6 +96,11 @@ set the `enableImpersonation` AddOnDeploymentConfig variable, which
 maps to `--enable-impersonation` and defaults to true. OIDC authentication is
 configured independently and does not require this value to be enabled.
 
+Despite the name, the AddOnDeploymentConfig value and service-proxy flag
+control hub TokenReview authentication and impersonation of the resulting hub
+identity. They do not control OIDC authentication or pass-through of
+client-supplied `Impersonate-*` headers.
+
 ## OpenShift LDAP hub-token verification
 
 This procedure verifies user, group, and ServiceAccount impersonation across a

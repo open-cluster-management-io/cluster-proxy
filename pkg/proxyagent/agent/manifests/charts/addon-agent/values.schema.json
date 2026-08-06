@@ -27,7 +27,7 @@
       "type": "string"
     },
     "enableImpersonation": {
-      "description": "Enable service-proxy impersonation for hub identities.",
+      "description": "Authenticate hub tokens with the hub cluster and impersonate the resulting identity on the managed cluster. OIDC authentication is configured separately.",
       "type": "string"
     },
     "global": {

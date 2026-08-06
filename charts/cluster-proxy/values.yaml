@@ -31,6 +31,7 @@ enableKubeApiProxy: true
 # Note: When userServer.enabled is true, the user server certificate will be automatically
 # generated and rotated by the controller. No manual secret creation is required.
 enableServiceProxy: false
+# Grant the hub permissions required for hub TokenReview authentication.
 enableImpersonation: true
 
 # Feature gates for alpha/experimental features

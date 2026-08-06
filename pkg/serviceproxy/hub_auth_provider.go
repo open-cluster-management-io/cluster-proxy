@@ -49,7 +49,8 @@ func newHubAuthProviderFactory() *hubAuthProviderFactory {
 
 func (f *hubAuthProviderFactory) addFlags(flags *pflag.FlagSet) {
 	flags.StringVar(&f.kubeConfig, "hub-kubeconfig", f.kubeConfig, "The kubeconfig file for connecting to the hub cluster")
-	flags.BoolVar(&f.enableImpersonation, "enable-impersonation", f.enableImpersonation, "Whether to enable impersonation")
+	flags.BoolVar(&f.enableImpersonation, "enable-impersonation", f.enableImpersonation,
+		"Whether to authenticate hub tokens with the hub cluster and impersonate the resulting identity on the managed cluster. OIDC authentication is configured separately.")
 }
 
 func (*hubAuthProviderFactory) validate() error {
