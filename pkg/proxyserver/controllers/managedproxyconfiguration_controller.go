@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	addonutils "open-cluster-management.io/addon-framework/pkg/utils"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 	"open-cluster-management.io/cluster-proxy/pkg/common"
 	"open-cluster-management.io/cluster-proxy/pkg/constant"
@@ -26,6 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -217,6 +219,13 @@ func (c *ManagedProxyConfigurationReconciler) deployProxyServer(config *proxyv1a
 }
 
 func (c *ManagedProxyConfigurationReconciler) ensure(incomingGeneration int64, gvk schema.GroupVersionKind, resource client.Object) (bool, bool, error) {
+	// hashing the rendered resource so that operator-side changes are applied even when the
+	// generation is unchanged. metadata is excluded to keep the hash stable on the retry below.
+	renderedHash, err := renderedResourceHash(resource)
+	if err != nil {
+		return false, false, errors.Wrapf(err, "failed hashing rendered resource kind: %s", gvk.Kind)
+	}
+
 	// appending a label to all the applied resources so that they can always be
 	// updated upon the configuration changes.
 	annotations := resource.GetAnnotations()
@@ -224,6 +233,7 @@ func (c *ManagedProxyConfigurationReconciler) ensure(incomingGeneration int64, g
 		annotations = make(map[string]string)
 	}
 	annotations[common.AnnotationKeyConfigurationGeneration] = strconv.Itoa(int(incomingGeneration))
+	annotations[common.AnnotationKeyRenderedHash] = renderedHash
 	resource.SetAnnotations(annotations)
 
 	created := false
@@ -260,10 +270,10 @@ func (c *ManagedProxyConfigurationReconciler) ensure(incomingGeneration int64, g
 		}
 	}
 
+	currentAnnotations := current.GetAnnotations()
 	var currentGeneration = 0
-	if current.GetAnnotations() != nil && len(current.GetAnnotations()[common.AnnotationKeyConfigurationGeneration]) > 0 {
-		var err error
-		currentGeneration, err = strconv.Atoi(current.GetAnnotations()[common.AnnotationKeyConfigurationGeneration])
+	if len(currentAnnotations[common.AnnotationKeyConfigurationGeneration]) > 0 {
+		currentGeneration, err = strconv.Atoi(currentAnnotations[common.AnnotationKeyConfigurationGeneration])
 		if err != nil {
 			return false, false, errors.Wrapf(err, "failed reading current generation for %v", gvk.Kind)
 		}
@@ -274,10 +284,11 @@ func (c *ManagedProxyConfigurationReconciler) ensure(incomingGeneration int64, g
 		return created, false, nil
 	}
 
-	// update if generation bumped or TLS config changed
-	tlsHashChanged := resource.GetAnnotations()[common.AnnotationKeyTLSConfigHash] !=
-		current.GetAnnotations()[common.AnnotationKeyTLSConfigHash]
-	if !created && (int(incomingGeneration) > currentGeneration || tlsHashChanged) {
+	// update if generation bumped, TLS config changed or the rendered manifest changed
+	tlsHashChanged := annotations[common.AnnotationKeyTLSConfigHash] !=
+		currentAnnotations[common.AnnotationKeyTLSConfigHash]
+	renderedHashChanged := renderedHash != currentAnnotations[common.AnnotationKeyRenderedHash]
+	if !created && (int(incomingGeneration) > currentGeneration || tlsHashChanged || renderedHashChanged) {
 		resource.SetResourceVersion(current.GetResourceVersion())
 		if err := c.Update(context.TODO(), resource); err != nil {
 			if apierrors.IsConflict(err) {
@@ -293,6 +304,15 @@ func (c *ManagedProxyConfigurationReconciler) ensure(incomingGeneration int64, g
 		updated = true
 	}
 	return created, updated, nil
+}
+
+// renderedResourceHash hashes a resource's config fields, i.e. all but metadata and status.
+func renderedResourceHash(resource client.Object) (string, error) {
+	content, err := runtime.DefaultUnstructuredConverter.ToUnstructured(resource)
+	if err != nil {
+		return "", err
+	}
+	return addonutils.GetSpecHash(&unstructured.Unstructured{Object: content})
 }
 
 func (c *ManagedProxyConfigurationReconciler) getConditions(s *state) []metav1.Condition {
