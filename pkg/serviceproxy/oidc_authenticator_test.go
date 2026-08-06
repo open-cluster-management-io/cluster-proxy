@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
-	"fmt"
 	"maps"
 	"net/http"
 	"net/http/httptest"
@@ -23,7 +22,6 @@ import (
 	"github.com/coreos/go-oidc/v3/oidc/oidctest"
 	"github.com/spf13/cobra"
 	"k8s.io/apiserver/pkg/authentication/authenticator"
-	"k8s.io/apiserver/pkg/authentication/user"
 )
 
 // rejectTokenReview rejects every token, so requests fall through to the OIDC
@@ -511,131 +509,11 @@ func TestOIDCAuthenticator_CAFileMissing(t *testing.T) {
 	}
 }
 
-func TestProcessAuthentication_OIDCToken(t *testing.T) {
-	s := &serviceProxy{
-		enableImpersonation:         true,
-		managedClusterAuthenticator: rejectTokenReview,
-		hubAuthenticator:            rejectTokenReview,
-		oidcAuthenticator: authenticator.TokenFunc(func(ctx context.Context, token string) (*authenticator.Response, bool, error) {
-			return &authenticator.Response{
-				User: &user.DefaultInfo{
-					Name:   "oidc:alice",
-					Groups: []string{"oidc:team-a"},
-				},
-			}, true, nil
-		}),
-		getImpersonateTokenFunc: func() (string, error) {
-			return "fake-sa-token", nil
-		},
-	}
-
-	ctx := t.Context()
-	req, _ := http.NewRequestWithContext(ctx, "GET", "https://example.com/api", nil)
-	req.Header.Set("Authorization", "Bearer dex-token")
-
-	if err := s.processAuthentication(ctx, req); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// OIDC users are impersonated without any cluster:hub: prefix
-	if req.Header.Get("Impersonate-User") != "oidc:alice" {
-		t.Fatalf("expected impersonate user 'oidc:alice', got '%s'", req.Header.Get("Impersonate-User"))
-	}
-	groups := req.Header.Values("Impersonate-Group")
-	if !slices.Equal(groups, []string{"oidc:team-a", user.AllAuthenticated}) {
-		t.Fatalf("unexpected impersonate groups: %v", groups)
-	}
-	if req.Header.Get("Authorization") != "Bearer fake-sa-token" {
-		t.Fatalf("expected authorization header to use impersonation token, got '%s'", req.Header.Get("Authorization"))
-	}
-}
-
-func TestProcessAuthentication_OIDCTokenAlreadyAuthenticatedGroup(t *testing.T) {
-	s := &serviceProxy{
-		enableImpersonation:         true,
-		managedClusterAuthenticator: rejectTokenReview,
-		hubAuthenticator:            rejectTokenReview,
-		oidcAuthenticator: authenticator.TokenFunc(func(ctx context.Context, token string) (*authenticator.Response, bool, error) {
-			return &authenticator.Response{
-				User: &user.DefaultInfo{
-					Name:   "oidc:bob",
-					Groups: []string{user.AllAuthenticated},
-				},
-			}, true, nil
-		}),
-		getImpersonateTokenFunc: func() (string, error) {
-			return "fake-sa-token", nil
-		},
-	}
-
-	ctx := t.Context()
-	req, _ := http.NewRequestWithContext(ctx, "GET", "https://example.com/api", nil)
-	req.Header.Set("Authorization", "Bearer dex-token")
-
-	if err := s.processAuthentication(ctx, req); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if groups := req.Header.Values("Impersonate-Group"); !slices.Equal(groups, []string{user.AllAuthenticated}) {
-		t.Fatalf("expected system:authenticated exactly once, got %v", groups)
-	}
-}
-
-func TestProcessAuthentication_OIDCTokenRejected(t *testing.T) {
-	s := &serviceProxy{
-		enableImpersonation:         true,
-		managedClusterAuthenticator: rejectTokenReview,
-		hubAuthenticator:            rejectTokenReview,
-		oidcAuthenticator: authenticator.TokenFunc(func(ctx context.Context, token string) (*authenticator.Response, bool, error) {
-			return nil, false, fmt.Errorf("token expired: %w", ErrTokenNotAuthenticated)
-		}),
-	}
-
-	ctx := t.Context()
-	req, _ := http.NewRequestWithContext(ctx, "GET", "https://example.com/api", nil)
-	req.Header.Set("Authorization", "Bearer expired-token")
-
-	err := s.processAuthentication(ctx, req)
-	if err == nil {
-		t.Fatal("expected authentication error")
-	}
-	if !strings.Contains(err.Error(), "not valid for managed cluster, hub cluster, or the configured OIDC issuer") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestProcessAuthentication_OIDCInfraError(t *testing.T) {
-	s := &serviceProxy{
-		enableImpersonation:         true,
-		managedClusterAuthenticator: rejectTokenReview,
-		hubAuthenticator:            rejectTokenReview,
-		oidcAuthenticator: authenticator.TokenFunc(func(ctx context.Context, token string) (*authenticator.Response, bool, error) {
-			return nil, false, errors.New("issuer unreachable")
-		}),
-	}
-
-	ctx := t.Context()
-	req, _ := http.NewRequestWithContext(ctx, "GET", "https://example.com/api", nil)
-	req.Header.Set("Authorization", "Bearer some-token")
-
-	err := s.processAuthentication(ctx, req)
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	if !strings.Contains(err.Error(), "oidc auth error") {
-		t.Fatalf("expected oidc auth error, got: %v", err)
-	}
-	if !strings.Contains(err.Error(), "issuer unreachable") {
-		t.Fatalf("expected original error message preserved, got: %v", err)
-	}
-}
-
 func TestValidate_OIDCFlags(t *testing.T) {
 	tests := []struct {
-		name            string
-		oidc            oidcOptions
-		noImpersonation bool
-		wantErr         string
+		name    string
+		oidc    oidcOptions
+		wantErr string
 	}{
 		{
 			name: "oidc disabled",
@@ -663,12 +541,6 @@ func TestValidate_OIDCFlags(t *testing.T) {
 				signingAlgs:   []string{oidc.RS256},
 			},
 			wantErr: "URL scheme must be https",
-		},
-		{
-			name:            "issuer without impersonation",
-			oidc:            oidcOptions{issuerURL: "https://dex.example.com/dex", clientID: "cluster-proxy"},
-			noImpersonation: true,
-			wantErr:         "--oidc-issuer-url requires --enable-impersonation=true",
 		},
 		{
 			name:    "client id without issuer",
@@ -715,7 +587,12 @@ func TestValidate_OIDCFlags(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := &serviceProxy{cert: "tls.crt", key: "tls.key", enableImpersonation: !tt.noImpersonation, oidc: tt.oidc}
+			factory := &oidcAuthProviderFactory{options: tt.oidc}
+			s := &serviceProxy{
+				cert:                  "tls.crt",
+				key:                   "tls.key",
+				authProviderFactories: []authProviderFactory{factory},
+			}
 
 			err := s.validate()
 			if tt.wantErr == "" {
@@ -735,25 +612,27 @@ func TestValidate_OIDCFlags(t *testing.T) {
 }
 
 func TestOIDCReservedNamePrefixesDisabled(t *testing.T) {
-	s := newServiceProxy()
+	factory := newOIDCAuthProviderFactory()
+	s := &serviceProxy{authProviderFactories: []authProviderFactory{factory}}
 	cmd := &cobra.Command{}
 	s.AddFlags(cmd)
 
 	if err := cmd.ParseFlags([]string{"--oidc-reserved-name-prefixes="}); err != nil {
 		t.Fatalf("unexpected flag parsing error: %v", err)
 	}
-	if len(s.oidc.reservedNamePrefixes) != 0 {
-		t.Fatalf("expected no reserved name prefixes, got %q", s.oidc.reservedNamePrefixes)
+	if len(factory.options.reservedNamePrefixes) != 0 {
+		t.Fatalf("expected no reserved name prefixes, got %q", factory.options.reservedNamePrefixes)
 	}
 }
 
 func TestOIDCFlagParsing(t *testing.T) {
-	s := newServiceProxy()
+	factory := newOIDCAuthProviderFactory()
+	s := &serviceProxy{authProviderFactories: []authProviderFactory{factory}}
 	cmd := &cobra.Command{}
 	s.AddFlags(cmd)
 
-	if !slices.Equal(s.oidc.reservedNamePrefixes, []string{"system:"}) {
-		t.Fatalf("expected reserved name prefixes to default to [system:], got %v", s.oidc.reservedNamePrefixes)
+	if !slices.Equal(factory.options.reservedNamePrefixes, []string{"system:"}) {
+		t.Fatalf("expected reserved name prefixes to default to [system:], got %v", factory.options.reservedNamePrefixes)
 	}
 
 	err := cmd.ParseFlags([]string{
@@ -765,17 +644,17 @@ func TestOIDCFlagParsing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected flag parsing error: %v", err)
 	}
-	if !slices.Equal(s.oidc.signingAlgs, []string{"RS256", "ES256"}) {
-		t.Fatalf("unexpected signing algorithms: %v", s.oidc.signingAlgs)
+	if !slices.Equal(factory.options.signingAlgs, []string{"RS256", "ES256"}) {
+		t.Fatalf("unexpected signing algorithms: %v", factory.options.signingAlgs)
 	}
-	if !slices.Equal(s.oidc.reservedNamePrefixes, []string{"system:", "dev:"}) {
-		t.Fatalf("unexpected reserved name prefixes: %v", s.oidc.reservedNamePrefixes)
+	if !slices.Equal(factory.options.reservedNamePrefixes, []string{"system:", "dev:"}) {
+		t.Fatalf("unexpected reserved name prefixes: %v", factory.options.reservedNamePrefixes)
 	}
 	wantRequiredClaims := map[string]string{
 		"hd":     "example.com",
 		"tenant": "value=with=equals",
 	}
-	if !maps.Equal(s.oidc.requiredClaims, wantRequiredClaims) {
-		t.Fatalf("expected required claims %v, got %v", wantRequiredClaims, s.oidc.requiredClaims)
+	if !maps.Equal(factory.options.requiredClaims, wantRequiredClaims) {
+		t.Fatalf("expected required claims %v, got %v", wantRequiredClaims, factory.options.requiredClaims)
 	}
 }

@@ -59,9 +59,8 @@ helm install cluster-proxy ./charts/cluster-proxy \
   --set userServer.enabled=true
 ```
 
-`enableImpersonation` defaults to true. Keep it enabled when using hub tokens
-or external OIDC tokens. With impersonation enabled, managed-cluster-issued
-tokens continue to use the managed cluster TokenReview path.
+`enableImpersonation` defaults to true and enables hub token authentication.
+OIDC authentication is configured independently per managed cluster.
 
 #### User Server Serving Certificate
 
@@ -132,7 +131,6 @@ helm upgrade --install cluster-proxy ./charts/cluster-proxy \
   --namespace open-cluster-management-addon \
   --create-namespace \
   --set enableServiceProxy=true \
-  --set enableImpersonation=true \
   --set userServer.enabled=true
 ```
 
