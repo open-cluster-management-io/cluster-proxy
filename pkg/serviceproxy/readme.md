@@ -90,11 +90,9 @@ user-server serving certificate. If you provide that certificate yourself,
 leave this value false and follow the
 [user-server certificate instructions](../../charts/cluster-proxy/README.md#user-server-serving-certificate).
 
-The top-level `enableImpersonation` Helm value grants the required
-hub permissions. To control hub TokenReview authentication per managed cluster,
-set the `enableImpersonation` AddOnDeploymentConfig variable, which
-maps to `--enable-impersonation` and defaults to true. OIDC authentication is
-configured independently and does not require this value to be enabled.
+The top-level `enableImpersonation` Helm value grants the required hub
+permissions. The per-cluster `enableImpersonation` variable enables hub token
+authentication in service-proxy and defaults to true.
 
 ## OpenShift LDAP hub-token verification
 
