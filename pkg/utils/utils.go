@@ -1,16 +1,12 @@
 package utils
 
 import (
-	"crypto/tls"
 	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
 	utilnet "k8s.io/apimachinery/pkg/util/net"
-	"k8s.io/klog/v2"
-	"sigs.k8s.io/controller-runtime/pkg/healthz"
 )
 
 const (
@@ -156,28 +152,4 @@ func GetProxyType(reqURI string) int {
 		return ProxyTypeService
 	}
 	return ProxyTypeKubeAPIServer
-}
-
-// ServeHealthProbes serves health probes and configchecker.
-func ServeHealthProbes(healthProbeBindAddress string, tlsConfig *tls.Config, customChecks ...healthz.Checker) error {
-	mux := http.NewServeMux()
-
-	checks := map[string]healthz.Checker{
-		"healthz-ping": healthz.Ping,
-	}
-
-	for i, check := range customChecks {
-		checks[fmt.Sprintf("custom-healthz-checker-%d", i)] = check
-	}
-
-	mux.Handle("/healthz", http.StripPrefix("/healthz", &healthz.Handler{Checks: checks}))
-	server := http.Server{
-		Handler:           mux,
-		ReadHeaderTimeout: 5 * time.Second,
-		Addr:              healthProbeBindAddress,
-		// TLS config is currently unused, as below we are using ListenAndServe() which will serve HTTP
-		TLSConfig: tlsConfig,
-	}
-	klog.Infof("heath probes server is running...")
-	return server.ListenAndServe()
 }
