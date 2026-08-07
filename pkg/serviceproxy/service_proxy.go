@@ -286,11 +286,7 @@ func (s *serviceProxy) Run(ctx context.Context) error {
 	}
 
 	healthServer := utils.NewHealthProbeServer(":8000", customChecks...)
-	publicServer := &http.Server{
-		Addr:      fmt.Sprintf(":%d", constant.ServiceProxyPort),
-		TLSConfig: tlsConfig,
-		Handler:   s,
-	}
+	publicServer := utils.NewProxyHTTPServer(fmt.Sprintf(":%d", constant.ServiceProxyPort), tlsConfig, s)
 
 	klog.Infof("starting service proxy HTTPS server on %d and health server on 8000", constant.ServiceProxyPort)
 	return utils.RunHTTPServers(
