@@ -76,6 +76,12 @@ spec:
             privileged: false
             runAsNonRoot: true
             readOnlyRootFilesystem: true
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 2
+            periodSeconds: 10
           readinessProbe:
             httpGet:
               path: /readyz
