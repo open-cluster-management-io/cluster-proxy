@@ -10,8 +10,10 @@ requests targeting the managed cluster Kubernetes API.
 For Kubernetes API requests, service-proxy tries authentication in this order:
 
 1. Managed cluster TokenReview
-2. Hub cluster TokenReview
+2. Hub cluster TokenReview, when enabled
 3. External OIDC ID token verification, when configured
+
+Hub-token authentication and OIDC can be enabled independently.
 
 The forwarding behavior is:
 
@@ -50,19 +52,19 @@ flowchart TD
     B -->|Invalid target| C[Return 400 Bad Request]
     B --> D{Target is kubernetes.default.svc?}
     D -->|No| P[Forward request]
-    D -->|Yes| E{Proxy authentication required?<br/>enableImpersonation AND no client Impersonate-*}
-    E -->|No| Q[Skip proxy authentication<br/>and identity rewriting]
+    D -->|Yes| E{Client Impersonate-* present?}
+    E -->|Yes| Q[Skip proxy authentication<br/>and identity rewriting]
     Q --> P
     Q -.-> R[If Impersonate-* is present, the managed API server<br/>authenticates the token and authorizes impersonation]
-    E -->|Yes| G{Managed TokenReview succeeds?}
+    E -->|No| F{Hub or OIDC enabled?}
+    F -->|No| P
+    F -->|Yes| G{Managed TokenReview succeeds?}
     G -->|Yes| P
-    G -->|No| H{Hub TokenReview succeeds?}
+    G -->|No| H{Hub enabled and TokenReview succeeds?}
     H -->|Yes| I[Set hub user and group impersonation]
-    H -->|No| J{OIDC configured?}
+    H -->|No| J{OIDC configured and token valid?}
     J -->|No| U[Return 401 Unauthorized]
-    J -->|Yes| K{OIDC token valid?}
-    K -->|No| U
-    K -->|Yes| L[Map OIDC claims to user and groups]
+    J -->|Yes| L[Map OIDC claims to user and groups]
     I --> M[Replace bearer token with proxy ServiceAccount token]
     L --> M
     M --> P
@@ -71,7 +73,8 @@ flowchart TD
 ## Enable service-proxy
 
 Service-proxy is disabled by default. For a Helm installation, enable the hub
-user-server, the managed cluster service-proxy sidecar, and impersonation:
+user-server, the managed cluster service-proxy sidecar, and hub-token
+authentication:
 
 ```bash
 helm upgrade --install cluster-proxy ./charts/cluster-proxy \
@@ -86,6 +89,10 @@ helm upgrade --install cluster-proxy ./charts/cluster-proxy \
 user-server serving certificate. If you provide that certificate yourself,
 leave this value false and follow the
 [user-server certificate instructions](../../charts/cluster-proxy/README.md#user-server-serving-certificate).
+
+The top-level `enableImpersonation` Helm value grants the required hub
+permissions. The per-cluster `enableImpersonation` variable enables hub token
+authentication in service-proxy and defaults to true.
 
 ## OpenShift LDAP hub-token verification
 
@@ -388,10 +395,11 @@ The request should succeed using the
 
 Service-proxy can validate an external OIDC ID token without configuring OIDC
 on either kube-apiserver and without deploying another authentication proxy.
-OIDC is the final fallback after both TokenReviews:
+OIDC is checked after the managed cluster TokenReview and the optional hub
+TokenReview:
 
 ```text
-managed cluster TokenReview -> hub TokenReview -> OIDC verification -> impersonation
+managed cluster TokenReview -> [hub TokenReview] -> OIDC verification -> impersonation
 ```
 
 The commands in this section use the following variables. If you did not run
@@ -432,8 +440,6 @@ Run `cluster-proxy service-proxy --help` to inspect the CLI defaults.
 
 Important security behavior:
 
-- OIDC requires impersonation. Both the Helm installation and the per-cluster
-  addon configuration must leave impersonation enabled.
 - The default `system:` reserved prefix prevents an IdP claim from mapping to
   identities such as `system:masters`. A customized list replaces the default,
   so include `system:` when adding prefixes.
@@ -482,8 +488,6 @@ metadata:
   namespace: ${MANAGED_CLUSTER}
 spec:
   customizedVariables:
-  - name: enableImpersonation
-    value: "true"
   - name: oidcIssuerURL
     value: https://dex.example.com:5556/dex
   - name: oidcClientID

@@ -138,10 +138,9 @@ Kubernetes API requests can authenticate with a managed cluster token, a hub
 token that is impersonated on the managed cluster, or a per-cluster external
 OIDC issuer.
 
-Service proxying is disabled by default. Enable it with the Helm values
-`enableServiceProxy=true` and `enableImpersonation=true`; use
-`userServer.enabled=true` when the controller should generate and rotate the
-user-server serving certificate.
+Service proxying is disabled by default. Enable it with the Helm value
+`enableServiceProxy=true`; use `userServer.enabled=true` when the controller
+should generate and rotate the user-server serving certificate.
 
 These Helm values enable the shared proxy infrastructure only. OIDC must be
 configured per managed cluster through an `AddOnDeploymentConfig` referenced by
