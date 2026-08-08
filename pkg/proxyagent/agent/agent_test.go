@@ -14,6 +14,7 @@ import (
 	mathrand "math/rand"
 	"net"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -841,18 +842,42 @@ func TestNewAgentAddon(t *testing.T) {
 			expectedErrorMsg:   "oidcIssuerURL and oidcClientID must be specified together",
 		},
 		{
-			name:               "rejects oidc when impersonation is disabled",
+			name:               "enableImpersonation=false disables hub authentication",
 			cluster:            newCluster(clusterName, true),
 			addon:              newAddonWithDeploymentConfig(),
 			managedProxyConfig: newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypePortForward),
 			addOndDeploymentConfigs: []runtime.Object{newAddOnDeploymentConfigWithVariables(addOndDeployConfigName, clusterName,
-				addonv1beta1.CustomizedVariable{Name: "oidcIssuerURL", Value: "https://dex.example.com/dex"},
-				addonv1beta1.CustomizedVariable{Name: "oidcClientID", Value: "cluster-proxy"},
 				addonv1beta1.CustomizedVariable{Name: "enableImpersonation", Value: "false"},
 			)},
 			enableKubeApiProxy: true,
 			enableServiceProxy: true,
-			expectedErrorMsg:   "oidcIssuerURL requires enableImpersonation=true",
+			verifyManifests: func(t *testing.T, manifests []runtime.Object) {
+				serviceProxy := getDeploymentContainer(getAgentDeployment(manifests), "service-proxy")
+				if assert.NotNil(t, serviceProxy) {
+					assert.Contains(t, serviceProxy.Args, "--enable-impersonation=false")
+				}
+				assert.False(t, clusterRoleAllowsImpersonation(getClusterRole(manifests, "cluster-proxy-addon-agent-impersonator")))
+			},
+		},
+		{
+			name:               "oidc grants impersonation when enableImpersonation=false",
+			cluster:            newCluster(clusterName, true),
+			addon:              newAddonWithDeploymentConfig(),
+			managedProxyConfig: newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypePortForward),
+			addOndDeploymentConfigs: []runtime.Object{newAddOnDeploymentConfigWithVariables(addOndDeployConfigName, clusterName,
+				addonv1beta1.CustomizedVariable{Name: "enableImpersonation", Value: "false"},
+				addonv1beta1.CustomizedVariable{Name: "oidcIssuerURL", Value: "https://dex.example.com/dex"},
+				addonv1beta1.CustomizedVariable{Name: "oidcClientID", Value: "cluster-proxy"},
+			)},
+			enableKubeApiProxy: true,
+			enableServiceProxy: true,
+			verifyManifests: func(t *testing.T, manifests []runtime.Object) {
+				serviceProxy := getDeploymentContainer(getAgentDeployment(manifests), "service-proxy")
+				if assert.NotNil(t, serviceProxy) {
+					assert.Contains(t, serviceProxy.Args, "--enable-impersonation=false")
+				}
+				assert.True(t, clusterRoleAllowsImpersonation(getClusterRole(manifests, "cluster-proxy-addon-agent-impersonator")))
+			},
 		},
 		{
 			// customizedVariables are string-typed, so the chart's schema is what
@@ -999,6 +1024,153 @@ func TestNewAgentAddon(t *testing.T) {
 			assert.NoError(t, err)
 			assertPodSecurityContext(t, getAgentDeployment(manifests))
 			c.verifyManifests(t, manifests)
+		})
+	}
+}
+
+func TestImpersonationRBACConfiguration(t *testing.T) {
+	const (
+		addonName        = "open-cluster-management-cluster-proxy"
+		clusterName      = "cluster"
+		deployConfigName = "deploy-config"
+	)
+
+	tests := []struct {
+		name                string
+		enableServiceProxy  bool
+		enableImpersonation string
+		oidcIssuerURL       string
+		additionalArgs      []string
+		wantImpersonation   bool
+		wantError           string
+	}{
+		{
+			name:                "alternate typed true value",
+			enableServiceProxy:  true,
+			enableImpersonation: "T",
+			wantImpersonation:   true,
+		},
+		{
+			name:                "additional hub authentication equals form is rejected",
+			enableServiceProxy:  true,
+			enableImpersonation: "false",
+			additionalArgs:      []string{"--enable-impersonation=true"},
+			wantError:           "additionalServiceProxyArgs must not set --enable-impersonation",
+		},
+		{
+			name:                "additional hub authentication bare form is rejected",
+			enableServiceProxy:  true,
+			enableImpersonation: "false",
+			additionalArgs:      []string{"--enable-impersonation"},
+			wantError:           "additionalServiceProxyArgs must not set --enable-impersonation",
+		},
+		{
+			name:                "additional oidc equals form",
+			enableServiceProxy:  true,
+			enableImpersonation: "false",
+			additionalArgs: []string{
+				"--oidc-issuer-url=https://dex.example.com/dex",
+				"--oidc-client-id=cluster-proxy",
+			},
+			wantImpersonation: true,
+		},
+		{
+			name:                "additional oidc split form",
+			enableServiceProxy:  true,
+			enableImpersonation: "false",
+			additionalArgs: []string{
+				"--oidc-issuer-url", "https://dex.example.com/dex",
+				"--oidc-client-id", "cluster-proxy",
+			},
+			wantImpersonation: true,
+		},
+		{
+			name:                "disabled authentication arguments",
+			enableServiceProxy:  true,
+			enableImpersonation: "false",
+			additionalArgs: []string{
+				"--oidc-issuer-url=",
+			},
+		},
+		{
+			name:                "typed and additional oidc issuer are rejected",
+			enableServiceProxy:  true,
+			enableImpersonation: "false",
+			oidcIssuerURL:       "https://typed.example.com/dex",
+			additionalArgs: []string{
+				"--oidc-issuer-url=https://additional.example.com/dex",
+			},
+			wantError: "configure the OIDC issuer with either oidcIssuerURL or --oidc-issuer-url",
+		},
+		{
+			name:                "duplicate additional oidc issuer is rejected",
+			enableServiceProxy:  true,
+			enableImpersonation: "false",
+			additionalArgs: []string{
+				"--oidc-issuer-url=https://dex.example.com/dex",
+				"--oidc-issuer-url=",
+			},
+			wantError: "additionalServiceProxyArgs must set --oidc-issuer-url at most once",
+		},
+		{
+			name:                "disabled service proxy never grants impersonation",
+			enableImpersonation: "false",
+			additionalArgs: []string{
+				"--enable-impersonation=true",
+				"--oidc-issuer-url=https://dex.example.com/dex",
+				"--oidc-client-id=cluster-proxy",
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			proxyConfig := newManagedProxyConfig(ManagedClusterConfigurationName, proxyv1alpha1.EntryPointTypePortForward)
+			proxyConfig.Spec.ProxyAgent.AdditionalServiceProxyArgs = test.additionalArgs
+
+			addon := newAddOn(addonName, clusterName)
+			addon.Status.ConfigReferences = []addonv1beta1.ConfigReference{
+				newManagedProxyConfigReference(ManagedClusterConfigurationName),
+				newAddOndDeploymentConfigReference(deployConfigName, clusterName),
+			}
+			variables := []addonv1beta1.CustomizedVariable{
+				{Name: "enableImpersonation", Value: test.enableImpersonation},
+			}
+			if test.oidcIssuerURL != "" {
+				variables = append(variables,
+					addonv1beta1.CustomizedVariable{Name: "oidcIssuerURL", Value: test.oidcIssuerURL},
+					addonv1beta1.CustomizedVariable{Name: "oidcClientID", Value: "cluster-proxy"},
+				)
+			}
+			deploymentConfig := newAddOnDeploymentConfigWithVariables(deployConfigName, clusterName, variables...)
+
+			agentAddon, err := NewAgentAddon(
+				&fakeSelfSigner{t: t},
+				"test",
+				fakeruntime.NewClientBuilder().WithObjects(proxyConfig).Build(),
+				fakekube.NewSimpleClientset(&corev1.Secret{
+					ObjectMeta: metav1.ObjectMeta{Name: "cluster-proxy-service-proxy-server-cert", Namespace: "test"},
+					Data:       map[string][]byte{"tls.crt": []byte("testcrt"), "tls.key": []byte("testkey")},
+				}),
+				true,
+				test.enableServiceProxy,
+				false,
+				fakeaddon.NewSimpleClientset(deploymentConfig),
+			)
+			if !assert.NoError(t, err) {
+				return
+			}
+
+			manifests, err := agentAddon.Manifests(context.Background(), newCluster(clusterName, true), addon)
+			if test.wantError != "" {
+				assert.ErrorContains(t, err, test.wantError)
+				return
+			}
+			if !assert.NoError(t, err) {
+				return
+			}
+			assert.Equal(t, test.wantImpersonation,
+				clusterRoleAllowsImpersonation(getClusterRole(manifests, "cluster-proxy-addon-agent-impersonator")))
 		})
 	}
 }
@@ -1326,6 +1498,29 @@ func getAgentDeployment(manifests []runtime.Object) *appsv1.Deployment {
 	}
 
 	return nil
+}
+
+func getClusterRole(manifests []runtime.Object, name string) *rbacv1.ClusterRole {
+	for _, manifest := range manifests {
+		if clusterRole, ok := manifest.(*rbacv1.ClusterRole); ok && clusterRole.Name == name {
+			return clusterRole
+		}
+	}
+	return nil
+}
+
+func clusterRoleAllowsImpersonation(clusterRole *rbacv1.ClusterRole) bool {
+	if clusterRole == nil {
+		return false
+	}
+	for _, rule := range clusterRole.Rules {
+		if slices.Contains(rule.Verbs, "impersonate") &&
+			slices.Contains(rule.Resources, "users") &&
+			slices.Contains(rule.Resources, "groups") {
+			return true
+		}
+	}
+	return false
 }
 
 func getAgentNetworkPolicy(manifests []runtime.Object) *networkingv1.NetworkPolicy {
