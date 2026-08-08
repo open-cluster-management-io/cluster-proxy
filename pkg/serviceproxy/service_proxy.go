@@ -198,13 +198,13 @@ func (s *serviceProxy) Run(ctx context.Context) error {
 		return err
 	}
 
-	if err := s.initializeAuthProviders(ctx); err != nil {
-		return err
-	}
-
 	podNamespace := os.Getenv("POD_NAMESPACE")
 	if len(podNamespace) == 0 {
 		return errors.New("pod namespace is empty, please set the POD_NAMESPACE environment variable")
+	}
+
+	if err := s.initializeAuthProviders(runCtx, podNamespace); err != nil {
+		return err
 	}
 
 	sdkTLSConfig, err := sdktls.StartTLSConfigMapWatcher(runCtx, s.managedClusterKubeClient, podNamespace, func() {

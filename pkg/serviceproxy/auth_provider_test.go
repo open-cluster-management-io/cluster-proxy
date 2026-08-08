@@ -142,7 +142,7 @@ func TestInitializeAuthProvidersUsesEnabledFactoriesInRegistryOrder(t *testing.T
 		},
 	}
 
-	if err := s.initializeAuthProviders(t.Context()); err != nil {
+	if err := s.initializeAuthProviders(t.Context(), "addon"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -179,7 +179,7 @@ func TestInitializeAuthProvidersDoesNotPublishPartialFactoryResults(t *testing.T
 		authProviders: []authProvider{existing},
 	}
 
-	if err := s.initializeAuthProviders(t.Context()); !errors.Is(err, buildErr) {
+	if err := s.initializeAuthProviders(t.Context(), "addon"); !errors.Is(err, buildErr) {
 		t.Fatalf("error = %v, want %v", err, buildErr)
 	}
 	if len(s.authProviders) != 1 || s.authProviders[0] != existing {
@@ -228,12 +228,10 @@ func TestInitializeAuthProviders(t *testing.T) {
 				hubFactory.kubeConfig = writeTestHubKubeConfig(t)
 			}
 			if tt.enableOIDC {
-				oidcFactory.options = oidcOptions{
-					issuerURL: "https://issuer.example.com",
-					clientID:  "cluster-proxy",
-				}
+				oidcFactory.options.issuerURL = "https://issuer.example.com"
+				oidcFactory.options.clientID = "cluster-proxy"
 			}
-			if err := s.initializeAuthProviders(t.Context()); err != nil {
+			if err := s.initializeAuthProviders(t.Context(), "addon"); err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
 
@@ -259,7 +257,7 @@ func TestInitializeAuthProvidersFailureDoesNotPublishPartialProviders(t *testing
 		},
 	}
 
-	if err := s.initializeAuthProviders(t.Context()); err == nil {
+	if err := s.initializeAuthProviders(t.Context(), "addon"); err == nil {
 		t.Fatal("expected hub kubeconfig error")
 	}
 	if len(s.authProviders) != 0 {

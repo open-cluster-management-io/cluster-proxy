@@ -433,12 +433,19 @@ variables:
 | `oidcGroupsClaim` | `--oidc-groups-claim` | Empty; no IdP groups | Claim containing a string or array of group names. |
 | `oidcGroupsPrefix` | `--oidc-groups-prefix` | Empty | Prefix applied to every mapped group. |
 | `oidcReservedNamePrefixes` | `--oidc-reserved-name-prefixes` | `system:` | Comma-separated prefixes forbidden for mapped usernames and groups. |
-| `oidcCAConfigMap` | `--oidc-ca-file` | Empty; host root CAs | ConfigMap containing the private issuer CA under `ca.crt`. |
+| `oidcCAConfigMap` | `--oidc-ca-configmap` | Empty; host root CAs | Watched ConfigMap containing the private issuer CA under `ca.crt`. |
 | `oidcSigningAlgs` | `--oidc-signing-algs` | `RS256` | Comma-separated allowed JOSE asymmetric signing algorithms. |
 | `oidcRequiredClaimsJSON` | repeated `--oidc-required-claim` | Empty | JSON object whose string key/value pairs must appear in the token. |
 
-The standalone binary exposes the same behavior through its `--oidc-*` flags.
-Run `cluster-proxy service-proxy --help` to inspect the CLI defaults.
+The service-proxy command exposes the same behavior through its `--oidc-*`
+flags. Private issuer CAs are configured with `--oidc-ca-configmap`; omit it
+to use the host root CAs. Run `cluster-proxy service-proxy --help` to inspect
+the CLI defaults.
+
+`--oidc-ca-file` has been removed. Deployments that passed it directly must
+move the CA bundle to the `ca.crt` key of a ConfigMap in `POD_NAMESPACE` and
+replace the old flag with `--oidc-ca-configmap=<name>`. The
+`oidcCAConfigMap` AddOnDeploymentConfig variable is unchanged.
 
 Important security behavior:
 
@@ -453,9 +460,10 @@ Important security behavior:
   `true`.
 - Configure `oidcGroupsPrefix` when external group names could collide with
   existing managed cluster RBAC subjects.
-- Issuer discovery and JWKS initialization are lazy. An unavailable issuer
-  does not crash-loop service-proxy or affect TokenReview authentication; OIDC
-  requests fail until the issuer is available.
+- Issuer discovery and JWKS initialization begin when the OIDC configuration
+  becomes available, without waiting for a request. An unavailable issuer does
+  not crash-loop service-proxy or affect TokenReview authentication; the
+  Kubernetes OIDC authenticator retries discovery in the background.
 
 ### Configure OIDC for one managed cluster
 
@@ -609,12 +617,17 @@ publicly trusted certificate, or replace it with
 
 ### OIDC CA lifecycle
 
-The `oidcCAConfigMap` volume is optional so the Pod can start before the
-ConfigMap exists. When the value is configured, a valid `ca.crt` must be
-available before an OIDC request can initialize the authenticator. If the
-first request arrives too early, it fails without affecting the TokenReview
-paths; a later request can initialize successfully after the ConfigMap is
-created. No Pod restart is required.
+When `oidcCAConfigMap` is configured, service-proxy watches that ConfigMap in
+its namespace. It reconciles the initial state and every create, update, or
+delete event without waiting for an OIDC request. A missing or invalid
+`ca.crt` disables only OIDC authentication, failing it closed and canceling
+the previous authenticator; creating or correcting the ConfigMap initializes
+it without a Pod restart.
+
+Updating `ca.crt` replaces the authenticator and starts discovery with the new
+trust bundle. For a rotation without an intentional authentication gap, first
+publish a bundle containing both the old and new CA certificates, then remove
+the old certificate after the issuer has switched.
 
 ### Automated coverage
 

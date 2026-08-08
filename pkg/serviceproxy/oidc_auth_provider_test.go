@@ -8,10 +8,64 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apiserver/pkg/authentication/authenticator"
 	"k8s.io/apiserver/pkg/authentication/user"
+	"k8s.io/client-go/kubernetes/fake"
 )
+
+func TestOIDCAuthProviderFactoryBuildsConfigMapBackedProvider(t *testing.T) {
+	const (
+		namespace = "addon"
+		name      = "oidc-ca"
+	)
+	issuer := newFakeIssuer(t)
+	factory := &oidcAuthProviderFactory{options: issuer.defaultOpts()}
+	client := fake.NewSimpleClientset(&corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: name},
+		Data:       map[string]string{oidcCAConfigMapKey: string(issuer.caPEM)},
+	})
+
+	provider, err := factory.build(t.Context(), authProviderDependencies{
+		managedClusterKubeClient: client,
+		podNamespace:             namespace,
+	})
+	if err != nil {
+		t.Fatalf("build OIDC provider: %v", err)
+	}
+
+	token := issuer.signToken(t, issuer.claims(nil))
+	response, ok, err := authenticateUntilSettled(t, provider, token, 5*time.Second)
+	if err != nil || !ok {
+		t.Fatalf("expected authentication success, got ok=%v err=%v", ok, err)
+	}
+	if want := issuer.server.URL + "#test-user"; response.User.GetName() != want {
+		t.Fatalf("expected username %q, got %q", want, response.User.GetName())
+	}
+}
+
+func TestOIDCAuthProviderFactoryDoesNotBuildWhenControllerCannotSync(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	factory := newOIDCAuthProviderFactory()
+	factory.options.issuerURL = "https://issuer.example.com"
+	factory.options.clientID = "cluster-proxy"
+	factory.options.caConfigMap = "oidc-ca"
+
+	provider, err := factory.build(ctx, authProviderDependencies{
+		managedClusterKubeClient: fake.NewSimpleClientset(),
+		podNamespace:             "addon",
+	})
+	if err == nil || !strings.Contains(err.Error(), "failed to sync OIDC CA ConfigMap informer") {
+		t.Fatalf("expected controller sync error, got provider=%v err=%v", provider, err)
+	}
+	if provider != nil {
+		t.Fatalf("expected no provider after controller startup failure, got %v", provider)
+	}
+}
 
 func TestProcessAuthentication_OIDCToken(t *testing.T) {
 	s := &serviceProxy{
