@@ -81,7 +81,7 @@ oidcGroupsPrefix: ""
 # -- Username and group prefixes that OIDC claims must not use. Customized variables use a comma-separated string.
 oidcReservedNamePrefixes:
   - "system:"
-# -- Managed cluster ConfigMap containing the private issuer CA in the ca.crt key. Empty uses system root CAs.
+# -- Managed cluster ConfigMap watched for the private issuer CA in the ca.crt key. Empty uses system root CAs.
 oidcCAConfigMap: ""
 # @schema oneOf:[{type: array, items: {type: string}}, {type: string}]
 # -- Allowed JOSE asymmetric signing algorithms. Empty keeps the service-proxy default of RS256.

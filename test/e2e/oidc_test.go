@@ -25,6 +25,7 @@ import (
 	"k8s.io/utils/ptr"
 
 	addonapiv1beta1 "open-cluster-management.io/api/addon/v1beta1"
+	"open-cluster-management.io/cluster-proxy/pkg/common"
 	"open-cluster-management.io/cluster-proxy/pkg/config"
 )
 
@@ -57,8 +58,8 @@ var _ = Describe("OIDC Authentication Test", Label("serviceproxy", "oidc"), Orde
 		dexCA := dexTLSSecret.Data["ca.crt"]
 		Expect(dexCA).ToNot(BeEmpty())
 
-		By("Create or refresh the OIDC CA ConfigMap in the spoke addon namespace")
-		applyConfigMap(managedClusterInstallNamespace, oidcCAConfigMapName, map[string]string{"ca.crt": string(dexCA)})
+		By("Ensure the OIDC CA ConfigMap is initially absent")
+		deleteConfigMap(managedClusterInstallNamespace, oidcCAConfigMapName)
 
 		By("Cleanup existing AddOnDeploymentConfig if any")
 		Expect(deleteAddOnDeploymentConfig(oidcDeployConfigName)).To(Succeed())
@@ -114,6 +115,13 @@ var _ = Describe("OIDC Authentication Test", Label("serviceproxy", "oidc"), Orde
 		By("Wait for the oidc flags to appear in the service-proxy container")
 		waitServiceProxyOIDCArgs(true)
 		waitManagedClusterAddonAvailable()
+		podsBeforeCA := proxyAgentPodRestartCounts()
+
+		By("Create the OIDC CA ConfigMap after service-proxy is running")
+		applyConfigMap(managedClusterInstallNamespace, oidcCAConfigMapName, map[string]string{"ca.crt": string(dexCA)})
+
+		By("Ensure CA reconciliation does not restart the proxy agent")
+		Consistently(proxyAgentPodRestartCounts).WithTimeout(10 * time.Second).WithPolling(time.Second).Should(Equal(podsBeforeCA))
 
 		By("Obtain a real ID token from Dex via the password grant")
 		dexPool, err := certutil.NewPoolFromBytes(dexCA)
@@ -136,8 +144,8 @@ var _ = Describe("OIDC Authentication Test", Label("serviceproxy", "oidc"), Orde
 	})
 
 	It("should report the impersonated OIDC identity", func() {
-		// the first request also triggers the service-proxy's lazy OIDC
-		// provider discovery, hence the Eventually
+		// ConfigMap reconciliation starts provider discovery asynchronously, so
+		// allow the Kubernetes OIDC authenticator to finish its initial attempt.
 		Eventually(func() error {
 			review, err := oidcProxyClient.AuthenticationV1().SelfSubjectReviews().Create(
 				context.Background(), &authenticationv1.SelfSubjectReview{}, metav1.CreateOptions{})
@@ -237,6 +245,30 @@ func waitServiceProxyOIDCArgs(expectPresent bool) {
 		}
 		return proxyAgentRolledOut(deploy, ptr.Deref(deploy.Spec.Replicas, 1))
 	}).WithTimeout(7 * time.Minute).WithPolling(10 * time.Second).ShouldNot(HaveOccurred())
+}
+
+// proxyAgentPodRestartCounts snapshots the proxy agent pods as UID to summed
+// container restart count, so both a Deployment rollout (new pods) and an
+// in-place container restart are visible as a change.
+func proxyAgentPodRestartCounts() map[string]int32 {
+	podList, err := hubKubeClient.CoreV1().
+		Pods(config.DefaultAddonInstallNamespace).
+		List(context.TODO(), metav1.ListOptions{
+			LabelSelector: common.LabelKeyComponentName + "=" + common.ComponentNameProxyAgent,
+		})
+	Expect(err).ToNot(HaveOccurred())
+	counts := map[string]int32{}
+	for _, pod := range podList.Items {
+		if pod.DeletionTimestamp != nil {
+			continue
+		}
+		var restarts int32
+		for _, containerStatus := range pod.Status.ContainerStatuses {
+			restarts += containerStatus.RestartCount
+		}
+		counts[string(pod.UID)] = restarts
+	}
+	return counts
 }
 
 // requestDexIDToken performs a resource owner password grant against Dex and

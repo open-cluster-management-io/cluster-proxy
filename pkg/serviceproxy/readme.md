@@ -433,12 +433,14 @@ variables:
 | `oidcGroupsClaim` | `--oidc-groups-claim` | Empty; no IdP groups | Claim containing a string or array of group names. |
 | `oidcGroupsPrefix` | `--oidc-groups-prefix` | Empty | Prefix applied to every mapped group. |
 | `oidcReservedNamePrefixes` | `--oidc-reserved-name-prefixes` | `system:` | Comma-separated prefixes forbidden for mapped usernames and groups. |
-| `oidcCAConfigMap` | `--oidc-ca-file` | Empty; host root CAs | ConfigMap containing the private issuer CA under `ca.crt`. |
+| `oidcCAConfigMap` | `--oidc-ca-configmap` | Empty; host root CAs | Watched ConfigMap containing the private issuer CA under `ca.crt`. |
 | `oidcSigningAlgs` | `--oidc-signing-algs` | `RS256` | Comma-separated allowed JOSE asymmetric signing algorithms. |
 | `oidcRequiredClaimsJSON` | repeated `--oidc-required-claim` | Empty | JSON object whose string key/value pairs must appear in the token. |
 
-The standalone binary exposes the same behavior through its `--oidc-*` flags.
-Run `cluster-proxy service-proxy --help` to inspect the CLI defaults.
+The service-proxy command exposes the same behavior through its `--oidc-*`
+flags. Private issuer CAs are configured with `--oidc-ca-configmap`; omit it
+to use the host root CAs. Run `cluster-proxy service-proxy --help` to inspect
+the CLI defaults.
 
 Important security behavior:
 
@@ -453,9 +455,6 @@ Important security behavior:
   `true`.
 - Configure `oidcGroupsPrefix` when external group names could collide with
   existing managed cluster RBAC subjects.
-- Issuer discovery and JWKS initialization are lazy. An unavailable issuer
-  does not crash-loop service-proxy or affect TokenReview authentication; OIDC
-  requests fail until the issuer is available.
 
 ### Configure OIDC for one managed cluster
 
@@ -609,12 +608,11 @@ publicly trusted certificate, or replace it with
 
 ### OIDC CA lifecycle
 
-The `oidcCAConfigMap` volume is optional so the Pod can start before the
-ConfigMap exists. When the value is configured, a valid `ca.crt` must be
-available before an OIDC request can initialize the authenticator. If the
-first request arrives too early, it fails without affecting the TokenReview
-paths; a later request can initialize successfully after the ConfigMap is
-created. No Pod restart is required.
+When `oidcCAConfigMap` is set, service-proxy watches that ConfigMap in its
+namespace and applies changes without a Pod restart. A missing or invalid
+`ca.crt` disables OIDC authentication until corrected. If the issuer is
+unavailable, discovery retries in the background without affecting
+service-proxy or TokenReview authentication.
 
 ### Automated coverage
 
