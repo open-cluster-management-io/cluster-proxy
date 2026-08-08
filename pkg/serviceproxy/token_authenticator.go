@@ -5,10 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	authenticationv1 "k8s.io/api/authentication/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apiserver/pkg/authentication/authenticator"
+	"k8s.io/apiserver/pkg/authentication/token/cache"
 	"k8s.io/apiserver/pkg/authentication/user"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
@@ -25,6 +27,22 @@ var ErrTokenNotAuthenticated = errors.New("token not authenticated")
 //   - OpenShift 4.x:    "[invalid bearer token, token lookup failed]"
 var authRejectionPatterns = []string{
 	"invalid bearer token",
+}
+
+func newTokenReviewAuthenticator(
+	client kubernetes.Interface,
+	providerName string,
+	cacheTTL time.Duration,
+) authenticator.Token {
+	delegate := &tokenReviewAuthenticator{client: client, name: providerName}
+	if cacheTTL <= 0 {
+		return delegate
+	}
+
+	// cacheErrs=false avoids caching infrastructure failures. Caching both
+	// successful and unauthenticated results prevents repeated fallback
+	// TokenReviews during bursts of requests for the same token.
+	return cache.New(delegate, false, cacheTTL, cacheTTL)
 }
 
 // isAuthRejection reports whether a TokenReview Status.Error indicates an
