@@ -150,9 +150,6 @@ spec:
         {{- if ne (empty .Values.oidcIssuerURL) (empty .Values.oidcClientID) }}
           {{- fail "oidcIssuerURL and oidcClientID must be specified together" }}
         {{- end }}
-        {{- if and .Values.oidcIssuerURL (ne .Values.enableImpersonation "true") }}
-          {{- fail "oidcIssuerURL requires enableImpersonation=true" }}
-        {{- end }}
         - name: service-proxy
           {{- $reverseResourceRequirements := reverse .Values.global.resourceRequirements }}
           {{- range $item := $reverseResourceRequirements }}
@@ -208,7 +205,7 @@ spec:
               {{- end }}
             {{- end }}
             {{- if .Values.oidcCAConfigMap }}
-            - --oidc-ca-file=/oidc-ca/ca.crt
+            - {{ printf "--oidc-ca-configmap=%s" .Values.oidcCAConfigMap | quote }}
             {{- end }}
           {{- end }}
             {{- range .Values.additionalServiceProxyArgs }}
@@ -245,11 +242,6 @@ spec:
               mountPath: /additional-service-ca
               readOnly: true
             {{- end }}
-            {{- if and .Values.oidcIssuerURL .Values.oidcCAConfigMap }}
-            - name: oidc-ca
-              mountPath: /oidc-ca
-              readOnly: true
-            {{- end }}
             - name: service-proxy-server-cert
               mountPath: /server-cert
               readOnly: true
@@ -274,12 +266,6 @@ spec:
         - name: additional-service-ca
           configMap:
             name: {{ .Values.additionalServiceCAConfigMap }}
-            optional: true
-        {{- end }}
-        {{- if and .Values.oidcIssuerURL .Values.oidcCAConfigMap }}
-        - name: oidc-ca
-          configMap:
-            name: {{ .Values.oidcCAConfigMap }}
             optional: true
         {{- end }}
         - name: service-proxy-server-cert

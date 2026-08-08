@@ -10,8 +10,10 @@ requests targeting the managed cluster Kubernetes API.
 For Kubernetes API requests, service-proxy tries authentication in this order:
 
 1. Managed cluster TokenReview
-2. Hub cluster TokenReview
+2. Hub cluster TokenReview, when enabled
 3. External OIDC ID token verification, when configured
+
+Hub-token authentication and OIDC can be enabled independently.
 
 The forwarding behavior is:
 
@@ -50,19 +52,19 @@ flowchart TD
     B -->|Invalid target| C[Return 400 Bad Request]
     B --> D{Target is kubernetes.default.svc?}
     D -->|No| P[Forward request]
-    D -->|Yes| E{Proxy authentication required?<br/>enableImpersonation AND no client Impersonate-*}
-    E -->|No| Q[Skip proxy authentication<br/>and identity rewriting]
+    D -->|Yes| E{Client Impersonate-* present?}
+    E -->|Yes| Q[Skip proxy authentication<br/>and identity rewriting]
     Q --> P
     Q -.-> R[If Impersonate-* is present, the managed API server<br/>authenticates the token and authorizes impersonation]
-    E -->|Yes| G{Managed TokenReview succeeds?}
+    E -->|No| F{Hub or OIDC enabled?}
+    F -->|No| P
+    F -->|Yes| G{Managed TokenReview succeeds?}
     G -->|Yes| P
-    G -->|No| H{Hub TokenReview succeeds?}
+    G -->|No| H{Hub enabled and TokenReview succeeds?}
     H -->|Yes| I[Set hub user and group impersonation]
-    H -->|No| J{OIDC configured?}
+    H -->|No| J{OIDC configured and token valid?}
     J -->|No| U[Return 401 Unauthorized]
-    J -->|Yes| K{OIDC token valid?}
-    K -->|No| U
-    K -->|Yes| L[Map OIDC claims to user and groups]
+    J -->|Yes| L[Map OIDC claims to user and groups]
     I --> M[Replace bearer token with proxy ServiceAccount token]
     L --> M
     M --> P
@@ -71,7 +73,8 @@ flowchart TD
 ## Enable service-proxy
 
 Service-proxy is disabled by default. For a Helm installation, enable the hub
-user-server, the managed cluster service-proxy sidecar, and impersonation:
+user-server, the managed cluster service-proxy sidecar, and hub-token
+authentication:
 
 ```bash
 helm upgrade --install cluster-proxy ./charts/cluster-proxy \
@@ -86,6 +89,12 @@ helm upgrade --install cluster-proxy ./charts/cluster-proxy \
 user-server serving certificate. If you provide that certificate yourself,
 leave this value false and follow the
 [user-server certificate instructions](../../charts/cluster-proxy/README.md#user-server-serving-certificate).
+
+The top-level `enableImpersonation` Helm value grants the required
+hub permissions. To control hub TokenReview authentication per managed cluster,
+set the `enableImpersonation` AddOnDeploymentConfig variable, which
+maps to `--enable-impersonation` and defaults to true. OIDC authentication is
+configured independently and does not require this value to be enabled.
 
 ## OpenShift LDAP hub-token verification
 
@@ -388,10 +397,11 @@ The request should succeed using the
 
 Service-proxy can validate an external OIDC ID token without configuring OIDC
 on either kube-apiserver and without deploying another authentication proxy.
-OIDC is the final fallback after both TokenReviews:
+OIDC is checked after the managed cluster TokenReview and the optional hub
+TokenReview:
 
 ```text
-managed cluster TokenReview -> hub TokenReview -> OIDC verification -> impersonation
+managed cluster TokenReview -> [hub TokenReview] -> OIDC verification -> impersonation
 ```
 
 The commands in this section use the following variables. If you did not run
@@ -423,17 +433,22 @@ variables:
 | `oidcGroupsClaim` | `--oidc-groups-claim` | Empty; no IdP groups | Claim containing a string or array of group names. |
 | `oidcGroupsPrefix` | `--oidc-groups-prefix` | Empty | Prefix applied to every mapped group. |
 | `oidcReservedNamePrefixes` | `--oidc-reserved-name-prefixes` | `system:` | Comma-separated prefixes forbidden for mapped usernames and groups. |
-| `oidcCAConfigMap` | `--oidc-ca-file` | Empty; host root CAs | ConfigMap containing the private issuer CA under `ca.crt`. |
+| `oidcCAConfigMap` | `--oidc-ca-configmap` | Empty; host root CAs | Watched ConfigMap containing the private issuer CA under `ca.crt`. |
 | `oidcSigningAlgs` | `--oidc-signing-algs` | `RS256` | Comma-separated allowed JOSE asymmetric signing algorithms. |
 | `oidcRequiredClaimsJSON` | repeated `--oidc-required-claim` | Empty | JSON object whose string key/value pairs must appear in the token. |
 
-The standalone binary exposes the same behavior through its `--oidc-*` flags.
-Run `cluster-proxy service-proxy --help` to inspect the CLI defaults.
+The service-proxy command exposes the same behavior through its `--oidc-*`
+flags. Private issuer CAs are configured with `--oidc-ca-configmap`; omit it
+to use the host root CAs. Run `cluster-proxy service-proxy --help` to inspect
+the CLI defaults.
+
+`--oidc-ca-file` has been removed. Deployments that passed it directly must
+move the CA bundle to the `ca.crt` key of a ConfigMap in `POD_NAMESPACE` and
+replace the old flag with `--oidc-ca-configmap=<name>`. The
+`oidcCAConfigMap` AddOnDeploymentConfig variable is unchanged.
 
 Important security behavior:
 
-- OIDC requires impersonation. Both the Helm installation and the per-cluster
-  addon configuration must leave impersonation enabled.
 - The default `system:` reserved prefix prevents an IdP claim from mapping to
   identities such as `system:masters`. A customized list replaces the default,
   so include `system:` when adding prefixes.
@@ -445,9 +460,10 @@ Important security behavior:
   `true`.
 - Configure `oidcGroupsPrefix` when external group names could collide with
   existing managed cluster RBAC subjects.
-- Issuer discovery and JWKS initialization are lazy. An unavailable issuer
-  does not crash-loop service-proxy or affect TokenReview authentication; OIDC
-  requests fail until the issuer is available.
+- Issuer discovery and JWKS initialization begin when the OIDC configuration
+  becomes available, without waiting for a request. An unavailable issuer does
+  not crash-loop service-proxy or affect TokenReview authentication; the
+  Kubernetes OIDC authenticator retries discovery in the background.
 
 ### Configure OIDC for one managed cluster
 
@@ -482,8 +498,6 @@ metadata:
   namespace: ${MANAGED_CLUSTER}
 spec:
   customizedVariables:
-  - name: enableImpersonation
-    value: "true"
   - name: oidcIssuerURL
     value: https://dex.example.com:5556/dex
   - name: oidcClientID
@@ -603,12 +617,17 @@ publicly trusted certificate, or replace it with
 
 ### OIDC CA lifecycle
 
-The `oidcCAConfigMap` volume is optional so the Pod can start before the
-ConfigMap exists. When the value is configured, a valid `ca.crt` must be
-available before an OIDC request can initialize the authenticator. If the
-first request arrives too early, it fails without affecting the TokenReview
-paths; a later request can initialize successfully after the ConfigMap is
-created. No Pod restart is required.
+When `oidcCAConfigMap` is configured, service-proxy watches that ConfigMap in
+its namespace. It reconciles the initial state and every create, update, or
+delete event without waiting for an OIDC request. A missing or invalid
+`ca.crt` disables only OIDC authentication, failing it closed and canceling
+the previous authenticator; creating or correcting the ConfigMap initializes
+it without a Pod restart.
+
+Updating `ca.crt` replaces the authenticator and starts discovery with the new
+trust bundle. For a rotation without an intentional authentication gap, first
+publish a bundle containing both the old and new CA certificates, then remove
+the old certificate after the issuer has switched.
 
 ### Automated coverage
 

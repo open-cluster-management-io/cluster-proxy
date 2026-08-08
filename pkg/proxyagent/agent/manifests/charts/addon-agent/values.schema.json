@@ -27,7 +27,7 @@
       "type": "string"
     },
     "enableImpersonation": {
-      "description": "Enable service-proxy impersonation for hub and external OIDC identities.",
+      "description": "Enable service-proxy impersonation for hub identities.",
       "type": "string"
     },
     "global": {
@@ -56,7 +56,7 @@
       "type": "object"
     },
     "oidcCAConfigMap": {
-      "description": "Managed cluster ConfigMap containing the private issuer CA in the ca.crt key. Empty uses system root CAs.",
+      "description": "Managed cluster ConfigMap watched for the private issuer CA in the ca.crt key. Empty uses system root CAs.",
       "type": "string"
     },
     "oidcClientID": {

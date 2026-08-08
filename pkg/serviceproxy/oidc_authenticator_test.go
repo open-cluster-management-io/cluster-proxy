@@ -7,12 +7,9 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
-	"fmt"
 	"maps"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -23,7 +20,6 @@ import (
 	"github.com/coreos/go-oidc/v3/oidc/oidctest"
 	"github.com/spf13/cobra"
 	"k8s.io/apiserver/pkg/authentication/authenticator"
-	"k8s.io/apiserver/pkg/authentication/user"
 )
 
 // rejectTokenReview rejects every token, so requests fall through to the OIDC
@@ -39,7 +35,6 @@ type fakeIssuer struct {
 	server         *httptest.Server
 	key            *rsa.PrivateKey
 	caPEM          []byte
-	caFile         string
 	discoveryTried atomic.Bool
 	failDiscovery  atomic.Bool
 }
@@ -87,13 +82,27 @@ func newFakeIssuer(t *testing.T) *fakeIssuer {
 
 	f.server = httptest.NewTLSServer(handler)
 	f.caPEM = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: f.server.Certificate().Raw})
-	f.caFile = filepath.Join(t.TempDir(), "ca.crt")
-	if err := os.WriteFile(f.caFile, f.caPEM, 0600); err != nil {
-		t.Fatalf("failed to write fake issuer CA file: %v", err)
-	}
 	t.Cleanup(f.server.Close)
 	oidcServer.SetIssuer(f.server.URL)
 	return f
+}
+
+func mustNewOIDCAuthenticator(t *testing.T, opts oidcOptions) *oidcAuthenticator {
+	t.Helper()
+	authn, err := newOIDCAuthenticator(t.Context(), opts)
+	if err != nil {
+		t.Fatalf("failed to initialize OIDC authenticator: %v", err)
+	}
+	return authn
+}
+
+func (f *fakeIssuer) newAuthenticator(t *testing.T, opts oidcOptions) *oidcAuthenticator {
+	t.Helper()
+	authn := mustNewOIDCAuthenticator(t, opts)
+	if _, err := authn.reconcileCABundle(caConfigurationKey("test", f.caPEM), f.caPEM); err != nil {
+		t.Fatalf("failed to reconcile fake issuer CA: %v", err)
+	}
+	return authn
 }
 
 func authenticateUntilSettled(t *testing.T, authn authenticator.Token, token string, timeout time.Duration) (*authenticator.Response, bool, error) {
@@ -118,7 +127,7 @@ func (f *fakeIssuer) defaultOpts() oidcOptions {
 		issuerURL:            f.server.URL,
 		clientID:             "test-client",
 		usernameClaim:        "sub",
-		caFile:               f.caFile,
+		caConfigMap:          "oidc-ca",
 		signingAlgs:          []string{oidc.RS256},
 		reservedNamePrefixes: []string{"system:"}, // the --oidc-reserved-name-prefixes flag default
 	}
@@ -292,7 +301,7 @@ func TestOIDCAuthenticator_ClaimMapping(t *testing.T) {
 			if tt.opts != nil {
 				tt.opts(&opts)
 			}
-			authn := newOIDCAuthenticator(t.Context(), opts)
+			authn := issuer.newAuthenticator(t, opts)
 
 			token := issuer.signToken(t, issuer.claims(tt.claims))
 			resp, ok, err := authenticateUntilSettled(t, authn, token, 5*time.Second)
@@ -382,7 +391,7 @@ func TestOIDCAuthenticator_HealthSnapshot(t *testing.T) {
 
 func TestOIDCAuthenticator_MalformedToken(t *testing.T) {
 	issuer := newFakeIssuer(t)
-	authn := newOIDCAuthenticator(t.Context(), issuer.defaultOpts())
+	authn := issuer.newAuthenticator(t, issuer.defaultOpts())
 
 	for _, token := range []string{"garbage", "a.b", "a.!!!.c", ""} {
 		resp, ok, err := authn.AuthenticateToken(context.Background(), token)
@@ -401,7 +410,7 @@ func TestOIDCAuthenticator_MalformedToken(t *testing.T) {
 func TestOIDCAuthenticator_ForeignIssuer(t *testing.T) {
 	issuer := newFakeIssuer(t)
 
-	authn := newOIDCAuthenticator(t.Context(), issuer.defaultOpts())
+	authn := issuer.newAuthenticator(t, issuer.defaultOpts())
 	token := issuer.signToken(t, issuer.claims(map[string]any{"iss": "https://foreign.example.com"}))
 
 	_, ok, err := authn.AuthenticateToken(context.Background(), token)
@@ -418,7 +427,7 @@ func TestOIDCAuthenticator_IssuerUnreachable(t *testing.T) {
 	token := issuer.signToken(t, issuer.claims(nil))
 	issuer.server.Close()
 
-	authn := newOIDCAuthenticator(t.Context(), issuer.defaultOpts())
+	authn := issuer.newAuthenticator(t, issuer.defaultOpts())
 	resp, ok, err := authn.AuthenticateToken(context.Background(), token)
 	if err == nil {
 		t.Fatal("expected error when issuer is unreachable")
@@ -434,13 +443,28 @@ func TestOIDCAuthenticator_IssuerUnreachable(t *testing.T) {
 	}
 }
 
+func TestOIDCAuthenticator_EagerSystemRootInitialization(t *testing.T) {
+	issuer := newFakeIssuer(t)
+	opts := issuer.defaultOpts()
+	opts.caConfigMap = ""
+	authn := mustNewOIDCAuthenticator(t, opts)
+
+	authn.mu.RLock()
+	defer authn.mu.RUnlock()
+	if authn.delegate == nil || authn.initializationError != nil {
+		t.Fatalf("expected system-root authenticator to initialize eagerly, got delegate=%v err=%v",
+			authn.delegate, authn.initializationError)
+	}
+}
+
 func TestOIDCAuthenticator_DiscoveryRetry(t *testing.T) {
 	issuer := newFakeIssuer(t)
-	authn := newOIDCAuthenticator(t.Context(), issuer.defaultOpts())
+	issuer.failDiscovery.Store(true)
+	authn := issuer.newAuthenticator(t, issuer.defaultOpts())
 	token := issuer.signToken(t, issuer.claims(nil))
 
-	// first request fails discovery -> infrastructure error, not cached
-	issuer.failDiscovery.Store(true)
+	// Discovery begins eagerly and an authentication request observes its
+	// infrastructure error while the issuer remains unavailable.
 	_, ok, err := authn.AuthenticateToken(context.Background(), token)
 	if err == nil || ok {
 		t.Fatalf("expected discovery failure, got ok=%v err=%v", ok, err)
@@ -479,163 +503,11 @@ func TestOIDCAuthenticator_DiscoveryRetry(t *testing.T) {
 	}
 }
 
-func TestOIDCAuthenticator_CAFileMissing(t *testing.T) {
-	issuer := newFakeIssuer(t)
-	token := issuer.signToken(t, issuer.claims(nil))
-
-	caFile := filepath.Join(t.TempDir(), "missing.crt")
-	opts := issuer.defaultOpts()
-	opts.caFile = caFile
-	authn := newOIDCAuthenticator(t.Context(), opts)
-
-	_, ok, err := authn.AuthenticateToken(context.Background(), token)
-	if err == nil || ok {
-		t.Fatalf("expected CA file error, got ok=%v err=%v", ok, err)
-	}
-	if errors.Is(err, ErrTokenNotAuthenticated) {
-		t.Fatal("missing CA file should NOT be wrapped with ErrTokenNotAuthenticated")
-	}
-	if !strings.Contains(err.Error(), "failed to read oidc CA file") {
-		t.Fatalf("expected CA file read error, got: %v", err)
-	}
-
-	if err := os.WriteFile(caFile, issuer.caPEM, 0600); err != nil {
-		t.Fatalf("failed to create late OIDC CA file: %v", err)
-	}
-	resp, ok, err := authenticateUntilSettled(t, authn, token, 5*time.Second)
-	if err != nil || !ok {
-		t.Fatalf("expected authentication to recover after CA creation, got ok=%v err=%v", ok, err)
-	}
-	if wantName := issuer.server.URL + "#test-user"; resp.User.GetName() != wantName {
-		t.Fatalf("expected username %q, got %q", wantName, resp.User.GetName())
-	}
-}
-
-func TestProcessAuthentication_OIDCToken(t *testing.T) {
-	s := &serviceProxy{
-		enableImpersonation:         true,
-		managedClusterAuthenticator: rejectTokenReview,
-		hubAuthenticator:            rejectTokenReview,
-		oidcAuthenticator: authenticator.TokenFunc(func(ctx context.Context, token string) (*authenticator.Response, bool, error) {
-			return &authenticator.Response{
-				User: &user.DefaultInfo{
-					Name:   "oidc:alice",
-					Groups: []string{"oidc:team-a"},
-				},
-			}, true, nil
-		}),
-		getImpersonateTokenFunc: func() (string, error) {
-			return "fake-sa-token", nil
-		},
-	}
-
-	ctx := t.Context()
-	req, _ := http.NewRequestWithContext(ctx, "GET", "https://example.com/api", nil)
-	req.Header.Set("Authorization", "Bearer dex-token")
-
-	if err := s.processAuthentication(ctx, req); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// OIDC users are impersonated without any cluster:hub: prefix
-	if req.Header.Get("Impersonate-User") != "oidc:alice" {
-		t.Fatalf("expected impersonate user 'oidc:alice', got '%s'", req.Header.Get("Impersonate-User"))
-	}
-	groups := req.Header.Values("Impersonate-Group")
-	if !slices.Equal(groups, []string{"oidc:team-a", user.AllAuthenticated}) {
-		t.Fatalf("unexpected impersonate groups: %v", groups)
-	}
-	if req.Header.Get("Authorization") != "Bearer fake-sa-token" {
-		t.Fatalf("expected authorization header to use impersonation token, got '%s'", req.Header.Get("Authorization"))
-	}
-}
-
-func TestProcessAuthentication_OIDCTokenAlreadyAuthenticatedGroup(t *testing.T) {
-	s := &serviceProxy{
-		enableImpersonation:         true,
-		managedClusterAuthenticator: rejectTokenReview,
-		hubAuthenticator:            rejectTokenReview,
-		oidcAuthenticator: authenticator.TokenFunc(func(ctx context.Context, token string) (*authenticator.Response, bool, error) {
-			return &authenticator.Response{
-				User: &user.DefaultInfo{
-					Name:   "oidc:bob",
-					Groups: []string{user.AllAuthenticated},
-				},
-			}, true, nil
-		}),
-		getImpersonateTokenFunc: func() (string, error) {
-			return "fake-sa-token", nil
-		},
-	}
-
-	ctx := t.Context()
-	req, _ := http.NewRequestWithContext(ctx, "GET", "https://example.com/api", nil)
-	req.Header.Set("Authorization", "Bearer dex-token")
-
-	if err := s.processAuthentication(ctx, req); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if groups := req.Header.Values("Impersonate-Group"); !slices.Equal(groups, []string{user.AllAuthenticated}) {
-		t.Fatalf("expected system:authenticated exactly once, got %v", groups)
-	}
-}
-
-func TestProcessAuthentication_OIDCTokenRejected(t *testing.T) {
-	s := &serviceProxy{
-		enableImpersonation:         true,
-		managedClusterAuthenticator: rejectTokenReview,
-		hubAuthenticator:            rejectTokenReview,
-		oidcAuthenticator: authenticator.TokenFunc(func(ctx context.Context, token string) (*authenticator.Response, bool, error) {
-			return nil, false, fmt.Errorf("token expired: %w", ErrTokenNotAuthenticated)
-		}),
-	}
-
-	ctx := t.Context()
-	req, _ := http.NewRequestWithContext(ctx, "GET", "https://example.com/api", nil)
-	req.Header.Set("Authorization", "Bearer expired-token")
-
-	err := s.processAuthentication(ctx, req)
-	if err == nil {
-		t.Fatal("expected authentication error")
-	}
-	if !strings.Contains(err.Error(), "not valid for managed cluster, hub cluster, or the configured OIDC issuer") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestProcessAuthentication_OIDCInfraError(t *testing.T) {
-	s := &serviceProxy{
-		enableImpersonation:         true,
-		managedClusterAuthenticator: rejectTokenReview,
-		hubAuthenticator:            rejectTokenReview,
-		oidcAuthenticator: authenticator.TokenFunc(func(ctx context.Context, token string) (*authenticator.Response, bool, error) {
-			return nil, false, errors.New("issuer unreachable")
-		}),
-	}
-
-	ctx := t.Context()
-	req, _ := http.NewRequestWithContext(ctx, "GET", "https://example.com/api", nil)
-	req.Header.Set("Authorization", "Bearer some-token")
-
-	err := s.processAuthentication(ctx, req)
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	if !strings.Contains(err.Error(), "oidc auth error") {
-		t.Fatalf("expected oidc auth error, got: %v", err)
-	}
-	if !strings.Contains(err.Error(), "issuer unreachable") {
-		t.Fatalf("expected original error message preserved, got: %v", err)
-	}
-}
-
 func TestValidate_OIDCFlags(t *testing.T) {
 	tests := []struct {
-		name            string
-		oidc            oidcOptions
-		noImpersonation bool
-		wantErr         string
+		name    string
+		oidc    oidcOptions
+		wantErr string
 	}{
 		{
 			name: "oidc disabled",
@@ -663,12 +535,6 @@ func TestValidate_OIDCFlags(t *testing.T) {
 				signingAlgs:   []string{oidc.RS256},
 			},
 			wantErr: "URL scheme must be https",
-		},
-		{
-			name:            "issuer without impersonation",
-			oidc:            oidcOptions{issuerURL: "https://dex.example.com/dex", clientID: "cluster-proxy"},
-			noImpersonation: true,
-			wantErr:         "--oidc-issuer-url requires --enable-impersonation=true",
 		},
 		{
 			name:    "client id without issuer",
@@ -715,7 +581,12 @@ func TestValidate_OIDCFlags(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := &serviceProxy{cert: "tls.crt", key: "tls.key", enableImpersonation: !tt.noImpersonation, oidc: tt.oidc}
+			factory := &oidcAuthProviderFactory{options: tt.oidc}
+			s := &serviceProxy{
+				cert:                  "tls.crt",
+				key:                   "tls.key",
+				authProviderFactories: []authProviderFactory{factory},
+			}
 
 			err := s.validate()
 			if tt.wantErr == "" {
@@ -735,28 +606,31 @@ func TestValidate_OIDCFlags(t *testing.T) {
 }
 
 func TestOIDCReservedNamePrefixesDisabled(t *testing.T) {
-	s := newServiceProxy()
+	factory := newOIDCAuthProviderFactory()
+	s := &serviceProxy{authProviderFactories: []authProviderFactory{factory}}
 	cmd := &cobra.Command{}
 	s.AddFlags(cmd)
 
 	if err := cmd.ParseFlags([]string{"--oidc-reserved-name-prefixes="}); err != nil {
 		t.Fatalf("unexpected flag parsing error: %v", err)
 	}
-	if len(s.oidc.reservedNamePrefixes) != 0 {
-		t.Fatalf("expected no reserved name prefixes, got %q", s.oidc.reservedNamePrefixes)
+	if len(factory.options.reservedNamePrefixes) != 0 {
+		t.Fatalf("expected no reserved name prefixes, got %q", factory.options.reservedNamePrefixes)
 	}
 }
 
 func TestOIDCFlagParsing(t *testing.T) {
-	s := newServiceProxy()
+	factory := newOIDCAuthProviderFactory()
+	s := &serviceProxy{authProviderFactories: []authProviderFactory{factory}}
 	cmd := &cobra.Command{}
 	s.AddFlags(cmd)
 
-	if !slices.Equal(s.oidc.reservedNamePrefixes, []string{"system:"}) {
-		t.Fatalf("expected reserved name prefixes to default to [system:], got %v", s.oidc.reservedNamePrefixes)
+	if !slices.Equal(factory.options.reservedNamePrefixes, []string{"system:"}) {
+		t.Fatalf("expected reserved name prefixes to default to [system:], got %v", factory.options.reservedNamePrefixes)
 	}
 
 	err := cmd.ParseFlags([]string{
+		"--oidc-ca-configmap=oidc-ca",
 		"--oidc-signing-algs=RS256,ES256",
 		"--oidc-required-claim=hd=example.com",
 		"--oidc-required-claim=tenant=value=with=equals",
@@ -765,17 +639,32 @@ func TestOIDCFlagParsing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected flag parsing error: %v", err)
 	}
-	if !slices.Equal(s.oidc.signingAlgs, []string{"RS256", "ES256"}) {
-		t.Fatalf("unexpected signing algorithms: %v", s.oidc.signingAlgs)
+	if !slices.Equal(factory.options.signingAlgs, []string{"RS256", "ES256"}) {
+		t.Fatalf("unexpected signing algorithms: %v", factory.options.signingAlgs)
 	}
-	if !slices.Equal(s.oidc.reservedNamePrefixes, []string{"system:", "dev:"}) {
-		t.Fatalf("unexpected reserved name prefixes: %v", s.oidc.reservedNamePrefixes)
+	if factory.options.caConfigMap != "oidc-ca" {
+		t.Fatalf("unexpected OIDC CA ConfigMap: %q", factory.options.caConfigMap)
+	}
+	if !slices.Equal(factory.options.reservedNamePrefixes, []string{"system:", "dev:"}) {
+		t.Fatalf("unexpected reserved name prefixes: %v", factory.options.reservedNamePrefixes)
 	}
 	wantRequiredClaims := map[string]string{
 		"hd":     "example.com",
 		"tenant": "value=with=equals",
 	}
-	if !maps.Equal(s.oidc.requiredClaims, wantRequiredClaims) {
-		t.Fatalf("expected required claims %v, got %v", wantRequiredClaims, s.oidc.requiredClaims)
+	if !maps.Equal(factory.options.requiredClaims, wantRequiredClaims) {
+		t.Fatalf("expected required claims %v, got %v", wantRequiredClaims, factory.options.requiredClaims)
+	}
+}
+
+func TestOIDCCAFileFlagRemoved(t *testing.T) {
+	factory := newOIDCAuthProviderFactory()
+	s := &serviceProxy{authProviderFactories: []authProviderFactory{factory}}
+	cmd := &cobra.Command{}
+	s.AddFlags(cmd)
+
+	err := cmd.ParseFlags([]string{"--oidc-ca-file=/tmp/ca.crt"})
+	if err == nil || !strings.Contains(err.Error(), "unknown flag") {
+		t.Fatalf("expected --oidc-ca-file to be rejected, got: %v", err)
 	}
 }

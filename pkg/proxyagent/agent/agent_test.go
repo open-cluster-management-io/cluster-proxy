@@ -14,6 +14,7 @@ import (
 	mathrand "math/rand"
 	"net"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -750,27 +751,18 @@ func TestNewAgentAddon(t *testing.T) {
 						"--oidc-groups-claim=groups",
 						"--oidc-groups-prefix=oidc:",
 						"--oidc-reserved-name-prefixes=system:,dev:",
-						"--oidc-ca-file=/oidc-ca/ca.crt",
+						"--oidc-ca-configmap=dex-ca",
 						"--oidc-signing-algs=RS256,ES256",
 						"--oidc-required-claim=hd=example.com",
 						"--oidc-required-claim=tenant=tenant-id",
 					})
-
-					assert.Contains(t, serviceProxy.VolumeMounts, corev1.VolumeMount{
-						Name:      "oidc-ca",
-						MountPath: "/oidc-ca",
-						ReadOnly:  true,
-					})
+					assert.False(t, slices.ContainsFunc(serviceProxy.VolumeMounts, func(mount corev1.VolumeMount) bool {
+						return mount.Name == "oidc-ca"
+					}))
 				}
-				assert.Contains(t, agentDeploy.Spec.Template.Spec.Volumes, corev1.Volume{
-					Name: "oidc-ca",
-					VolumeSource: corev1.VolumeSource{
-						ConfigMap: &corev1.ConfigMapVolumeSource{
-							LocalObjectReference: corev1.LocalObjectReference{Name: "dex-ca"},
-							Optional:             ptr.To(true),
-						},
-					},
-				})
+				assert.False(t, slices.ContainsFunc(agentDeploy.Spec.Template.Spec.Volumes, func(volume corev1.Volume) bool {
+					return volume.Name == "oidc-ca"
+				}))
 			},
 		},
 		{
@@ -841,18 +833,42 @@ func TestNewAgentAddon(t *testing.T) {
 			expectedErrorMsg:   "oidcIssuerURL and oidcClientID must be specified together",
 		},
 		{
-			name:               "rejects oidc when impersonation is disabled",
+			name:               "enableImpersonation=false disables hub authentication",
 			cluster:            newCluster(clusterName, true),
 			addon:              newAddonWithDeploymentConfig(),
 			managedProxyConfig: newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypePortForward),
 			addOndDeploymentConfigs: []runtime.Object{newAddOnDeploymentConfigWithVariables(addOndDeployConfigName, clusterName,
-				addonv1beta1.CustomizedVariable{Name: "oidcIssuerURL", Value: "https://dex.example.com/dex"},
-				addonv1beta1.CustomizedVariable{Name: "oidcClientID", Value: "cluster-proxy"},
 				addonv1beta1.CustomizedVariable{Name: "enableImpersonation", Value: "false"},
 			)},
 			enableKubeApiProxy: true,
 			enableServiceProxy: true,
-			expectedErrorMsg:   "oidcIssuerURL requires enableImpersonation=true",
+			verifyManifests: func(t *testing.T, manifests []runtime.Object) {
+				serviceProxy := getDeploymentContainer(getAgentDeployment(manifests), "service-proxy")
+				if assert.NotNil(t, serviceProxy) {
+					assert.Contains(t, serviceProxy.Args, "--enable-impersonation=false")
+				}
+				assert.False(t, clusterRoleAllowsImpersonation(getClusterRole(manifests, "cluster-proxy-addon-agent-impersonator")))
+			},
+		},
+		{
+			name:               "oidc grants impersonation when enableImpersonation=false",
+			cluster:            newCluster(clusterName, true),
+			addon:              newAddonWithDeploymentConfig(),
+			managedProxyConfig: newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypePortForward),
+			addOndDeploymentConfigs: []runtime.Object{newAddOnDeploymentConfigWithVariables(addOndDeployConfigName, clusterName,
+				addonv1beta1.CustomizedVariable{Name: "enableImpersonation", Value: "false"},
+				addonv1beta1.CustomizedVariable{Name: "oidcIssuerURL", Value: "https://dex.example.com/dex"},
+				addonv1beta1.CustomizedVariable{Name: "oidcClientID", Value: "cluster-proxy"},
+			)},
+			enableKubeApiProxy: true,
+			enableServiceProxy: true,
+			verifyManifests: func(t *testing.T, manifests []runtime.Object) {
+				serviceProxy := getDeploymentContainer(getAgentDeployment(manifests), "service-proxy")
+				if assert.NotNil(t, serviceProxy) {
+					assert.Contains(t, serviceProxy.Args, "--enable-impersonation=false")
+				}
+				assert.True(t, clusterRoleAllowsImpersonation(getClusterRole(manifests, "cluster-proxy-addon-agent-impersonator")))
+			},
 		},
 		{
 			// customizedVariables are string-typed, so the chart's schema is what
@@ -1326,6 +1342,29 @@ func getAgentDeployment(manifests []runtime.Object) *appsv1.Deployment {
 	}
 
 	return nil
+}
+
+func getClusterRole(manifests []runtime.Object, name string) *rbacv1.ClusterRole {
+	for _, manifest := range manifests {
+		if clusterRole, ok := manifest.(*rbacv1.ClusterRole); ok && clusterRole.Name == name {
+			return clusterRole
+		}
+	}
+	return nil
+}
+
+func clusterRoleAllowsImpersonation(clusterRole *rbacv1.ClusterRole) bool {
+	if clusterRole == nil {
+		return false
+	}
+	for _, rule := range clusterRole.Rules {
+		if slices.Contains(rule.Verbs, "impersonate") &&
+			slices.Contains(rule.Resources, "users") &&
+			slices.Contains(rule.Resources, "groups") {
+			return true
+		}
+	}
+	return false
 }
 
 func getAgentNetworkPolicy(manifests []runtime.Object) *networkingv1.NetworkPolicy {
