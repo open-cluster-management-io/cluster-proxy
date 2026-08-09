@@ -2,6 +2,7 @@ package utils
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net/http"
@@ -16,7 +17,18 @@ import (
 const (
 	DefaultDrainTimeout     = 30 * time.Second
 	DefaultMinDrainDuration = 10 * time.Second
+	proxyReadHeaderTimeout  = 32 * time.Second
 )
+
+// NewProxyHTTPServer creates an HTTP server for proxy traffic.
+func NewProxyHTTPServer(address string, tlsConfig *tls.Config, handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              address,
+		TLSConfig:         tlsConfig,
+		Handler:           handler,
+		ReadHeaderTimeout: proxyReadHeaderTimeout,
+	}
+}
 
 // DrainConfig controls how long active HTTP requests may remain during shutdown.
 // MinDuration is part of, rather than additional to, Timeout.
