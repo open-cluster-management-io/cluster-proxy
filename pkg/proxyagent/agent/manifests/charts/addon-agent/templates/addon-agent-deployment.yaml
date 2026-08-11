@@ -150,9 +150,6 @@ spec:
         {{- if ne (empty .Values.oidcIssuerURL) (empty .Values.oidcClientID) }}
           {{- fail "oidcIssuerURL and oidcClientID must be specified together" }}
         {{- end }}
-        {{- if and .Values.oidcIssuerURL (ne .Values.enableImpersonation "true") }}
-          {{- fail "oidcIssuerURL requires enableImpersonation=true" }}
-        {{- end }}
         - name: service-proxy
           {{- $reverseResourceRequirements := reverse .Values.global.resourceRequirements }}
           {{- range $item := $reverseResourceRequirements }}

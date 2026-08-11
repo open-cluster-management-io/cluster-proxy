@@ -27,7 +27,7 @@
       "type": "string"
     },
     "enableImpersonation": {
-      "description": "Enable service-proxy impersonation for hub and external OIDC identities.",
+      "description": "Enable service-proxy impersonation for hub identities.",
       "type": "string"
     },
     "global": {
