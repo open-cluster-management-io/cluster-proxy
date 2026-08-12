@@ -15,6 +15,7 @@ import (
 	"github.com/spf13/cobra"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	certutil "k8s.io/client-go/util/cert"
 	"k8s.io/klog/v2"
 
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
@@ -150,35 +151,18 @@ func (s *serviceProxy) Run(ctx context.Context) error {
 		return err
 	}
 
-	// get root CAs
-	s.rootCAs = x509.NewCertPool()
-	// ca for accessing apiserver
-
-	apiserverPem, err := os.ReadFile(rootCAFile)
+	rootCAs, additionalCALoaded, err := loadRootCAs(rootCAFile, s.additionalServiceCA)
 	if err != nil {
 		return err
 	}
-	s.rootCAs.AppendCertsFromPEM(apiserverPem)
-
-	// ca for accessing additional services
-	if s.additionalServiceCA != "" {
-		additionalCAPem, err := os.ReadFile(s.additionalServiceCA)
+	s.rootCAs = rootCAs
+	if additionalCALoaded {
+		// add configchecker into http probes when additional-service-ca is provided
+		cc, err := addonutils.NewConfigChecker("additional-service-ca", s.additionalServiceCA)
 		if err != nil {
-			if os.IsNotExist(err) {
-				klog.Infof("additional-service-ca file not found: %s", s.additionalServiceCA)
-			} else {
-				return err
-			}
-		} else {
-			s.rootCAs.AppendCertsFromPEM(additionalCAPem)
-
-			// add configchecker into http probes when additional-service-ca is provided
-			cc, err := addonutils.NewConfigChecker("additional-service-ca", s.additionalServiceCA)
-			if err != nil {
-				return err
-			}
-			customChecks = append(customChecks, cc.Check)
+			return err
 		}
+		customChecks = append(customChecks, cc.Check)
 	}
 
 	s.proxyTransport = s.newProxyTransport()
@@ -234,6 +218,38 @@ func (s *serviceProxy) Run(ctx context.Context) error {
 		s.key,
 		healthServer,
 	)
+}
+
+// loadRootCAs builds the root CA pool from the apiserver CA and, when
+// configured and present, the additional service CA. The returned bool
+// reports whether the additional service CA was loaded.
+func loadRootCAs(rootCAFile, additionalServiceCA string) (*x509.CertPool, bool, error) {
+	// ca for accessing apiserver
+	rootCAs, err := certutil.NewPool(rootCAFile)
+	if err != nil {
+		return nil, false, err
+	}
+
+	// ca for accessing additional services
+	if additionalServiceCA == "" {
+		return rootCAs, false, nil
+	}
+	additionalCAPem, err := os.ReadFile(additionalServiceCA)
+	if os.IsNotExist(err) {
+		klog.Infof("additional-service-ca file not found: %s", additionalServiceCA)
+		return rootCAs, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	additionalCerts, err := certutil.ParseCertsPEM(additionalCAPem)
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to parse additional service CA %s: %w", additionalServiceCA, err)
+	}
+	for _, cert := range additionalCerts {
+		rootCAs.AddCert(cert)
+	}
+	return rootCAs, true, nil
 }
 
 func (s *serviceProxy) ServeHTTP(wr http.ResponseWriter, req *http.Request) {

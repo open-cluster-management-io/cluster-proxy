@@ -18,6 +18,7 @@ import (
 	grpccredentials "google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/keepalive"
 	"k8s.io/client-go/kubernetes"
+	certutil "k8s.io/client-go/util/cert"
 	"k8s.io/klog/v2"
 
 	addonutils "open-cluster-management.io/addon-framework/pkg/utils"
@@ -128,13 +129,9 @@ func (k *userServer) init(ctx context.Context) error {
 	}
 
 	// prepare ca for service proxy server
-	serviceProxyCaCert, err := os.ReadFile(k.serviceProxyCACertPath)
+	serviceProxyRootCA, err = certutil.NewPool(k.serviceProxyCACertPath)
 	if err != nil {
-		return err
-	}
-	serviceProxyRootCA = x509.NewCertPool()
-	if ok := serviceProxyRootCA.AppendCertsFromPEM(serviceProxyCaCert); !ok {
-		return fmt.Errorf("failed to parse service proxy ca cert")
+		return fmt.Errorf("failed to load service proxy ca cert: %w", err)
 	}
 
 	k.getTunnel = func(tunnelCtx context.Context) (konnectivity.Tunnel, error) {
