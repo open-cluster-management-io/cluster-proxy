@@ -123,18 +123,24 @@ func TestAuthProviderFactoryLifecycleDelegation(t *testing.T) {
 }
 
 func TestInitializeAuthProvidersUsesEnabledFactoriesInRegistryOrder(t *testing.T) {
-	var built []authProviderID
+	const podNamespace = "addon"
+	var (
+		built                []authProviderID
+		builtInPodNamespaces []string
+	)
 	newFactory := func(id authProviderID, enabled bool) authProviderFactory {
 		return fakeAuthProviderFactory{
 			enabledValue: enabled,
-			buildFunc: func(context.Context, authProviderDependencies) (authProvider, error) {
+			buildFunc: func(_ context.Context, dependencies authProviderDependencies) (authProvider, error) {
 				built = append(built, id)
+				builtInPodNamespaces = append(builtInPodNamespaces, dependencies.podNamespace)
 				return newFakeAuthProvider(id), nil
 			},
 		}
 	}
 
 	s := &serviceProxy{
+		podNamespace: podNamespace,
 		authProviderFactories: []authProviderFactory{
 			newFactory("first", true),
 			newFactory("disabled", false),
@@ -142,12 +148,15 @@ func TestInitializeAuthProvidersUsesEnabledFactoriesInRegistryOrder(t *testing.T
 		},
 	}
 
-	if err := s.initializeAuthProviders(t.Context(), "addon"); err != nil {
+	if err := s.initializeAuthProviders(t.Context()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
 	if want := []authProviderID{"first", "second"}; !slices.Equal(built, want) {
 		t.Fatalf("built providers = %v, want %v", built, want)
+	}
+	if want := []string{podNamespace, podNamespace}; !slices.Equal(builtInPodNamespaces, want) {
+		t.Fatalf("provider pod namespaces = %v, want %v", builtInPodNamespaces, want)
 	}
 	providerIDs := make([]authProviderID, 0, len(s.authProviders))
 	for _, provider := range s.authProviders {
@@ -162,6 +171,7 @@ func TestInitializeAuthProvidersDoesNotPublishPartialFactoryResults(t *testing.T
 	buildErr := errors.New("build failed")
 	existing := newFakeAuthProvider("existing")
 	s := &serviceProxy{
+		podNamespace: "addon",
 		authProviderFactories: []authProviderFactory{
 			fakeAuthProviderFactory{
 				enabledValue: true,
@@ -179,7 +189,7 @@ func TestInitializeAuthProvidersDoesNotPublishPartialFactoryResults(t *testing.T
 		authProviders: []authProvider{existing},
 	}
 
-	if err := s.initializeAuthProviders(t.Context(), "addon"); !errors.Is(err, buildErr) {
+	if err := s.initializeAuthProviders(t.Context()); !errors.Is(err, buildErr) {
 		t.Fatalf("error = %v, want %v", err, buildErr)
 	}
 	if len(s.authProviders) != 1 || s.authProviders[0] != existing {
@@ -220,6 +230,7 @@ func TestInitializeAuthProviders(t *testing.T) {
 			hubFactory := &hubAuthProviderFactory{enableImpersonation: tt.enableImpersonation}
 			oidcFactory := newOIDCAuthProviderFactory()
 			s := &serviceProxy{
+				podNamespace:          "addon",
 				authProviderFactories: []authProviderFactory{hubFactory, oidcFactory},
 			}
 			s.managedClusterKubeClient = fake.NewSimpleClientset()
@@ -231,7 +242,7 @@ func TestInitializeAuthProviders(t *testing.T) {
 				oidcFactory.options.issuerURL = "https://issuer.example.com"
 				oidcFactory.options.clientID = "cluster-proxy"
 			}
-			if err := s.initializeAuthProviders(t.Context(), "addon"); err != nil {
+			if err := s.initializeAuthProviders(t.Context()); err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
 
@@ -249,6 +260,7 @@ func TestInitializeAuthProviders(t *testing.T) {
 func TestInitializeAuthProvidersFailureDoesNotPublishPartialProviders(t *testing.T) {
 	s := &serviceProxy{
 		managedClusterKubeClient: fake.NewSimpleClientset(),
+		podNamespace:             "addon",
 		authProviderFactories: []authProviderFactory{
 			&hubAuthProviderFactory{
 				enableImpersonation: true,
@@ -257,7 +269,7 @@ func TestInitializeAuthProvidersFailureDoesNotPublishPartialProviders(t *testing
 		},
 	}
 
-	if err := s.initializeAuthProviders(t.Context(), "addon"); err == nil {
+	if err := s.initializeAuthProviders(t.Context()); err == nil {
 		t.Fatal("expected hub kubeconfig error")
 	}
 	if len(s.authProviders) != 0 {

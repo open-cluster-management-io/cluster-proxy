@@ -65,10 +65,10 @@ func defaultAuthProviderFactories() []authProviderFactory {
 	}
 }
 
-func (s *serviceProxy) authProviderDependencies(podNamespace string) authProviderDependencies {
+func (s *serviceProxy) authProviderDependencies() authProviderDependencies {
 	return authProviderDependencies{
 		managedClusterKubeClient: s.managedClusterKubeClient,
-		podNamespace:             podNamespace,
+		podNamespace:             s.podNamespace,
 		kubeClientQPS:            s.kubeClientQPS,
 		kubeClientBurst:          s.kubeClientBurst,
 		tokenReviewCacheTTL:      s.tokenReviewCacheTTL,
@@ -76,7 +76,7 @@ func (s *serviceProxy) authProviderDependencies(podNamespace string) authProvide
 	}
 }
 
-func (s *serviceProxy) initializeAuthProviders(ctx context.Context, podNamespace string) error {
+func (s *serviceProxy) initializeAuthProviders(ctx context.Context) error {
 	enabledFactories := make([]authProviderFactory, 0, len(s.authProviderFactories))
 
 	for _, factory := range s.authProviderFactories {
@@ -90,7 +90,7 @@ func (s *serviceProxy) initializeAuthProviders(ctx context.Context, podNamespace
 		return nil
 	}
 
-	dependencies := s.authProviderDependencies(podNamespace)
+	dependencies := s.authProviderDependencies()
 	providers := make([]authProvider, 0, len(enabledFactories)+1)
 	providers = append(providers, newManagedClusterAuthProvider(dependencies))
 

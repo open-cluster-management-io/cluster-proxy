@@ -72,6 +72,7 @@ type serviceProxy struct {
 	tokenReviewCacheTTL time.Duration
 	kubeClientQPS       float32
 	kubeClientBurst     int
+	podNamespace        string
 
 	managedClusterKubeClient kubernetes.Interface
 
@@ -182,16 +183,16 @@ func (s *serviceProxy) Run(ctx context.Context) error {
 		return err
 	}
 
-	podNamespace := os.Getenv("POD_NAMESPACE")
-	if len(podNamespace) == 0 {
+	s.podNamespace = os.Getenv("POD_NAMESPACE")
+	if len(s.podNamespace) == 0 {
 		return errors.New("pod namespace is empty, please set the POD_NAMESPACE environment variable")
 	}
 
-	if err := s.initializeAuthProviders(runCtx, podNamespace); err != nil {
+	if err := s.initializeAuthProviders(runCtx); err != nil {
 		return err
 	}
 
-	sdkTLSConfig, err := sdktls.StartTLSConfigMapWatcher(runCtx, s.managedClusterKubeClient, podNamespace, func() {
+	sdkTLSConfig, err := sdktls.StartTLSConfigMapWatcher(runCtx, s.managedClusterKubeClient, s.podNamespace, func() {
 		klog.Info("TLS ConfigMap changed, shutting down gracefully for restart")
 		cancel()
 	})
