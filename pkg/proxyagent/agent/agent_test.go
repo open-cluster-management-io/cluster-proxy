@@ -751,27 +751,18 @@ func TestNewAgentAddon(t *testing.T) {
 						"--oidc-groups-claim=groups",
 						"--oidc-groups-prefix=oidc:",
 						"--oidc-reserved-name-prefixes=system:,dev:",
-						"--oidc-ca-file=/oidc-ca/ca.crt",
+						"--oidc-ca-configmap=dex-ca",
 						"--oidc-signing-algs=RS256,ES256",
 						"--oidc-required-claim=hd=example.com",
 						"--oidc-required-claim=tenant=tenant-id",
 					})
-
-					assert.Contains(t, serviceProxy.VolumeMounts, corev1.VolumeMount{
-						Name:      "oidc-ca",
-						MountPath: "/oidc-ca",
-						ReadOnly:  true,
-					})
+					assert.False(t, slices.ContainsFunc(serviceProxy.VolumeMounts, func(mount corev1.VolumeMount) bool {
+						return mount.Name == "oidc-ca"
+					}))
 				}
-				assert.Contains(t, agentDeploy.Spec.Template.Spec.Volumes, corev1.Volume{
-					Name: "oidc-ca",
-					VolumeSource: corev1.VolumeSource{
-						ConfigMap: &corev1.ConfigMapVolumeSource{
-							LocalObjectReference: corev1.LocalObjectReference{Name: "dex-ca"},
-							Optional:             ptr.To(true),
-						},
-					},
-				})
+				assert.False(t, slices.ContainsFunc(agentDeploy.Spec.Template.Spec.Volumes, func(volume corev1.Volume) bool {
+					return volume.Name == "oidc-ca"
+				}))
 			},
 		},
 		{

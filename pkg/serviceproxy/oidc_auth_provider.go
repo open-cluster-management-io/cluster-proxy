@@ -2,6 +2,7 @@ package serviceproxy
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/spf13/pflag"
@@ -54,7 +55,7 @@ func (f *oidcAuthProviderFactory) addFlags(flags *pflag.FlagSet) {
 	flags.StringVar(&f.options.groupsClaim, "oidc-groups-claim", f.options.groupsClaim, "The OIDC claim to use as the user's groups. The claim value is expected to be a string or an array of strings.")
 	flags.StringVar(&f.options.groupsPrefix, "oidc-groups-prefix", f.options.groupsPrefix, "The prefix prepended to group claims to prevent clashes with existing groups.")
 	flags.StringSliceVar(&f.options.reservedNamePrefixes, "oidc-reserved-name-prefixes", f.options.reservedNamePrefixes, "Comma-separated list of prefixes that authenticated OIDC usernames and groups must not use. The list replaces the default; set an empty value to disable the check.")
-	flags.StringVar(&f.options.caFile, "oidc-ca-file", f.options.caFile, "The path to a CA bundle used to verify the OIDC issuer's serving certificate. Defaults to the host's root CAs.")
+	flags.StringVar(&f.options.caConfigMap, "oidc-ca-configmap", f.options.caConfigMap, "The name of a ConfigMap in POD_NAMESPACE containing the OIDC issuer CA under ca.crt. The ConfigMap is watched and reconciled when it changes. Defaults to the host's root CAs.")
 	flags.StringSliceVar(&f.options.signingAlgs, "oidc-signing-algs", f.options.signingAlgs, "Comma-separated list of allowed JOSE asymmetric signing algorithms for OIDC tokens.")
 	flags.Var(cliflag.NewMapStringStringNoSplit(&f.options.requiredClaims), "oidc-required-claim", "A key=value pair that must be present in the OIDC ID token. Repeat this flag to require multiple claims.")
 }
@@ -72,8 +73,24 @@ func (*oidcAuthProviderFactory) configFiles() []string {
 }
 
 func (f *oidcAuthProviderFactory) build(ctx context.Context, dependencies authProviderDependencies) (authProvider, error) {
+	authn, err := newOIDCAuthenticator(ctx, f.options)
+	if err != nil {
+		return nil, err
+	}
+	if f.options.caConfigMap != "" {
+		if err := startOIDCCAConfigMapController(
+			ctx,
+			dependencies.managedClusterKubeClient,
+			dependencies.podNamespace,
+			f.options.caConfigMap,
+			authn,
+		); err != nil {
+			return nil, fmt.Errorf("failed to start OIDC CA ConfigMap controller: %w", err)
+		}
+	}
+
 	return &oidcAuthProvider{
-		Token:           newOIDCAuthenticator(ctx, f.options),
+		Token:           authn,
 		impersonateUser: dependencies.impersonateUser,
 	}, nil
 }
