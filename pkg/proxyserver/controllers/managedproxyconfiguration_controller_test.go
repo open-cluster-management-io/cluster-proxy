@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -114,4 +115,68 @@ func TestEnsureUpdatesRenderedDeploymentWithoutGenerationChange(t *testing.T) {
 	}
 	assert.Equal(t, changed.Spec.ProxyServer.Image, actual.Spec.Template.Spec.Containers[0].Image)
 	assert.Equal(t, desiredHash, actual.Annotations[common.AnnotationKeyRenderedHash])
+}
+
+func TestEnsureUpdatesRenderedServiceWithoutGenerationChange(t *testing.T) {
+	config := newTestConfig(3)
+	config.Name = "cluster-proxy"
+	config.Spec.ProxyServer.Namespace = "proxy-system"
+	config.Spec.ProxyServer.InClusterServiceName = "proxy-entrypoint"
+
+	existing := newProxyService(config)
+	existing.Spec.Ports[0].Port = 18090
+	existingHash, err := renderedResourceHash(existing)
+	if err != nil {
+		t.Fatal(err)
+	}
+	existing.Annotations = map[string]string{
+		common.AnnotationKeyConfigurationGeneration: "1",
+		common.AnnotationKeyRenderedHash:            existingHash,
+	}
+	existing.Spec.ClusterIP = "10.0.0.42"
+	existing.Spec.ClusterIPs = []string{"10.0.0.42"}
+	existing.Spec.IPFamilies = []corev1.IPFamily{corev1.IPv4Protocol}
+	ipFamilyPolicy := corev1.IPFamilyPolicySingleStack
+	existing.Spec.IPFamilyPolicy = &ipFamilyPolicy
+
+	scheme := runtime.NewScheme()
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(existing).Build()
+	reconciler := &ManagedProxyConfigurationReconciler{Client: fakeClient}
+
+	desired := newProxyService(config)
+	desiredHash, err := renderedResourceHash(desired)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	created, updated, err := reconciler.ensure(
+		1,
+		corev1.SchemeGroupVersion.WithKind("Service"),
+		desired,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.False(t, created)
+	assert.True(t, updated)
+
+	actual := &corev1.Service{}
+	if err := fakeClient.Get(context.Background(), client.ObjectKeyFromObject(existing), actual); err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, int32(8090), actual.Spec.Ports[0].Port)
+	assert.Equal(t, existing.Spec.ClusterIP, actual.Spec.ClusterIP)
+	assert.Equal(t, existing.Spec.ClusterIPs, actual.Spec.ClusterIPs)
+	assert.Equal(t, existing.Spec.IPFamilies, actual.Spec.IPFamilies)
+	assert.Equal(t, existing.Spec.IPFamilyPolicy, actual.Spec.IPFamilyPolicy)
+	assert.Equal(t, desiredHash, actual.Annotations[common.AnnotationKeyRenderedHash])
+
+	// API-assigned fields belong only to the update copy, not to the rendered resource.
+	assert.Empty(t, desired.Spec.ClusterIP)
+	assert.Empty(t, desired.Spec.ClusterIPs)
+	assert.Empty(t, desired.Spec.IPFamilies)
+	assert.Nil(t, desired.Spec.IPFamilyPolicy)
 }

@@ -14,6 +14,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
+	"open-cluster-management.io/cluster-proxy/pkg/common"
 )
 
 var _ = Describe("ManagedProxyConfigurationReconciler Test", func() {
@@ -159,6 +160,72 @@ var _ = Describe("ManagedProxyConfigurationReconciler Test", func() {
 					return fmt.Errorf("replicas is not correct, got %d", *deployment.Spec.Replicas)
 				}
 				return err
+			}, timeout, interval).Should(Succeed())
+		})
+
+		It("Should reconcile rendered service changes without replacing allocated network fields", func() {
+			var originalService *corev1.Service
+			Eventually(func() error {
+				service, err := kubeClient.CoreV1().Services(proxyServerNamespace).
+					Get(ctx, "proxy-entrypoint", metav1.GetOptions{})
+				if err != nil {
+					return err
+				}
+				if service.Spec.ClusterIP == "" {
+					return fmt.Errorf("service cluster IP is not allocated")
+				}
+				originalService = service.DeepCopy()
+				return nil
+			}, timeout, interval).Should(Succeed())
+
+			staleService := originalService.DeepCopy()
+			staleService.Spec.Ports[0].Port = 18090
+			staleService.Annotations[common.AnnotationKeyRenderedHash] = "stale-render"
+			_, err := kubeClient.CoreV1().Services(proxyServerNamespace).
+				Update(ctx, staleService, metav1.UpdateOptions{})
+			Expect(err).ToNot(HaveOccurred())
+
+			var generation int64
+			Eventually(func() error {
+				currentConfig := &proxyv1alpha1.ManagedProxyConfiguration{}
+				if err := ctrlClient.Get(ctx, client.ObjectKeyFromObject(config), currentConfig); err != nil {
+					return err
+				}
+				generation = currentConfig.Generation
+				if currentConfig.Annotations == nil {
+					currentConfig.Annotations = map[string]string{}
+				}
+				currentConfig.Annotations["proxy.open-cluster-management.io/test-trigger"] = "service-reconcile"
+				return ctrlClient.Update(ctx, currentConfig)
+			}, timeout, interval).Should(Succeed())
+
+			Eventually(func() error {
+				service, err := kubeClient.CoreV1().Services(proxyServerNamespace).
+					Get(ctx, "proxy-entrypoint", metav1.GetOptions{})
+				if err != nil {
+					return err
+				}
+				if service.Spec.Ports[0].Port != 8090 {
+					return fmt.Errorf("service port is not reconciled, got %d", service.Spec.Ports[0].Port)
+				}
+				if service.Annotations[common.AnnotationKeyRenderedHash] == "stale-render" {
+					return fmt.Errorf("service rendered hash is not reconciled")
+				}
+				if service.Spec.ClusterIP != originalService.Spec.ClusterIP ||
+					!equality.Semantic.DeepEqual(service.Spec.ClusterIPs, originalService.Spec.ClusterIPs) ||
+					!equality.Semantic.DeepEqual(service.Spec.IPFamilies, originalService.Spec.IPFamilies) ||
+					!equality.Semantic.DeepEqual(service.Spec.IPFamilyPolicy, originalService.Spec.IPFamilyPolicy) {
+					return fmt.Errorf("service allocated network fields changed")
+				}
+
+				currentConfig := &proxyv1alpha1.ManagedProxyConfiguration{}
+				if err := ctrlClient.Get(ctx, client.ObjectKeyFromObject(config), currentConfig); err != nil {
+					return err
+				}
+				if currentConfig.Generation != generation {
+					return fmt.Errorf("configuration generation changed from %d to %d", generation, currentConfig.Generation)
+				}
+				return nil
 			}, timeout, interval).Should(Succeed())
 		})
 	})

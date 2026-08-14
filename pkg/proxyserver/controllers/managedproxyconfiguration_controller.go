@@ -278,19 +278,21 @@ func (c *ManagedProxyConfigurationReconciler) ensure(incomingGeneration int64, g
 			return false, false, errors.Wrapf(err, "failed reading current generation for %v", gvk.Kind)
 		}
 	}
-	// EXCEPTIONS
-	// short-circuiting for service resources to avoid duplicated cluster-ip assignment
-	if gvk.Group == "" && gvk.Kind == "Service" {
-		return created, false, nil
-	}
-
 	// update if generation bumped, TLS config changed or the rendered manifest changed
 	tlsHashChanged := annotations[common.AnnotationKeyTLSConfigHash] !=
 		currentAnnotations[common.AnnotationKeyTLSConfigHash]
 	renderedHashChanged := renderedHash != currentAnnotations[common.AnnotationKeyRenderedHash]
 	if !created && (int(incomingGeneration) > currentGeneration || tlsHashChanged || renderedHashChanged) {
-		resource.SetResourceVersion(current.GetResourceVersion())
-		if err := c.Update(context.TODO(), resource); err != nil {
+		resourceToUpdate := resource
+		if gvk.Group == "" && gvk.Kind == "Service" {
+			resourceToUpdate, err = serviceForUpdate(resource, current)
+			if err != nil {
+				return false, false, errors.Wrap(err, "failed preparing Service update")
+			}
+		}
+
+		resourceToUpdate.SetResourceVersion(current.GetResourceVersion())
+		if err := c.Update(context.TODO(), resourceToUpdate); err != nil {
 			if apierrors.IsConflict(err) {
 				return c.ensure(incomingGeneration, gvk, resource)
 			}
@@ -304,6 +306,32 @@ func (c *ManagedProxyConfigurationReconciler) ensure(incomingGeneration int64, g
 		updated = true
 	}
 	return created, updated, nil
+}
+
+// serviceForUpdate preserves the network fields assigned by the API server. It mutates a copy so
+// that those cluster-specific values do not become part of the rendered hash on a conflict retry.
+func serviceForUpdate(resource client.Object, current *unstructured.Unstructured) (client.Object, error) {
+	desiredService, ok := resource.DeepCopyObject().(*corev1.Service)
+	if !ok {
+		return nil, fmt.Errorf("expected *corev1.Service, got %T", resource)
+	}
+
+	currentService := &corev1.Service{}
+	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(current.Object, currentService); err != nil {
+		return nil, err
+	}
+
+	desiredService.Spec.ClusterIP = currentService.Spec.ClusterIP
+	desiredService.Spec.ClusterIPs = append([]string(nil), currentService.Spec.ClusterIPs...)
+	if len(desiredService.Spec.IPFamilies) == 0 {
+		desiredService.Spec.IPFamilies = append([]corev1.IPFamily(nil), currentService.Spec.IPFamilies...)
+	}
+	if desiredService.Spec.IPFamilyPolicy == nil && currentService.Spec.IPFamilyPolicy != nil {
+		ipFamilyPolicy := *currentService.Spec.IPFamilyPolicy
+		desiredService.Spec.IPFamilyPolicy = &ipFamilyPolicy
+	}
+
+	return desiredService, nil
 }
 
 // renderedResourceHash hashes a resource's config fields, i.e. all but metadata and status.
