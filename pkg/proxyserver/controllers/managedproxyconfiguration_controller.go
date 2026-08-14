@@ -26,6 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -38,9 +39,12 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/utils/clock"
 	ctrl "sigs.k8s.io/controller-runtime"
+	ctrlcache "sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
 var _ reconcile.Reconciler = &ManagedProxyConfigurationReconciler{}
@@ -79,7 +83,7 @@ func RegisterClusterManagementAddonReconciler(
 		imagePullPolicy:  imagePullPolicy,
 		tlsConfig:        tlsConfig,
 	}
-	return r.SetupWithManager(mgr)
+	return r.SetupWithManager(mgr, secretInformer.Informer())
 }
 
 type ManagedProxyConfigurationReconciler struct {
@@ -97,11 +101,21 @@ type ManagedProxyConfigurationReconciler struct {
 	tlsConfig          *sdktls.TLSConfig
 }
 
-func (c *ManagedProxyConfigurationReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (c *ManagedProxyConfigurationReconciler) SetupWithManager(mgr ctrl.Manager, secretInformer ctrlcache.Informer) error {
 	// TODO should add a filter to only watch addon with cluster-proxy name
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&proxyv1alpha1.ManagedProxyConfiguration{}).
+		// Reuse the cert rotation informer instead of creating another cluster-wide Secret cache.
+		WatchesRawSource(&source.Informer{
+			Informer: secretInformer,
+			Handler:  managedProxyConfigurationOwnerHandler(mgr.GetScheme(), mgr.GetRESTMapper()),
+		}).
 		Complete(c)
+}
+
+func managedProxyConfigurationOwnerHandler(scheme *runtime.Scheme, mapper meta.RESTMapper) handler.EventHandler {
+	// The generated resources use non-controller owner references, so match every owner reference.
+	return handler.EnqueueRequestForOwner(scheme, mapper, &proxyv1alpha1.ManagedProxyConfiguration{})
 }
 
 func (c *ManagedProxyConfigurationReconciler) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
