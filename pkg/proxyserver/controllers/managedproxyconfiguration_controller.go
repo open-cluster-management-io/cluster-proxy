@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	addonutils "open-cluster-management.io/addon-framework/pkg/utils"
 	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 	"open-cluster-management.io/cluster-proxy/pkg/common"
 	"open-cluster-management.io/cluster-proxy/pkg/constant"
@@ -231,6 +232,13 @@ func (c *ManagedProxyConfigurationReconciler) deployProxyServer(config *proxyv1a
 }
 
 func (c *ManagedProxyConfigurationReconciler) ensure(incomingGeneration int64, gvk schema.GroupVersionKind, resource client.Object) (bool, bool, error) {
+	// hashing the rendered resource so that operator-side changes are applied even when the
+	// generation is unchanged. metadata is excluded to keep the hash stable on the retry below.
+	renderedHash, err := renderedResourceHash(resource)
+	if err != nil {
+		return false, false, errors.Wrapf(err, "failed hashing rendered resource kind: %s", gvk.Kind)
+	}
+
 	// appending a label to all the applied resources so that they can always be
 	// updated upon the configuration changes.
 	annotations := resource.GetAnnotations()
@@ -238,6 +246,7 @@ func (c *ManagedProxyConfigurationReconciler) ensure(incomingGeneration int64, g
 		annotations = make(map[string]string)
 	}
 	annotations[common.AnnotationKeyConfigurationGeneration] = strconv.Itoa(int(incomingGeneration))
+	annotations[common.AnnotationKeyRenderedHash] = renderedHash
 	resource.SetAnnotations(annotations)
 
 	created := false
@@ -274,26 +283,29 @@ func (c *ManagedProxyConfigurationReconciler) ensure(incomingGeneration int64, g
 		}
 	}
 
+	currentAnnotations := current.GetAnnotations()
 	var currentGeneration = 0
-	if current.GetAnnotations() != nil && len(current.GetAnnotations()[common.AnnotationKeyConfigurationGeneration]) > 0 {
-		var err error
-		currentGeneration, err = strconv.Atoi(current.GetAnnotations()[common.AnnotationKeyConfigurationGeneration])
+	if len(currentAnnotations[common.AnnotationKeyConfigurationGeneration]) > 0 {
+		currentGeneration, err = strconv.Atoi(currentAnnotations[common.AnnotationKeyConfigurationGeneration])
 		if err != nil {
 			return false, false, errors.Wrapf(err, "failed reading current generation for %v", gvk.Kind)
 		}
 	}
-	// EXCEPTIONS
-	// short-circuiting for service resources to avoid duplicated cluster-ip assignment
-	if gvk.Group == "" && gvk.Kind == "Service" {
-		return created, false, nil
-	}
+	// update if generation bumped, TLS config changed or the rendered manifest changed
+	tlsHashChanged := annotations[common.AnnotationKeyTLSConfigHash] !=
+		currentAnnotations[common.AnnotationKeyTLSConfigHash]
+	renderedHashChanged := renderedHash != currentAnnotations[common.AnnotationKeyRenderedHash]
+	if !created && (int(incomingGeneration) > currentGeneration || tlsHashChanged || renderedHashChanged) {
+		resourceToUpdate := resource
+		if gvk.Group == "" && gvk.Kind == "Service" {
+			resourceToUpdate, err = serviceForUpdate(resource, current)
+			if err != nil {
+				return false, false, errors.Wrap(err, "failed preparing Service update")
+			}
+		}
 
-	// update if generation bumped or TLS config changed
-	tlsHashChanged := resource.GetAnnotations()[common.AnnotationKeyTLSConfigHash] !=
-		current.GetAnnotations()[common.AnnotationKeyTLSConfigHash]
-	if !created && (int(incomingGeneration) > currentGeneration || tlsHashChanged) {
-		resource.SetResourceVersion(current.GetResourceVersion())
-		if err := c.Update(context.TODO(), resource); err != nil {
+		resourceToUpdate.SetResourceVersion(current.GetResourceVersion())
+		if err := c.Update(context.TODO(), resourceToUpdate); err != nil {
 			if apierrors.IsConflict(err) {
 				return c.ensure(incomingGeneration, gvk, resource)
 			}
@@ -307,6 +319,41 @@ func (c *ManagedProxyConfigurationReconciler) ensure(incomingGeneration int64, g
 		updated = true
 	}
 	return created, updated, nil
+}
+
+// serviceForUpdate preserves the network fields assigned by the API server. It mutates a copy so
+// that those cluster-specific values do not become part of the rendered hash on a conflict retry.
+func serviceForUpdate(resource client.Object, current *unstructured.Unstructured) (client.Object, error) {
+	desiredService, ok := resource.DeepCopyObject().(*corev1.Service)
+	if !ok {
+		return nil, fmt.Errorf("expected *corev1.Service, got %T", resource)
+	}
+
+	currentService := &corev1.Service{}
+	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(current.Object, currentService); err != nil {
+		return nil, err
+	}
+
+	desiredService.Spec.ClusterIP = currentService.Spec.ClusterIP
+	desiredService.Spec.ClusterIPs = append([]string(nil), currentService.Spec.ClusterIPs...)
+	if len(desiredService.Spec.IPFamilies) == 0 {
+		desiredService.Spec.IPFamilies = append([]corev1.IPFamily(nil), currentService.Spec.IPFamilies...)
+	}
+	if desiredService.Spec.IPFamilyPolicy == nil && currentService.Spec.IPFamilyPolicy != nil {
+		ipFamilyPolicy := *currentService.Spec.IPFamilyPolicy
+		desiredService.Spec.IPFamilyPolicy = &ipFamilyPolicy
+	}
+
+	return desiredService, nil
+}
+
+// renderedResourceHash hashes a resource's config fields, i.e. all but metadata and status.
+func renderedResourceHash(resource client.Object) (string, error) {
+	content, err := runtime.DefaultUnstructuredConverter.ToUnstructured(resource)
+	if err != nil {
+		return "", err
+	}
+	return addonutils.GetSpecHash(&unstructured.Unstructured{Object: content})
 }
 
 func (c *ManagedProxyConfigurationReconciler) getConditions(s *state) []metav1.Condition {
