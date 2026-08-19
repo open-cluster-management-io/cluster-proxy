@@ -54,6 +54,41 @@ userServer:
   # Example: ["user-server.example.com", "10.0.0.100"]
   additionalSANs: []
 
+# Service proxy allowlist configuration.
+# Controls which services are reachable via the service proxy path in the user-server.
+# The allowlist is enforced by default (default-deny): only services explicitly listed
+# in the ConfigMap are permitted; all others receive 403 Forbidden.
+#
+# exposedServicesConfigMapName: name of the ConfigMap (in the addon namespace) that lists
+#   permitted services. Defaults to "cluster-proxy-exposed-services".
+#
+# exposedServices: when set, a ConfigMap with the above name is created by this Helm chart
+#   containing the listed entries under a key named "services". Each entry requires
+#   'namespace' and 'service'; 'port' and 'protocol' are optional (omit to allow any value).
+#   When managing the ConfigMap manually, any key name(s) may be used — each key's value
+#   is parsed independently and all entries are merged into a single allowlist.
+#
+# Example (Helm-managed, single key):
+#   exposedServices:
+#     - namespace: monitoring
+#       service: prometheus
+#       port: "9090"
+#       protocol: https
+#     - namespace: default
+#       service: my-api
+#       # port/protocol omitted = allow any
+#
+# Example (manually managed ConfigMap with multiple keys):
+#   data:
+#     team-a: |
+#       - namespace: monitoring
+#         service: prometheus
+#     team-b: |
+#       - namespace: default
+#         service: my-api
+exposedServicesConfigMapName: "cluster-proxy-exposed-services"
+# exposedServices: []
+
 # Opt-in NetworkPolicies for hub workloads (addon-manager, user-server, ANP
 # proxy-server) and for the managed-cluster proxy-agent (via manager flag
 # --enable-network-policies). Default false so community installs are unchanged.

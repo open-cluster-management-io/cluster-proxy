@@ -18,4 +18,8 @@ const (
 
 	// UserServerServiceName is the fixed service name for user server.
 	UserServerServiceName = "cluster-proxy-addon-user"
+
+	// ExposedServicesConfigMapName is the default name of the ConfigMap that
+	// controls which services are reachable via the service proxy path.
+	ExposedServicesConfigMapName = "cluster-proxy-exposed-services"
 )
