@@ -87,7 +87,7 @@ func parseExposedServices(data string) ([]ExposedService, error) {
 // services are permitted (default-deny).
 //
 // Callers obtain a read lock only for the duration of the IsAllowed check, so
-// concurrent HTTP handlers are not serialised against each other.
+// concurrent HTTP handlers are not serialized against each other.
 type ServiceAllowlist struct {
 	mu       sync.RWMutex
 	services []ExposedService

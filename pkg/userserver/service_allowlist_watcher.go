@@ -17,7 +17,7 @@ import (
 // startServiceAllowlistWatcher creates a namespace-scoped ConfigMap informer
 // that keeps the returned ServiceAllowlist up to date whenever the named
 // ConfigMap changes. It blocks until the informer cache is synced, then
-// returns with the watcher running in the background until ctx is cancelled.
+// returns with the watcher running in the background until ctx is canceled.
 //
 // On Add/Update: the YAML under each key is parsed and combined into a single
 // allowlist that is atomically replaced. Any key name is accepted. If any key's
