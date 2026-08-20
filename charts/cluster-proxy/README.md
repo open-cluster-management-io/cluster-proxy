@@ -41,6 +41,8 @@ helm install cluster-proxy ./charts/cluster-proxy \
 | `featureGates.clusterProfile`           | Enable ClusterProfile integration                                | `false`                                         |
 | `userServer.enabled`                    | Generate and rotate the user-server serving certificate          | `false`                                         |
 | `userServer.additionalSANs`             | Extra SANs for the generated user-server certificate             | `[]`                                            |
+| `exposedServicesConfigMapName`          | ConfigMap containing the service allowlist                        | `cluster-proxy-exposed-services`                 |
+| `exposedServices`                       | Services exposed through the service proxy path                   | `[]`                                            |
 | `networkPolicies.enabled`               | Create opt-in NetworkPolicies for hub and managed workloads       | `false`                                         |
 
 ### Service Proxy and User Server Configuration
@@ -60,6 +62,23 @@ helm install cluster-proxy ./charts/cluster-proxy \
 ```
 
 `enableImpersonation` defaults to true and grants the required hub permissions.
+
+Kubernetes API requests are not filtered by the service allowlist. Requests to
+other Services are denied unless the destination appears in `exposedServices`.
+For example, save the following as `exposed-services.yaml` and pass
+`--values exposed-services.yaml` to the Helm command:
+
+```yaml
+exposedServices:
+  - namespace: monitoring
+    service: prometheus
+    port: "9090"
+    protocol: https
+```
+
+`namespace` and `service` are required. Omit `port` or `protocol` to allow any
+value for that field. To manage the ConfigMap outside Helm, leave
+`exposedServices` empty and set `exposedServicesConfigMapName` to its name.
 
 #### User Server Serving Certificate
 

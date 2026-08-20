@@ -87,7 +87,7 @@ userServer:
 #       - namespace: default
 #         service: my-api
 exposedServicesConfigMapName: "cluster-proxy-exposed-services"
-# exposedServices: []
+exposedServices: []
 
 # Opt-in NetworkPolicies for hub workloads (addon-manager, user-server, ANP
 # proxy-server) and for the managed-cluster proxy-agent (via manager flag
