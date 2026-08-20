@@ -1,0 +1,10 @@
+{{- if and .Values.enableServiceProxy .Values.exposedServices }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.exposedServicesConfigMapName | default "cluster-proxy-exposed-services" }}
+  namespace: {{ .Release.Namespace }}
+data:
+  services: |
+{{ toYaml .Values.exposedServices | indent 4 }}
+{{- end }}

@@ -244,7 +244,15 @@ deploy-cluster-proxy-e2e: delete-cluster-proxy-image-from-kind load-cluster-prox
 	--set proxyServer.entrypointAddress="proxy-entrypoint.open-cluster-management-addon.svc" \
 	--set proxyServer.port=8091 \
 	--set enableServiceProxy=true \
-	--set userServer.enabled=true
+	--set userServer.enabled=true \
+	--set 'exposedServices[0].namespace=default' \
+	--set 'exposedServices[0].service=hello-world' \
+	--set 'exposedServices[0].port=8000' \
+	--set 'exposedServices[0].protocol=http' \
+	--set 'exposedServices[1].namespace=default' \
+	--set 'exposedServices[1].service=hello-world-https' \
+	--set 'exposedServices[1].port=8443' \
+	--set 'exposedServices[1].protocol=https'
 	@echo "Cluster-proxy deployed successfully!"
 .PHONY: deploy-cluster-proxy-e2e
 

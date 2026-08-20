@@ -63,6 +63,7 @@ spec:
             - --server-cert=/user-tls/tls.crt
             - --service-proxy-ca-cert=/proxy-ca/ca.crt
             - --agent-install-namespace={{ .Values.spokeAddonNamespace }}
+            - --exposed-services-configmap={{ .Values.exposedServicesConfigMapName | default "cluster-proxy-exposed-services" }}
           env:
             - name: POD_NAMESPACE
               valueFrom:
