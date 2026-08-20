@@ -140,6 +140,54 @@ func TestParseExposedServices_Valid(t *testing.T) {
 	}
 }
 
+func TestParseExposedServices_NumericPort(t *testing.T) {
+	yaml := `
+- namespace: monitoring
+  service: prometheus
+  port: 9090
+  protocol: https
+`
+	services, err := parseExposedServices(yaml)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(services) != 1 {
+		t.Fatalf("expected 1 service, got %d", len(services))
+	}
+	if services[0].Port != "9090" {
+		t.Errorf("expected numeric port to be parsed as a string, got %q", services[0].Port)
+	}
+}
+
+func TestParseExposedServices_UnknownField(t *testing.T) {
+	yaml := `
+- namespace: monitoring
+  service: prometheus
+  port: "9090"
+  protcol: https
+`
+	_, err := parseExposedServices(yaml)
+	if err == nil {
+		t.Fatal("expected error for unknown field, got nil")
+	}
+	if !strings.Contains(err.Error(), "protcol") {
+		t.Errorf("expected error to contain unknown field name %q, got: %v", "protcol", err)
+	}
+}
+
+func TestParseExposedServices_DuplicateField(t *testing.T) {
+	yaml := `
+- namespace: monitoring
+  service: prometheus
+  port: "9090"
+  port: "9443"
+`
+	_, err := parseExposedServices(yaml)
+	if err == nil {
+		t.Fatal("expected error for duplicate field, got nil")
+	}
+}
+
 func TestParseExposedServices_Empty(t *testing.T) {
 	services, err := parseExposedServices("")
 	if err != nil {

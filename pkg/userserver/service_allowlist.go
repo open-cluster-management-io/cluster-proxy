@@ -60,15 +60,15 @@ func parseAllExposedServices(data map[string]string) ([]ExposedService, error) {
 	return all, nil
 }
 
-// parseExposedServices unmarshals the YAML value stored under any key
-// of the ConfigMap data into a slice of ExposedService entries.
-// It validates that every entry has non-empty Namespace and Service fields.
+// parseExposedServices strictly unmarshals the YAML value stored under any key
+// of the ConfigMap data into a slice of ExposedService entries. It validates
+// that every entry has non-empty Namespace and Service fields.
 func parseExposedServices(data string) ([]ExposedService, error) {
 	if data == "" {
 		return nil, nil
 	}
 	var services []ExposedService
-	if err := yaml.Unmarshal([]byte(data), &services); err != nil {
+	if err := yaml.UnmarshalStrict([]byte(data), &services); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal exposed services YAML: %w", err)
 	}
 	for i, svc := range services {

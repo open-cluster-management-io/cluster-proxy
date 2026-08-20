@@ -94,6 +94,21 @@ The top-level `enableImpersonation` Helm value grants the required hub
 permissions. The per-cluster `enableImpersonation` variable enables hub token
 authentication in service-proxy and defaults to true.
 
+The command above is enough for Kubernetes API requests. Other Services are
+denied by default. Add each destination to the Helm values when it should be
+reachable through the service proxy path:
+
+```yaml
+exposedServices:
+  - namespace: monitoring
+    service: prometheus
+    port: "9090"
+    protocol: https
+```
+
+See the [Helm chart guide](../../charts/cluster-proxy/README.md#service-proxy-and-user-server-configuration)
+for wildcard fields and manually managed ConfigMaps.
+
 ## OpenShift LDAP hub-token verification
 
 This procedure verifies user, group, and ServiceAccount impersonation across a
