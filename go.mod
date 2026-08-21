@@ -7,7 +7,7 @@ require (
 	github.com/onsi/gomega v1.42.1
 	github.com/openshift/library-go v0.0.0-20250711143941-47604345e7ea
 	github.com/pkg/errors v0.9.1
-	github.com/stretchr/testify v1.12.0
+	github.com/stretchr/testify v1.12.1
 	google.golang.org/grpc v1.83.0
 	k8s.io/api v0.36.3
 	k8s.io/apimachinery v0.36.3
@@ -113,7 +113,7 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.1 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
-	go.yaml.in/yaml/v3 v3.0.4 // indirect
+	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/crypto v0.53.0 // indirect
 	golang.org/x/exp v0.0.0-20251219203646-944ab1f22d93 // indirect
 	golang.org/x/mod v0.37.0 // indirect
@@ -132,7 +132,6 @@ require (
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
 	gopkg.in/go-jose/go-jose.v2 v2.6.3 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 	helm.sh/helm/v3 v3.19.4 // indirect
 	k8s.io/apiextensions-apiserver v0.36.0 // indirect
 	k8s.io/kube-openapi v0.0.0-20260319004828-5883c5ee87b9 // indirect
