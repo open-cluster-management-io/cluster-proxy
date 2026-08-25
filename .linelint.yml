@@ -2,5 +2,5 @@ rules:
   end-of-file:
     enable: true
     ignore:
-      - FQA.md
+      - FAQ.md
       - hack/boilerplate.go.txt
