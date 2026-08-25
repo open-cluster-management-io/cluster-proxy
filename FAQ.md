@@ -1,4 +1,4 @@
-# FQA
+# FAQ
 
 <a name="custom-proxy-server-hostname"></a>
 
