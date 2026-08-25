@@ -10,11 +10,6 @@ on:
       - release-*
   workflow_dispatch: {}
 
-env:
-  # Common versions
-  GO_VERSION: "1.26"
-  GO_REQUIRED_MIN_VERSION: ""
-
 jobs:
   images:
     name: images
@@ -31,7 +26,7 @@ jobs:
       - name: install Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version-file: go.mod
           cache: false
       - name: install imagebuilder
         run: go install github.com/openshift/imagebuilder/cmd/imagebuilder@v1.2.3
