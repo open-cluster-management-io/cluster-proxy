@@ -2,9 +2,12 @@ package userserver
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -47,6 +50,36 @@ func (f *fakeTunnel) DialContext(_ context.Context, _, _ string) (net.Conn, erro
 func (f *fakeTunnel) Done() <-chan struct{} { return f.done }
 
 var _ konnectivity.Tunnel = (*fakeTunnel)(nil)
+
+// dialingFakeTunnel dials a real TCP address, for tests that need ServeHTTP to
+// complete an actual HTTP round-trip.
+type dialingFakeTunnel struct {
+	addr string
+	done chan struct{}
+}
+
+func newDialingFakeTunnel(addr string) *dialingFakeTunnel {
+	t := &dialingFakeTunnel{addr: addr, done: make(chan struct{})}
+	close(t.done)
+	return t
+}
+
+func (d *dialingFakeTunnel) DialContext(ctx context.Context, network, _ string) (net.Conn, error) {
+	return (&net.Dialer{}).DialContext(ctx, network, d.addr)
+}
+
+func (d *dialingFakeTunnel) Done() <-chan struct{} { return d.done }
+
+var _ konnectivity.Tunnel = (*dialingFakeTunnel)(nil)
+
+// setupServiceProxyRootCA overrides the package-level serviceProxyRootCA for
+// the duration of a test and restores it on cleanup.
+func setupServiceProxyRootCA(t *testing.T, pool *x509.CertPool) {
+	t.Helper()
+	old := serviceProxyRootCA
+	serviceProxyRootCA = pool
+	t.Cleanup(func() { serviceProxyRootCA = old })
+}
 
 // newTestUserServer creates a userServer via newUserServer() (so defaults are
 // properly initialised) with a custom getTunnel for testing.
@@ -112,6 +145,13 @@ func TestGetOrCreateTransport_Settings(t *testing.T) {
 	if transport.TLSClientConfig == nil {
 		t.Fatal("TLSClientConfig must not be nil")
 	}
+	if transport.TLSClientConfig.MinVersion != tls.VersionTLS12 {
+		t.Errorf("TLS MinVersion: got %d, want %d (TLS 1.2)",
+			transport.TLSClientConfig.MinVersion, tls.VersionTLS12)
+	}
+	if !transport.ForceAttemptHTTP2 {
+		t.Error("ForceAttemptHTTP2 must be true on cached transport to enable HTTP/2 multiplexing")
+	}
 
 	// Verify hardcoded defaults.
 	if s.maxConnsPerHost != 10 {
@@ -122,6 +162,9 @@ func TestGetOrCreateTransport_Settings(t *testing.T) {
 	}
 	if s.idleConnTimeout != 90*time.Second {
 		t.Errorf("default idleConnTimeout: got %v, want 90s", s.idleConnTimeout)
+	}
+	if !s.enableHTTP2 {
+		t.Error("enableHTTP2 must default to true")
 	}
 }
 
@@ -218,5 +261,80 @@ func TestServeHTTP_DifferentClustersGetDifferentTransports(t *testing.T) {
 	}
 	if s.getOrCreateTransport("cluster-b") != tb {
 		t.Error("second lookup for cluster-b must return the same transport")
+	}
+}
+
+// --- ServeHTTP upgrade-detection tests ---
+
+func TestServeHTTP_NonUpgradeUsesTransportCache(t *testing.T) {
+	// Verifies that non-upgrade requests use the cached transport (getTunnel is
+	// not called just from cache lookup -- only on a DialContext pool miss).
+	var tunnelCount int64
+	s := newTestUserServer(func(_ context.Context) (konnectivity.Tunnel, error) {
+		atomic.AddInt64(&tunnelCount, 1)
+		return newFakeTunnel(), nil
+	})
+
+	// Seeding the cache must not trigger getTunnel.
+	preexisting := s.getOrCreateTransport("mycluster")
+	if atomic.LoadInt64(&tunnelCount) != 0 {
+		t.Fatal("getTunnel must not be called on cache seed")
+	}
+
+	// A second lookup must return the same transport.
+	if s.getOrCreateTransport("mycluster") != preexisting {
+		t.Error("second cache lookup returned a different transport")
+	}
+}
+
+func TestServeHTTP_UpgradeRequestBypassesTransportCache(t *testing.T) {
+	// Start a TLS backend that just returns 200.
+	backend := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(backend.Close)
+
+	rootCAs := backend.Client().Transport.(*http.Transport).TLSClientConfig.RootCAs
+	setupServiceProxyRootCA(t, rootCAs)
+
+	var tunnelCount int64
+	s := newTestUserServer(func(ctx context.Context) (konnectivity.Tunnel, error) {
+		atomic.AddInt64(&tunnelCount, 1)
+		return newDialingFakeTunnel(backend.Listener.Addr().String()), nil
+	})
+
+	// Seed the cache for this cluster.
+	preexisting := s.getOrCreateTransport("mycluster")
+
+	// Send an upgrade request.
+	req := httptest.NewRequest(http.MethodGet,
+		"/mycluster/api/v1/namespaces/default/pods/pod/exec", nil)
+	req.Header.Set("Connection", "Upgrade")
+	req.Header.Set("Upgrade", "SPDY/3.1")
+	rr := httptest.NewRecorder()
+
+	s.ServeHTTP(rr, req)
+
+	// getTunnel must have been called for the upgrade request (bypass path).
+	if got := atomic.LoadInt64(&tunnelCount); got == 0 {
+		t.Error("getTunnel must be called for upgrade requests")
+	}
+
+	// The cached transport must be unchanged.
+	if s.getOrCreateTransport("mycluster") != preexisting {
+		t.Error("upgrade request must not replace the cached transport")
+	}
+}
+
+func TestGetOrCreateTransport_HTTP2DisabledViaFlag(t *testing.T) {
+	s := newTestUserServer(func(_ context.Context) (konnectivity.Tunnel, error) {
+		return newFakeTunnel(), nil
+	})
+	s.enableHTTP2 = false
+
+	transport := s.getOrCreateTransport("cluster1")
+
+	if transport.ForceAttemptHTTP2 {
+		t.Error("ForceAttemptHTTP2 must be false when --enable-http2=false")
 	}
 }
