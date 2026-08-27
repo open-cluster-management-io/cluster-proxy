@@ -20,11 +20,10 @@ import (
 	"k8s.io/client-go/kubernetes"
 	certutil "k8s.io/client-go/util/cert"
 	"k8s.io/klog/v2"
+	"k8s.io/streaming/pkg/httpstream"
 
 	addonutils "open-cluster-management.io/addon-framework/pkg/utils"
 	addonclient "open-cluster-management.io/api/client/addon/clientset/versioned"
-	addoninformers "open-cluster-management.io/api/client/addon/informers/externalversions"
-	addonlisterv1beta1 "open-cluster-management.io/api/client/addon/listers/addon/v1beta1"
 	sdktls "open-cluster-management.io/sdk-go/pkg/tls"
 
 	"open-cluster-management.io/cluster-proxy/pkg/constant"
@@ -52,12 +51,7 @@ func NewUserServerCommand() *cobra.Command {
 	return cmd
 }
 
-var (
-	serviceProxyRootCA *x509.CertPool
-)
-
 type userServer struct {
-	// TODO: make it a controller and reuse tunnel for each cluster to improve performance.
 	getTunnel       func(context.Context) (konnectivity.Tunnel, error)
 	proxyServerHost string
 	proxyServerPort int
@@ -71,8 +65,6 @@ type userServer struct {
 	agentInstallNamespace  string
 	drain                  utils.DrainConfig
 
-	addonLister addonlisterv1beta1.ManagedClusterAddOnLister
-
 	// exposedServicesConfigMap is the name of the ConfigMap (in the pod's own
 	// namespace) that lists permitted service proxy targets. Defaults to the
 	// well-known constant ExposedServicesConfigMapName.
@@ -80,6 +72,14 @@ type userServer struct {
 	// serviceAllowlist is populated at startup from the ConfigMap and kept
 	// up to date by an informer.
 	serviceAllowlist *ServiceAllowlist
+
+	maxConnsPerHost     int
+	maxIdleConnsPerHost int
+	idleConnTimeout     time.Duration
+	enableHTTP2         bool
+
+	serviceProxyRootCA *x509.CertPool
+	transportPool      *clusterTransportPool
 }
 
 func (k *userServer) AddFlags(cmd *cobra.Command) {
@@ -103,6 +103,10 @@ func (k *userServer) AddFlags(cmd *cobra.Command) {
 
 	flags.StringVar(&k.exposedServicesConfigMap, "exposed-services-configmap", constant.ExposedServicesConfigMapName,
 		"Name of the ConfigMap (in the pod's namespace) that lists which services are reachable via the service proxy path")
+
+	flags.BoolVar(&k.enableHTTP2, "enable-http2", true,
+		"Enable HTTP/2 on the cached transport to multiplex concurrent requests over a single tunnel. "+
+			"Disable to fall back to HTTP/1.1 if HTTP/2 causes compatibility issues.")
 }
 
 func (k *userServer) Validate() error {
@@ -130,17 +134,29 @@ func (k *userServer) Validate() error {
 }
 
 func newUserServer() *userServer {
-	return &userServer{}
+	server := &userServer{
+		maxIdleConnsPerHost: 10,
+		maxConnsPerHost:     10,
+		idleConnTimeout:     90 * time.Second,
+		enableHTTP2:         true,
+	}
+	server.transportPool = newClusterTransportPool(server.newCachedTransport)
+	return server
 }
 
-func (k *userServer) init(ctx context.Context, kubeClient kubernetes.Interface, podNamespace string) error {
+func (k *userServer) init(
+	ctx context.Context,
+	kubeClient kubernetes.Interface,
+	addonClient addonclient.Interface,
+	podNamespace string,
+) error {
 	proxyTLSCfg, err := util.GetClientTLSConfig(k.proxyCACertPath, k.proxyCertPath, k.proxyKeyPath, k.proxyServerHost, nil)
 	if err != nil {
 		return err
 	}
 
 	// prepare ca for service proxy server
-	serviceProxyRootCA, err = certutil.NewPool(k.serviceProxyCACertPath)
+	k.serviceProxyRootCA, err = certutil.NewPool(k.serviceProxyCACertPath)
 	if err != nil {
 		return fmt.Errorf("failed to load service proxy ca cert: %w", err)
 	}
@@ -162,17 +178,9 @@ func (k *userServer) init(ctx context.Context, kubeClient kubernetes.Interface, 
 		return tunnel, nil
 	}
 
-	kubeConfig, err := ctrl.GetConfig()
-	if err != nil {
-		return fmt.Errorf("failed to get Kubernetes config for add-on informer: %w", err)
+	if err := startManagedClusterAddonWatcher(ctx, addonClient, k.transportPool); err != nil {
+		return fmt.Errorf("failed to start managed cluster add-on watcher: %w", err)
 	}
-	addonClient, err := addonclient.NewForConfig(kubeConfig)
-	if err != nil {
-		return fmt.Errorf("failed to create add-on client: %w", err)
-	}
-	addonInformerFactory := addoninformers.NewSharedInformerFactory(addonClient, 30*time.Minute)
-	k.addonLister = addonInformerFactory.Addon().V1beta1().ManagedClusterAddOns().Lister()
-	addonInformerFactory.Start(ctx.Done())
 
 	// Start the service allowlist watcher. The watcher enforces default-deny:
 	// only services listed in the ConfigMap are reachable via the service proxy
@@ -184,7 +192,51 @@ func (k *userServer) init(ctx context.Context, kubeClient kubernetes.Interface, 
 	klog.Infof("service allowlist active: %d entries loaded from ConfigMap %s/%s",
 		k.serviceAllowlist.Len(), podNamespace, k.exposedServicesConfigMap)
 
+	klog.Infof("transport pool config: maxConnsPerHost=%d maxIdleConnsPerHost=%d idleConnTimeout=%v http2=%v",
+		k.maxConnsPerHost, k.maxIdleConnsPerHost, k.idleConnTimeout, k.enableHTTP2)
+
 	return nil
+}
+
+func (k *userServer) newCachedTransport(clusterName string) *http.Transport {
+	return &http.Transport{
+		MaxConnsPerHost:     k.maxConnsPerHost,
+		MaxIdleConns:        k.maxIdleConnsPerHost,
+		MaxIdleConnsPerHost: k.maxIdleConnsPerHost,
+		IdleConnTimeout:     k.idleConnTimeout,
+		TLSHandshakeTimeout: 10 * time.Second,
+		TLSClientConfig: &tls.Config{
+			RootCAs:    k.serviceProxyRootCA,
+			MinVersion: tls.VersionTLS12,
+		},
+		ForceAttemptHTTP2:     k.enableHTTP2,
+		ExpectContinueTimeout: 1 * time.Second,
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			klog.V(4).Infof("creating tunnel for cluster %s (transport pool miss)", clusterName)
+			tunnel, err := k.getTunnel(ctx)
+			if err != nil {
+				return nil, err
+			}
+			return tunnel.DialContext(ctx, network, addr)
+		},
+	}
+}
+
+func (k *userServer) newUpgradeTransport(tunnel konnectivity.Tunnel) *http.Transport {
+	return &http.Transport{
+		IdleConnTimeout:       k.idleConnTimeout,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+		TLSClientConfig: &tls.Config{
+			RootCAs:    k.serviceProxyRootCA,
+			MinVersion: tls.VersionTLS12,
+		},
+		ForceAttemptHTTP2: false,
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			klog.V(4).Infof("proxy dial to %s (upgrade request)", addr)
+			return tunnel.DialContext(ctx, network, addr)
+		},
+	}
 }
 
 func (k *userServer) ServeHTTP(wr http.ResponseWriter, req *http.Request) {
@@ -199,20 +251,13 @@ func (k *userServer) ServeHTTP(wr http.ResponseWriter, req *http.Request) {
 
 	var tsc utils.TargetServiceConfig
 	var err error
+	proxyType := utils.GetProxyType(req.RequestURI)
 
-	switch utils.GetProxyType(req.RequestURI) {
+	switch proxyType {
 	case utils.ProxyTypeService:
 		tsc, err = utils.GetTargetServiceConfig(req.RequestURI)
 		if err != nil {
 			http.Error(wr, err.Error(), http.StatusBadRequest)
-			return
-		}
-		if !k.serviceAllowlist.IsAllowed(tsc) {
-			klog.V(4).Infof("service proxy request denied: %s/%s is not in the exposed services allowlist",
-				tsc.Namespace, tsc.Service)
-			http.Error(wr,
-				fmt.Sprintf("service %s/%s is not in the exposed services allowlist", tsc.Namespace, tsc.Service),
-				http.StatusForbidden)
 			return
 		}
 	case utils.ProxyTypeKubeAPIServer:
@@ -223,38 +268,49 @@ func (k *userServer) ServeHTTP(wr http.ResponseWriter, req *http.Request) {
 		}
 	}
 
+	if !k.transportPool.isAllowed(tsc.Cluster) {
+		writeClusterNotFound(wr, tsc.Cluster)
+		return
+	}
+
+	if proxyType == utils.ProxyTypeService && !k.serviceAllowlist.IsAllowed(tsc) {
+		klog.V(4).Infof("service proxy request denied: %s/%s is not in the exposed services allowlist",
+			tsc.Namespace, tsc.Service)
+		http.Error(wr,
+			fmt.Sprintf("service %s/%s is not in the exposed services allowlist", tsc.Namespace, tsc.Service),
+			http.StatusForbidden)
+		return
+	}
+
 	targetURL, err := url.Parse(serviceProxyURL(tsc.Cluster))
 	if err != nil {
 		http.Error(wr, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	tunnel, err := k.getTunnel(req.Context())
-	if err != nil {
-		http.Error(wr, err.Error(), http.StatusBadRequest)
-		return
+	var transport http.RoundTripper
+	if httpstream.IsUpgradeRequest(req) {
+		klog.V(4).Infof("upgrade request for cluster %s, using dedicated tunnel", tsc.Cluster)
+		tunnel, err := k.getTunnel(req.Context())
+		if err != nil {
+			http.Error(wr, err.Error(), http.StatusBadRequest)
+			return
+		}
+		upgradeTransport := k.newUpgradeTransport(tunnel)
+		defer upgradeTransport.CloseIdleConnections()
+		transport = upgradeTransport
+	} else {
+		var allowed bool
+		// Recheck membership in case the add-on was deleted after the policy checks above.
+		transport, allowed = k.transportPool.getOrCreate(tsc.Cluster)
+		if !allowed {
+			writeClusterNotFound(wr, tsc.Cluster)
+			return
+		}
 	}
 
 	proxy := httputil.NewSingleHostReverseProxy(targetURL)
-	proxy.Transport = &http.Transport{
-		MaxIdleConns:          100,
-		IdleConnTimeout:       90 * time.Second,
-		TLSHandshakeTimeout:   10 * time.Second,
-		ExpectContinueTimeout: 1 * time.Second,
-		// Not using our global TLSConfig for outbound will rely on server settings
-		TLSClientConfig: &tls.Config{
-			RootCAs:    serviceProxyRootCA,
-			MinVersion: tls.VersionTLS12,
-		},
-		// golang http pkg automatically upgrade http connection to http2 connection, but http2 can not upgrade to SPDY which used in "kubectl exec".
-		// set ForceAttemptHTTP2 = false to prevent auto http2 upgration
-		ForceAttemptHTTP2: false,
-		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			klog.V(4).Infof("proxy dial to %s", addr)
-			// TODO: may find a way to cache the proxyConn.
-			return tunnel.DialContext(ctx, network, addr)
-		},
-	}
+	proxy.Transport = transport
 
 	proxy.ErrorHandler = func(rw http.ResponseWriter, r *http.Request, e error) {
 		http.Error(rw, fmt.Sprintf("proxy to anp-proxy-server failed because %v", e), http.StatusBadGateway)
@@ -264,6 +320,11 @@ func (k *userServer) ServeHTTP(wr http.ResponseWriter, req *http.Request) {
 	klog.V(4).Infof("request scheme:%s; rawQuery:%s; path:%s", req.URL.Scheme, req.URL.RawQuery, req.URL.Path)
 
 	proxy.ServeHTTP(wr, utils.UpdateRequest(tsc, req))
+}
+
+func writeClusterNotFound(wr http.ResponseWriter, clusterName string) {
+	message := fmt.Sprintf("cluster %q does not have the %s add-on installed", clusterName, constant.AddonName)
+	http.Error(wr, message, http.StatusNotFound)
 }
 
 func (k *userServer) Run(ctx context.Context) error {
@@ -293,10 +354,15 @@ func (k *userServer) Run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to create kube client: %w", err)
 	}
+	addonClient, err := addonclient.NewForConfig(kubeConfig)
+	if err != nil {
+		return fmt.Errorf("failed to create add-on client: %w", err)
+	}
 
-	if err = k.init(runCtx, kubeClient, podNamespace); err != nil {
+	if err = k.init(runCtx, kubeClient, addonClient, podNamespace); err != nil {
 		return err
 	}
+	defer k.transportPool.closeAll()
 
 	sdkTLSConfig, err := sdktls.StartTLSConfigMapWatcher(runCtx, kubeClient, podNamespace, func() {
 		klog.Info("TLS ConfigMap changed, shutting down gracefully for restart")

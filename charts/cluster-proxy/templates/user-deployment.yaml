@@ -64,6 +64,7 @@ spec:
             - --service-proxy-ca-cert=/proxy-ca/ca.crt
             - --agent-install-namespace={{ .Values.spokeAddonNamespace }}
             - --exposed-services-configmap={{ .Values.exposedServicesConfigMapName | default "cluster-proxy-exposed-services" }}
+            - --enable-http2={{ .Values.userServer.enableHTTP2 }}
           env:
             - name: POD_NAMESPACE
               valueFrom:
