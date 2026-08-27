@@ -40,6 +40,7 @@ helm install cluster-proxy ./charts/cluster-proxy \
 | `enableImpersonation`                   | Grant permissions for hub token authentication                    | `true`                                          |
 | `featureGates.clusterProfile`           | Enable ClusterProfile integration                                | `false`                                         |
 | `userServer.enabled`                    | Generate and rotate the user-server serving certificate          | `false`                                         |
+| `userServer.enableHTTP2`                | Multiplex non-upgrade requests over reusable HTTP/2 tunnels       | `true`                                          |
 | `userServer.additionalSANs`             | Extra SANs for the generated user-server certificate             | `[]`                                            |
 | `exposedServicesConfigMapName`          | ConfigMap containing the service allowlist                        | `cluster-proxy-exposed-services`                 |
 | `exposedServices`                       | Services exposed through the service proxy path                   | `[]`                                            |

@@ -50,6 +50,8 @@ featureGates:
 userServer:
   # Enable automatic certificate rotation for user server
   enabled: false
+  # Enable HTTP/2 for user-server connections to managed clusters.
+  enableHTTP2: true
   # Additional SANs for the certificate (e.g., external hostnames)
   # Example: ["user-server.example.com", "10.0.0.100"]
   additionalSANs: []

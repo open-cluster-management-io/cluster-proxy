@@ -1,340 +1,475 @@
 package userserver
 
 import (
+	"bufio"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	certutil "k8s.io/client-go/util/cert"
+
 	konnectivity "sigs.k8s.io/apiserver-network-proxy/konnectivity-client/pkg/client"
 )
 
-// fakeConn is a minimal net.Conn that satisfies the interface for tests.
-type fakeConn struct{}
+const testClusterName = "cluster1"
 
-func (f *fakeConn) Read(b []byte) (int, error)         { return 0, io.EOF }
-func (f *fakeConn) Write(b []byte) (int, error)        { return len(b), nil }
-func (f *fakeConn) Close() error                       { return nil }
-func (f *fakeConn) LocalAddr() net.Addr                { return &net.TCPAddr{} }
-func (f *fakeConn) RemoteAddr() net.Addr               { return &net.TCPAddr{} }
-func (f *fakeConn) SetDeadline(t time.Time) error      { return nil }
-func (f *fakeConn) SetReadDeadline(t time.Time) error  { return nil }
-func (f *fakeConn) SetWriteDeadline(t time.Time) error { return nil }
-
-var _ net.Conn = (*fakeConn)(nil)
-
-// fakeTunnel implements konnectivity.Tunnel and counts DialContext calls.
-type fakeTunnel struct {
-	dialCount int64
-	done      chan struct{}
+type dialingTunnel struct {
+	address string
+	done    chan struct{}
 }
 
-func newFakeTunnel() *fakeTunnel {
-	t := &fakeTunnel{done: make(chan struct{})}
-	close(t.done)
-	return t
+func newDialingTunnel(address string) *dialingTunnel {
+	done := make(chan struct{})
+	close(done)
+	return &dialingTunnel{address: address, done: done}
 }
 
-func (f *fakeTunnel) DialContext(_ context.Context, _, _ string) (net.Conn, error) {
-	atomic.AddInt64(&f.dialCount, 1)
-	return &fakeConn{}, nil
+func (t *dialingTunnel) DialContext(ctx context.Context, network, _ string) (net.Conn, error) {
+	return (&net.Dialer{}).DialContext(ctx, network, t.address)
 }
 
-func (f *fakeTunnel) Done() <-chan struct{} { return f.done }
-
-var _ konnectivity.Tunnel = (*fakeTunnel)(nil)
-
-// dialingFakeTunnel dials a real TCP address, for tests that need ServeHTTP to
-// complete an actual HTTP round-trip.
-type dialingFakeTunnel struct {
-	addr string
-	done chan struct{}
+func (t *dialingTunnel) Done() <-chan struct{} {
+	return t.done
 }
 
-func newDialingFakeTunnel(addr string) *dialingFakeTunnel {
-	t := &dialingFakeTunnel{addr: addr, done: make(chan struct{})}
-	close(t.done)
-	return t
-}
+var _ konnectivity.Tunnel = (*dialingTunnel)(nil)
 
-func (d *dialingFakeTunnel) DialContext(ctx context.Context, network, _ string) (net.Conn, error) {
-	return (&net.Dialer{}).DialContext(ctx, network, d.addr)
-}
-
-func (d *dialingFakeTunnel) Done() <-chan struct{} { return d.done }
-
-var _ konnectivity.Tunnel = (*dialingFakeTunnel)(nil)
-
-// setupServiceProxyRootCA overrides the package-level serviceProxyRootCA for
-// the duration of a test and restores it on cleanup.
-func setupServiceProxyRootCA(t *testing.T, pool *x509.CertPool) {
-	t.Helper()
-	old := serviceProxyRootCA
-	serviceProxyRootCA = pool
-	t.Cleanup(func() { serviceProxyRootCA = old })
-}
-
-// newTestUserServer creates a userServer via newUserServer() (so defaults are
-// properly initialised) with a custom getTunnel for testing.
-func newTestUserServer(getTunnel func(context.Context) (konnectivity.Tunnel, error)) *userServer {
-	s := newUserServer()
-	s.getTunnel = getTunnel
-	return s
-}
-
-// --- getOrCreateTransport tests ---
-
-func TestGetOrCreateTransport_ReturnsSameTransportForSameCluster(t *testing.T) {
-	s := newTestUserServer(func(_ context.Context) (konnectivity.Tunnel, error) {
-		return newFakeTunnel(), nil
-	})
-
-	t1 := s.getOrCreateTransport("cluster1")
-	t2 := s.getOrCreateTransport("cluster1")
-
-	if t1 != t2 {
-		t.Fatal("expected same *http.Transport for same cluster, got different pointers")
+func TestCachedTransportSettings(t *testing.T) {
+	server := newUserServer()
+	server.transportPool.allow(testClusterName)
+	transport, ok := server.transportPool.getOrCreate(testClusterName)
+	if !ok {
+		t.Fatal("expected transport for allowed cluster")
 	}
-}
 
-func TestGetOrCreateTransport_ReturnsDifferentTransportForDifferentClusters(t *testing.T) {
-	s := newTestUserServer(func(_ context.Context) (konnectivity.Tunnel, error) {
-		return newFakeTunnel(), nil
-	})
-
-	ta := s.getOrCreateTransport("cluster-a")
-	tb := s.getOrCreateTransport("cluster-b")
-
-	if ta == tb {
-		t.Fatal("expected different *http.Transport for different clusters, got same pointer")
+	if transport.MaxConnsPerHost != 10 {
+		t.Errorf("MaxConnsPerHost = %d, want 10", transport.MaxConnsPerHost)
 	}
-}
-
-func TestGetOrCreateTransport_Settings(t *testing.T) {
-	s := newTestUserServer(func(_ context.Context) (konnectivity.Tunnel, error) {
-		return newFakeTunnel(), nil
-	})
-
-	transport := s.getOrCreateTransport("cluster1")
-
-	// MaxConnsPerHost should equal the resolved maxConnsPerHost on the struct.
-	if transport.MaxConnsPerHost != s.maxConnsPerHost {
-		t.Errorf("MaxConnsPerHost: got %d, want %d",
-			transport.MaxConnsPerHost, s.maxConnsPerHost)
+	if transport.MaxIdleConns != 10 {
+		t.Errorf("MaxIdleConns = %d, want 10", transport.MaxIdleConns)
 	}
-	// MaxIdleConns should equal MaxIdleConnsPerHost (single-host transport).
-	if transport.MaxIdleConns != s.maxIdleConnsPerHost {
-		t.Errorf("MaxIdleConns: got %d, want %d (should match MaxIdleConnsPerHost)",
-			transport.MaxIdleConns, s.maxIdleConnsPerHost)
+	if transport.MaxIdleConnsPerHost != 10 {
+		t.Errorf("MaxIdleConnsPerHost = %d, want 10", transport.MaxIdleConnsPerHost)
 	}
-	if transport.MaxIdleConnsPerHost != s.maxIdleConnsPerHost {
-		t.Errorf("MaxIdleConnsPerHost: got %d, want %d",
-			transport.MaxIdleConnsPerHost, s.maxIdleConnsPerHost)
+	if transport.IdleConnTimeout != 90*time.Second {
+		t.Errorf("IdleConnTimeout = %s, want 90s", transport.IdleConnTimeout)
 	}
-	if transport.IdleConnTimeout != s.idleConnTimeout {
-		t.Errorf("IdleConnTimeout: got %v, want %v",
-			transport.IdleConnTimeout, s.idleConnTimeout)
-	}
-	if transport.TLSClientConfig == nil {
-		t.Fatal("TLSClientConfig must not be nil")
-	}
-	if transport.TLSClientConfig.MinVersion != tls.VersionTLS12 {
-		t.Errorf("TLS MinVersion: got %d, want %d (TLS 1.2)",
-			transport.TLSClientConfig.MinVersion, tls.VersionTLS12)
+	if transport.TLSClientConfig == nil || transport.TLSClientConfig.MinVersion != tls.VersionTLS12 {
+		t.Fatal("cached transport must require TLS 1.2 or newer")
 	}
 	if !transport.ForceAttemptHTTP2 {
-		t.Error("ForceAttemptHTTP2 must be true on cached transport to enable HTTP/2 multiplexing")
+		t.Fatal("HTTP/2 must be enabled by default")
 	}
 
-	// Verify hardcoded defaults.
-	if s.maxConnsPerHost != 10 {
-		t.Errorf("default maxConnsPerHost: got %d, want 10", s.maxConnsPerHost)
+	server.enableHTTP2 = false
+	disabled := server.newCachedTransport("cluster2")
+	if disabled.ForceAttemptHTTP2 {
+		t.Fatal("HTTP/2 must be disabled when --enable-http2=false")
 	}
-	if s.maxIdleConnsPerHost != 10 {
-		t.Errorf("default maxIdleConnsPerHost: got %d, want 10", s.maxIdleConnsPerHost)
-	}
-	if s.idleConnTimeout != 90*time.Second {
-		t.Errorf("default idleConnTimeout: got %v, want 90s", s.idleConnTimeout)
-	}
-	if !s.enableHTTP2 {
-		t.Error("enableHTTP2 must default to true")
+	if server.newUpgradeTransport(newDialingTunnel("127.0.0.1:1")).ForceAttemptHTTP2 {
+		t.Fatal("upgrade transport must always use HTTP/1.1")
 	}
 }
 
-func TestGetOrCreateTransport_ConcurrentAccessReturnsSameTransport(t *testing.T) {
-	s := newTestUserServer(func(_ context.Context) (konnectivity.Tunnel, error) {
-		return newFakeTunnel(), nil
-	})
+func TestServeHTTPRejectsUnroutableRequestsWithoutCreatingTransport(t *testing.T) {
+	tests := map[string]struct {
+		path           string
+		allowedCluster bool
+		allowedService bool
+		wantStatus     int
+	}{
+		"unknown cluster Kubernetes API": {
+			path:       kubeAPIPath("unknown"),
+			wantStatus: http.StatusNotFound,
+		},
+		"unknown cluster disallowed service": {
+			path:       serviceProxyPath("unknown"),
+			wantStatus: http.StatusNotFound,
+		},
+		"unknown cluster allowed service": {
+			path:           serviceProxyPath("unknown"),
+			allowedService: true,
+			wantStatus:     http.StatusNotFound,
+		},
+		"known cluster disallowed service": {
+			path:           serviceProxyPath(testClusterName),
+			allowedCluster: true,
+			wantStatus:     http.StatusForbidden,
+		},
+	}
 
-	const goroutines = 50
-	results := make([]*http.Transport, goroutines)
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			var tunnelCount atomic.Int64
+			server := newTestUserServer(nil, func(context.Context) (konnectivity.Tunnel, error) {
+				tunnelCount.Add(1)
+				return nil, fmt.Errorf("unexpected tunnel")
+			})
+			if test.allowedCluster {
+				server.transportPool.allow(testClusterName)
+			}
+			if test.allowedService {
+				server.serviceAllowlist.update([]ExposedService{{
+					Namespace: "default",
+					Service:   "example",
+					Port:      "80",
+					Protocol:  "http",
+				}})
+			}
+
+			request := httptest.NewRequest(http.MethodGet, test.path, nil)
+			recorder := httptest.NewRecorder()
+			server.ServeHTTP(recorder, request)
+
+			if recorder.Code != test.wantStatus {
+				t.Fatalf("status = %d, want %d; body=%q", recorder.Code, test.wantStatus, recorder.Body.String())
+			}
+			if got := tunnelCount.Load(); got != 0 {
+				t.Fatalf("getTunnel called %d times, want 0", got)
+			}
+			server.transportPool.mu.RLock()
+			cachedTransports := len(server.transportPool.transports)
+			server.transportPool.mu.RUnlock()
+			if cachedTransports != 0 {
+				t.Fatalf("created %d cached transports, want 0", cachedTransports)
+			}
+		})
+	}
+}
+
+func TestServeHTTPReusesOneHTTP2Tunnel(t *testing.T) {
+	protocols := make(chan string, 2)
+	backend, roots := newTLSBackend(t, testClusterName, true, http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		protocols <- request.Proto
+		_, _ = io.WriteString(w, "ok")
+	}))
+	server, tunnelCount := newProxyToBackend(t, roots, backend.Listener.Addr().String(), true)
+	proxy := httptest.NewServer(server)
+	t.Cleanup(proxy.Close)
+
+	for range 2 {
+		response := getResponse(t, proxy.Client(), proxy.URL+kubeAPIPath(testClusterName))
+		if response != "ok" {
+			t.Fatalf("response body = %q, want %q", response, "ok")
+		}
+	}
+
+	for range 2 {
+		if protocol := <-protocols; protocol != "HTTP/2.0" {
+			t.Fatalf("backend protocol = %q, want HTTP/2.0", protocol)
+		}
+	}
+	if got := tunnelCount.Load(); got != 1 {
+		t.Fatalf("created %d tunnels for two sequential requests, want 1", got)
+	}
+}
+
+func TestServeHTTPMultiplexesConcurrentRequestsOverOneHTTP2Tunnel(t *testing.T) {
+	var active atomic.Int64
+	var maximum atomic.Int64
+	backend, roots := newTLSBackend(t, testClusterName, true, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		current := active.Add(1)
+		defer active.Add(-1)
+		for {
+			previous := maximum.Load()
+			if current <= previous || maximum.CompareAndSwap(previous, current) {
+				break
+			}
+		}
+		time.Sleep(25 * time.Millisecond)
+		_, _ = io.WriteString(w, "ok")
+	}))
+	server, tunnelCount := newProxyToBackend(t, roots, backend.Listener.Addr().String(), true)
+	proxy := httptest.NewServer(server)
+	t.Cleanup(proxy.Close)
+
+	getResponse(t, proxy.Client(), proxy.URL+kubeAPIPath(testClusterName))
+
+	const requests = 64
+	errors := make(chan error, requests)
 	var wg sync.WaitGroup
-	wg.Add(goroutines)
-
-	for i := 0; i < goroutines; i++ {
-		i := i
+	for range requests {
+		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			results[i] = s.getOrCreateTransport("cluster1")
+			response, err := proxy.Client().Get(proxy.URL + kubeAPIPath(testClusterName))
+			if err != nil {
+				errors <- err
+				return
+			}
+			defer response.Body.Close()
+			body, err := io.ReadAll(response.Body)
+			if err != nil {
+				errors <- err
+				return
+			}
+			if response.StatusCode != http.StatusOK || string(body) != "ok" {
+				errors <- fmt.Errorf("status=%d body=%q", response.StatusCode, body)
+			}
 		}()
 	}
 	wg.Wait()
+	close(errors)
+	for err := range errors {
+		t.Errorf("concurrent request: %v", err)
+	}
+	if maximum.Load() < 2 {
+		t.Fatal("backend requests did not overlap, so multiplexing was not exercised")
+	}
+	if got := tunnelCount.Load(); got != 1 {
+		t.Fatalf("created %d tunnels after warmup and %d concurrent requests, want 1", got, requests)
+	}
+}
 
-	first := results[0]
-	for i, tr := range results {
-		if tr != first {
-			t.Errorf("goroutine %d got a different transport pointer", i)
+func TestServeHTTPReusesHTTP1TunnelWhenHTTP2Disabled(t *testing.T) {
+	protocols := make(chan string, 2)
+	backend, roots := newTLSBackend(t, testClusterName, true, http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		protocols <- request.Proto
+		_, _ = io.WriteString(w, "ok")
+	}))
+	server, tunnelCount := newProxyToBackend(t, roots, backend.Listener.Addr().String(), false)
+	proxy := httptest.NewServer(server)
+	t.Cleanup(proxy.Close)
+
+	for range 2 {
+		getResponse(t, proxy.Client(), proxy.URL+kubeAPIPath(testClusterName))
+	}
+
+	for range 2 {
+		if protocol := <-protocols; protocol != "HTTP/1.1" {
+			t.Fatalf("backend protocol = %q, want HTTP/1.1", protocol)
 		}
 	}
-}
-
-func TestGetOrCreateTransport_DialContextCreatesNewTunnelOnPoolMiss(t *testing.T) {
-	var tunnelCount int64
-	s := newTestUserServer(func(_ context.Context) (konnectivity.Tunnel, error) {
-		atomic.AddInt64(&tunnelCount, 1)
-		return newFakeTunnel(), nil
-	})
-
-	transport := s.getOrCreateTransport("cluster1")
-
-	// First pool miss: expect one tunnel.
-	conn, err := transport.DialContext(context.Background(), "tcp", "cluster1.proxy:7443")
-	if err != nil {
-		t.Fatalf("first DialContext: %v", err)
-	}
-	conn.Close()
-
-	if got := atomic.LoadInt64(&tunnelCount); got != 1 {
-		t.Errorf("after first pool miss: got %d tunnels, want 1", got)
-	}
-
-	// Second pool miss: expect a second tunnel (each tunnel is single-use).
-	conn2, err := transport.DialContext(context.Background(), "tcp", "cluster1.proxy:7443")
-	if err != nil {
-		t.Fatalf("second DialContext: %v", err)
-	}
-	conn2.Close()
-
-	if got := atomic.LoadInt64(&tunnelCount); got != 2 {
-		t.Errorf("after second pool miss: got %d tunnels, want 2", got)
+	if got := tunnelCount.Load(); got != 1 {
+		t.Fatalf("created %d HTTP/1.1 tunnels for two sequential requests, want 1", got)
 	}
 }
 
-func TestGetOrCreateTransport_TunnelNotCreatedOnCacheLookup(t *testing.T) {
-	// Verifies that merely looking up the cached transport does not call
-	// getTunnel -- tunnels are created lazily on DialContext (pool miss).
-	var tunnelCount int64
-	s := newTestUserServer(func(_ context.Context) (konnectivity.Tunnel, error) {
-		atomic.AddInt64(&tunnelCount, 1)
-		return newFakeTunnel(), nil
-	})
+func TestServeHTTPStreamsWithoutGlobalFlushInterval(t *testing.T) {
+	backendFlushed := make(chan struct{})
+	releaseBackend := make(chan struct{})
+	var releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(releaseBackend) }) }
+	t.Cleanup(release)
 
-	// Two cache lookups -- no DialContext calls yet.
-	_ = s.getOrCreateTransport("cluster1")
-	_ = s.getOrCreateTransport("cluster1")
-
-	if got := atomic.LoadInt64(&tunnelCount); got != 0 {
-		t.Errorf("getTunnel must not be called during cache lookup, got %d calls", got)
-	}
-}
-
-func TestServeHTTP_DifferentClustersGetDifferentTransports(t *testing.T) {
-	s := newTestUserServer(func(_ context.Context) (konnectivity.Tunnel, error) {
-		return newFakeTunnel(), nil
-	})
-
-	ta := s.getOrCreateTransport("cluster-a")
-	tb := s.getOrCreateTransport("cluster-b")
-
-	if ta == tb {
-		t.Error("different clusters must have different cached transports")
-	}
-	if s.getOrCreateTransport("cluster-a") != ta {
-		t.Error("second lookup for cluster-a must return the same transport")
-	}
-	if s.getOrCreateTransport("cluster-b") != tb {
-		t.Error("second lookup for cluster-b must return the same transport")
-	}
-}
-
-// --- ServeHTTP upgrade-detection tests ---
-
-func TestServeHTTP_NonUpgradeUsesTransportCache(t *testing.T) {
-	// Verifies that non-upgrade requests use the cached transport (getTunnel is
-	// not called just from cache lookup -- only on a DialContext pool miss).
-	var tunnelCount int64
-	s := newTestUserServer(func(_ context.Context) (konnectivity.Tunnel, error) {
-		atomic.AddInt64(&tunnelCount, 1)
-		return newFakeTunnel(), nil
-	})
-
-	// Seeding the cache must not trigger getTunnel.
-	preexisting := s.getOrCreateTransport("mycluster")
-	if atomic.LoadInt64(&tunnelCount) != 0 {
-		t.Fatal("getTunnel must not be called on cache seed")
-	}
-
-	// A second lookup must return the same transport.
-	if s.getOrCreateTransport("mycluster") != preexisting {
-		t.Error("second cache lookup returned a different transport")
-	}
-}
-
-func TestServeHTTP_UpgradeRequestBypassesTransportCache(t *testing.T) {
-	// Start a TLS backend that just returns 200.
-	backend := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
+	backend, roots := newTLSBackend(t, testClusterName, true, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, "first event\n")
+		w.(http.Flusher).Flush()
+		close(backendFlushed)
+		<-releaseBackend
+		_, _ = io.WriteString(w, "second event\n")
 	}))
-	t.Cleanup(backend.Close)
+	server, _ := newProxyToBackend(t, roots, backend.Listener.Addr().String(), true)
+	proxy := httptest.NewServer(server)
+	t.Cleanup(proxy.Close)
 
-	rootCAs := backend.Client().Transport.(*http.Transport).TLSClientConfig.RootCAs
-	setupServiceProxyRootCA(t, rootCAs)
+	line := make(chan string, 1)
+	errResult := make(chan error, 1)
+	go func() {
+		response, err := proxy.Client().Get(proxy.URL + kubeAPIPath(testClusterName))
+		if err != nil {
+			errResult <- err
+			return
+		}
+		defer response.Body.Close()
+		firstLine, err := bufio.NewReader(response.Body).ReadString('\n')
+		if err != nil {
+			errResult <- err
+			return
+		}
+		line <- firstLine
+	}()
 
-	var tunnelCount int64
-	s := newTestUserServer(func(ctx context.Context) (konnectivity.Tunnel, error) {
-		atomic.AddInt64(&tunnelCount, 1)
-		return newDialingFakeTunnel(backend.Listener.Addr().String()), nil
-	})
+	waitForSignal(t, backendFlushed, "backend to flush its first event")
+	select {
+	case got := <-line:
+		if got != "first event\n" {
+			t.Fatalf("first streamed line = %q", got)
+		}
+	case err := <-errResult:
+		t.Fatalf("read stream: %v", err)
+	case <-time.After(3 * time.Second):
+		release()
+		t.Fatal("first event was not delivered while the backend response remained open")
+	}
+	release()
+}
 
-	// Seed the cache for this cluster.
-	preexisting := s.getOrCreateTransport("mycluster")
+func TestServeHTTPUpgradeUsesDedicatedHTTP1Tunnel(t *testing.T) {
+	backendProtocol := make(chan string, 1)
+	backend, roots := newTLSBackend(t, testClusterName, true, http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		backendProtocol <- request.Proto
+		connection, readWriter, err := w.(http.Hijacker).Hijack()
+		if err != nil {
+			t.Errorf("backend hijack: %v", err)
+			return
+		}
+		defer connection.Close()
+		_, _ = fmt.Fprintf(readWriter, "HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: test\r\n\r\n")
+		if err := readWriter.Flush(); err != nil {
+			t.Errorf("backend flush upgrade: %v", err)
+			return
+		}
+		message, err := readWriter.ReadString('\n')
+		if err != nil {
+			t.Errorf("backend read upgraded connection: %v", err)
+			return
+		}
+		_, _ = fmt.Fprintf(readWriter, "echo: %s", message)
+		_ = readWriter.Flush()
+	}))
+	server, tunnelCount := newProxyToBackend(t, roots, backend.Listener.Addr().String(), true)
+	proxy := httptest.NewServer(server)
+	t.Cleanup(proxy.Close)
 
-	// Send an upgrade request.
-	req := httptest.NewRequest(http.MethodGet,
-		"/mycluster/api/v1/namespaces/default/pods/pod/exec", nil)
-	req.Header.Set("Connection", "Upgrade")
-	req.Header.Set("Upgrade", "SPDY/3.1")
-	rr := httptest.NewRecorder()
-
-	s.ServeHTTP(rr, req)
-
-	// getTunnel must have been called for the upgrade request (bypass path).
-	if got := atomic.LoadInt64(&tunnelCount); got == 0 {
-		t.Error("getTunnel must be called for upgrade requests")
+	address := strings.TrimPrefix(proxy.URL, "http://")
+	connection, err := net.Dial("tcp", address)
+	if err != nil {
+		t.Fatalf("dial user-server: %v", err)
+	}
+	defer connection.Close()
+	if err := connection.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		t.Fatalf("set deadline: %v", err)
+	}
+	_, _ = fmt.Fprintf(connection,
+		"GET %s HTTP/1.1\r\nHost: %s\r\nConnection: Upgrade\r\nUpgrade: test\r\n\r\n",
+		kubeAPIPath(testClusterName), address,
+	)
+	reader := bufio.NewReader(connection)
+	status, err := reader.ReadString('\n')
+	if err != nil {
+		t.Fatalf("read upgrade status: %v", err)
+	}
+	if status != "HTTP/1.1 101 Switching Protocols\r\n" {
+		t.Fatalf("upgrade status = %q", status)
+	}
+	for {
+		header, err := reader.ReadString('\n')
+		if err != nil {
+			t.Fatalf("read upgrade header: %v", err)
+		}
+		if header == "\r\n" {
+			break
+		}
+	}
+	_, _ = io.WriteString(connection, "ping\n")
+	echo, err := reader.ReadString('\n')
+	if err != nil {
+		t.Fatalf("read upgraded response: %v", err)
+	}
+	if echo != "echo: ping\n" {
+		t.Fatalf("upgraded response = %q", echo)
 	}
 
-	// The cached transport must be unchanged.
-	if s.getOrCreateTransport("mycluster") != preexisting {
-		t.Error("upgrade request must not replace the cached transport")
+	if protocol := <-backendProtocol; protocol != "HTTP/1.1" {
+		t.Fatalf("upgrade backend protocol = %q, want HTTP/1.1", protocol)
+	}
+	if got := tunnelCount.Load(); got != 1 {
+		t.Fatalf("upgrade created %d tunnels, want 1", got)
+	}
+	server.transportPool.mu.Lock()
+	cached := len(server.transportPool.transports)
+	server.transportPool.mu.Unlock()
+	if cached != 0 {
+		t.Fatalf("upgrade populated the shared transport cache with %d entries", cached)
 	}
 }
 
-func TestGetOrCreateTransport_HTTP2DisabledViaFlag(t *testing.T) {
-	s := newTestUserServer(func(_ context.Context) (konnectivity.Tunnel, error) {
-		return newFakeTunnel(), nil
+func newTestUserServer(
+	roots *x509.CertPool,
+	getTunnel func(context.Context) (konnectivity.Tunnel, error),
+) *userServer {
+	server := newUserServer()
+	server.serviceProxyRootCA = roots
+	server.serviceAllowlist = &ServiceAllowlist{}
+	server.getTunnel = getTunnel
+	return server
+}
+
+func newProxyToBackend(
+	t *testing.T,
+	roots *x509.CertPool,
+	backendAddress string,
+	enableHTTP2 bool,
+) (*userServer, *atomic.Int64) {
+	t.Helper()
+	tunnelCount := &atomic.Int64{}
+	server := newTestUserServer(roots, func(context.Context) (konnectivity.Tunnel, error) {
+		tunnelCount.Add(1)
+		return newDialingTunnel(backendAddress), nil
 	})
-	s.enableHTTP2 = false
+	server.enableHTTP2 = enableHTTP2
+	server.transportPool.allow(testClusterName)
+	return server, tunnelCount
+}
 
-	transport := s.getOrCreateTransport("cluster1")
-
-	if transport.ForceAttemptHTTP2 {
-		t.Error("ForceAttemptHTTP2 must be false when --enable-http2=false")
+func newTLSBackend(
+	t *testing.T,
+	clusterName string,
+	enableHTTP2 bool,
+	handler http.Handler,
+) (*httptest.Server, *x509.CertPool) {
+	t.Helper()
+	target, err := url.Parse(serviceProxyURL(clusterName))
+	if err != nil {
+		t.Fatalf("parse service proxy URL: %v", err)
 	}
+	certificatePEM, keyPEM, err := certutil.GenerateSelfSignedCertKey(target.Hostname(), nil, nil)
+	if err != nil {
+		t.Fatalf("generate backend certificate: %v", err)
+	}
+	certificate, err := tls.X509KeyPair(certificatePEM, keyPEM)
+	if err != nil {
+		t.Fatalf("parse backend certificate: %v", err)
+	}
+	roots := x509.NewCertPool()
+	if !roots.AppendCertsFromPEM(certificatePEM) {
+		t.Fatal("add backend CA certificate")
+	}
+
+	backend := httptest.NewUnstartedServer(handler)
+	backend.EnableHTTP2 = enableHTTP2
+	backend.TLS = &tls.Config{
+		Certificates: []tls.Certificate{certificate},
+		MinVersion:   tls.VersionTLS12,
+	}
+	backend.StartTLS()
+	t.Cleanup(backend.Close)
+	return backend, roots
+}
+
+func getResponse(t *testing.T, client *http.Client, requestURL string) string {
+	t.Helper()
+	response, err := client.Get(requestURL)
+	if err != nil {
+		t.Fatalf("GET %s: %v", requestURL, err)
+	}
+	defer response.Body.Close()
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatalf("read response: %v", err)
+	}
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%q", response.StatusCode, http.StatusOK, body)
+	}
+	return string(body)
+}
+
+func kubeAPIPath(clusterName string) string {
+	return "/" + clusterName + "/api/v1/namespaces/default/configmaps"
+}
+
+func serviceProxyPath(clusterName string) string {
+	return "/" + clusterName + "/api/v1/namespaces/default/services/http:example:80/proxy-service/"
 }
