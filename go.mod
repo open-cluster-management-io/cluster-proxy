@@ -18,7 +18,7 @@ require (
 	open-cluster-management.io/api v1.3.0
 	open-cluster-management.io/sdk-go v1.3.0
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.36.0
-	sigs.k8s.io/controller-runtime v0.25.0
+	sigs.k8s.io/controller-runtime v0.25.1
 )
 
 require (
