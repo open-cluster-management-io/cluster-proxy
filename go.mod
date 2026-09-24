@@ -18,7 +18,7 @@ require (
 	open-cluster-management.io/api v1.3.0
 	open-cluster-management.io/sdk-go v1.3.0
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.36.0
-	sigs.k8s.io/controller-runtime v0.25.0
+	sigs.k8s.io/controller-runtime v0.25.1
 )
 
 require (
@@ -27,7 +27,7 @@ require (
 	github.com/spf13/pflag v1.0.10
 	k8s.io/apiserver v0.37.0
 	k8s.io/component-base v0.37.0
-	k8s.io/streaming v0.37.0
+	k8s.io/streaming v0.37.1
 	sigs.k8s.io/apiserver-network-proxy v0.36.0
 	sigs.k8s.io/cluster-inventory-api v0.1.3
 	sigs.k8s.io/yaml v1.6.0
