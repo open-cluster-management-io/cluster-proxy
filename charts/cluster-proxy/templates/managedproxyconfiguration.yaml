@@ -29,6 +29,11 @@ spec:
   proxyAgent:
     image: {{ $proxyAgentImage }}
     replicas: {{ .Values.replicas }}
+    additionalArgs:
+      {{ if gt (int .Values.replicas) 1 }}
+      - --sync-forever
+      {{ end }}
+      - --keepalive-time=30s
   {{- if .Values.userServer.enabled }}
   userServer:
   {{- if .Values.userServer.additionalSANs }}
