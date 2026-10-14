@@ -29,7 +29,7 @@ require (
 	k8s.io/component-base v0.37.1
 	k8s.io/streaming v0.37.1
 	sigs.k8s.io/apiserver-network-proxy v0.37.0
-	sigs.k8s.io/cluster-inventory-api v0.1.3
+	sigs.k8s.io/cluster-inventory-api v0.2.0
 	sigs.k8s.io/yaml v1.6.0
 )
 
