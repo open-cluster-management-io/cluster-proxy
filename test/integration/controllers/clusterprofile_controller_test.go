@@ -10,8 +10,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	clientcmdapiv1 "k8s.io/client-go/tools/clientcmd/api/v1"
-	cpv1alpha1 "sigs.k8s.io/cluster-inventory-api/apis/v1alpha1"
+	cpv1alpha2 "sigs.k8s.io/cluster-inventory-api/apis/v1alpha2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
@@ -30,7 +29,7 @@ var _ = Describe("ClusterProfileReconciler Test", func() {
 	)
 
 	var (
-		clusterProfile *cpv1alpha1.ClusterProfile
+		clusterProfile *cpv1alpha2.ClusterProfile
 		config         *proxyv1alpha1.ManagedProxyConfiguration
 		caSecret       *corev1.Secret
 		namespace      *corev1.Namespace
@@ -89,18 +88,18 @@ var _ = Describe("ClusterProfileReconciler Test", func() {
 		Expect(err).ToNot(HaveOccurred())
 
 		// Create ClusterProfile with proper labels
-		clusterProfile = &cpv1alpha1.ClusterProfile{
+		clusterProfile = &cpv1alpha2.ClusterProfile{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      clusterName,
 				Namespace: "default",
 				Labels: map[string]string{
-					cpv1alpha1.LabelClusterManagerKey: controllers.ClusterProfileManagerName,
+					cpv1alpha2.LabelClusterManagerKey: controllers.ClusterProfileManagerName,
 					clusterv1.ClusterNameLabelKey:     clusterName,
 				},
 			},
-			Spec: cpv1alpha1.ClusterProfileSpec{
+			Spec: cpv1alpha2.ClusterProfileSpec{
 				DisplayName: clusterName,
-				ClusterManager: cpv1alpha1.ClusterManager{
+				ClusterManager: cpv1alpha2.ClusterManager{
 					Name: controllers.ClusterProfileManagerName,
 				},
 			},
@@ -132,7 +131,7 @@ var _ = Describe("ClusterProfileReconciler Test", func() {
 	Context("Reconcile ClusterProfile", func() {
 		It("Should add AccessProvider to ClusterProfile status", func() {
 			Eventually(func() error {
-				currentProfile := &cpv1alpha1.ClusterProfile{}
+				currentProfile := &cpv1alpha2.ClusterProfile{}
 				err := ctrlClient.Get(ctx, client.ObjectKeyFromObject(clusterProfile), currentProfile)
 				if err != nil {
 					return err
@@ -143,7 +142,7 @@ var _ = Describe("ClusterProfileReconciler Test", func() {
 				}
 
 				// Check if open-cluster-management provider exists
-				var ocmProvider *cpv1alpha1.AccessProvider
+				var ocmProvider *cpv1alpha2.AccessProvider
 				for i := range currentProfile.Status.AccessProviders {
 					if currentProfile.Status.AccessProviders[i].Name == controllers.OCMAccessProviderName {
 						ocmProvider = &currentProfile.Status.AccessProviders[i]
@@ -197,7 +196,7 @@ var _ = Describe("ClusterProfileReconciler Test", func() {
 		It("Should update existing AccessProvider when ClusterProfile changes", func() {
 			// Wait for initial AccessProvider to be created
 			Eventually(func() error {
-				currentProfile := &cpv1alpha1.ClusterProfile{}
+				currentProfile := &cpv1alpha2.ClusterProfile{}
 				err := ctrlClient.Get(ctx, client.ObjectKeyFromObject(clusterProfile), currentProfile)
 				if err != nil {
 					return err
@@ -212,16 +211,16 @@ var _ = Describe("ClusterProfileReconciler Test", func() {
 
 			// Manually add another provider to simulate existing providers
 			Eventually(func() error {
-				currentProfile := &cpv1alpha1.ClusterProfile{}
+				currentProfile := &cpv1alpha2.ClusterProfile{}
 				err := ctrlClient.Get(ctx, client.ObjectKeyFromObject(clusterProfile), currentProfile)
 				if err != nil {
 					return err
 				}
 
 				// Add another provider
-				currentProfile.Status.AccessProviders = append(currentProfile.Status.AccessProviders, cpv1alpha1.AccessProvider{
+				currentProfile.Status.AccessProviders = append(currentProfile.Status.AccessProviders, cpv1alpha2.AccessProvider{
 					Name: "another-provider",
-					Cluster: clientcmdapiv1.Cluster{
+					Cluster: cpv1alpha2.Cluster{
 						Server: "https://another-server:8443",
 					},
 				})
@@ -231,7 +230,7 @@ var _ = Describe("ClusterProfileReconciler Test", func() {
 
 			// Trigger reconciliation by updating the ClusterProfile
 			Eventually(func() error {
-				currentProfile := &cpv1alpha1.ClusterProfile{}
+				currentProfile := &cpv1alpha2.ClusterProfile{}
 				err := ctrlClient.Get(ctx, client.ObjectKeyFromObject(clusterProfile), currentProfile)
 				if err != nil {
 					return err
@@ -243,7 +242,7 @@ var _ = Describe("ClusterProfileReconciler Test", func() {
 
 			// Verify both providers exist and open-cluster-management is still correct
 			Eventually(func() error {
-				currentProfile := &cpv1alpha1.ClusterProfile{}
+				currentProfile := &cpv1alpha2.ClusterProfile{}
 				err := ctrlClient.Get(ctx, client.ObjectKeyFromObject(clusterProfile), currentProfile)
 				if err != nil {
 					return err
@@ -281,14 +280,14 @@ var _ = Describe("ClusterProfileReconciler Test", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			// Create a new ClusterProfile
-			newCluster := &cpv1alpha1.ClusterProfile{
+			newCluster := &cpv1alpha2.ClusterProfile{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "cluster-without-config",
 					Namespace: "default",
 				},
-				Spec: cpv1alpha1.ClusterProfileSpec{
+				Spec: cpv1alpha2.ClusterProfileSpec{
 					DisplayName: "Cluster Without Config",
-					ClusterManager: cpv1alpha1.ClusterManager{
+					ClusterManager: cpv1alpha2.ClusterManager{
 						Name: controllers.ClusterProfileManagerName,
 					},
 				},
@@ -298,13 +297,13 @@ var _ = Describe("ClusterProfileReconciler Test", func() {
 
 			// Wait for the ClusterProfile to be readable
 			Eventually(func() error {
-				currentProfile := &cpv1alpha1.ClusterProfile{}
+				currentProfile := &cpv1alpha2.ClusterProfile{}
 				return ctrlClient.Get(ctx, client.ObjectKeyFromObject(newCluster), currentProfile)
 			}, timeout, interval).Should(Succeed())
 
 			// Verify no AccessProvider is added (since config is missing)
 			Consistently(func() int {
-				currentProfile := &cpv1alpha1.ClusterProfile{}
+				currentProfile := &cpv1alpha2.ClusterProfile{}
 				err := ctrlClient.Get(ctx, client.ObjectKeyFromObject(newCluster), currentProfile)
 				if err != nil {
 					return -1
@@ -350,14 +349,14 @@ var _ = Describe("ClusterProfileReconciler Test", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			// Create a new ClusterProfile
-			newCluster := &cpv1alpha1.ClusterProfile{
+			newCluster := &cpv1alpha2.ClusterProfile{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "cluster-without-secret",
 					Namespace: "default",
 				},
-				Spec: cpv1alpha1.ClusterProfileSpec{
+				Spec: cpv1alpha2.ClusterProfileSpec{
 					DisplayName: "Cluster Without Secret",
-					ClusterManager: cpv1alpha1.ClusterManager{
+					ClusterManager: cpv1alpha2.ClusterManager{
 						Name: controllers.ClusterProfileManagerName,
 					},
 				},
@@ -367,13 +366,13 @@ var _ = Describe("ClusterProfileReconciler Test", func() {
 
 			// Wait for the ClusterProfile to be readable
 			Eventually(func() error {
-				currentProfile := &cpv1alpha1.ClusterProfile{}
+				currentProfile := &cpv1alpha2.ClusterProfile{}
 				return ctrlClient.Get(ctx, client.ObjectKeyFromObject(newCluster), currentProfile)
 			}, timeout, interval).Should(Succeed())
 
 			// Verify no AccessProvider is added (since secret is missing)
 			Consistently(func() int {
-				currentProfile := &cpv1alpha1.ClusterProfile{}
+				currentProfile := &cpv1alpha2.ClusterProfile{}
 				err := ctrlClient.Get(ctx, client.ObjectKeyFromObject(newCluster), currentProfile)
 				if err != nil {
 					return -1
@@ -403,14 +402,15 @@ var _ = Describe("ClusterProfileReconciler Test", func() {
 	Context("Filter ClusterProfile with labels", func() {
 		It("Should NOT reconcile ClusterProfile with nil labels", func() {
 			// Create ClusterProfile with nil labels
-			nilLabelsCluster := &cpv1alpha1.ClusterProfile{
+			nilLabelsCluster := &cpv1alpha2.ClusterProfile{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "cluster-nil-labels",
 					Namespace: "default",
 					Labels:    nil,
 				},
-				Spec: cpv1alpha1.ClusterProfileSpec{
-					DisplayName: "Cluster With Nil Labels",
+				Spec: cpv1alpha2.ClusterProfileSpec{
+					DisplayName:    "Cluster With Nil Labels",
+					ClusterManager: cpv1alpha2.ClusterManager{Name: controllers.ClusterProfileManagerName},
 				},
 			}
 			err := ctrlClient.Create(ctx, nilLabelsCluster)
@@ -420,7 +420,7 @@ var _ = Describe("ClusterProfileReconciler Test", func() {
 			time.Sleep(3 * time.Second)
 
 			// Verify no AccessProvider is added (controller should skip it)
-			currentProfile := &cpv1alpha1.ClusterProfile{}
+			currentProfile := &cpv1alpha2.ClusterProfile{}
 			err = ctrlClient.Get(ctx, client.ObjectKeyFromObject(nilLabelsCluster), currentProfile)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(len(currentProfile.Status.AccessProviders)).To(Equal(0))
@@ -432,7 +432,7 @@ var _ = Describe("ClusterProfileReconciler Test", func() {
 
 		It("Should NOT reconcile ClusterProfile without cluster manager label", func() {
 			// Create ClusterProfile without cluster manager label
-			noManagerCluster := &cpv1alpha1.ClusterProfile{
+			noManagerCluster := &cpv1alpha2.ClusterProfile{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "cluster-no-manager-label",
 					Namespace: "default",
@@ -440,8 +440,9 @@ var _ = Describe("ClusterProfileReconciler Test", func() {
 						clusterv1.ClusterNameLabelKey: "cluster-no-manager-label",
 					},
 				},
-				Spec: cpv1alpha1.ClusterProfileSpec{
-					DisplayName: "Cluster Without Manager Label",
+				Spec: cpv1alpha2.ClusterProfileSpec{
+					DisplayName:    "Cluster Without Manager Label",
+					ClusterManager: cpv1alpha2.ClusterManager{Name: controllers.ClusterProfileManagerName},
 				},
 			}
 			err := ctrlClient.Create(ctx, noManagerCluster)
@@ -451,7 +452,7 @@ var _ = Describe("ClusterProfileReconciler Test", func() {
 			time.Sleep(3 * time.Second)
 
 			// Verify no AccessProvider is added (controller should skip it)
-			currentProfile := &cpv1alpha1.ClusterProfile{}
+			currentProfile := &cpv1alpha2.ClusterProfile{}
 			err = ctrlClient.Get(ctx, client.ObjectKeyFromObject(noManagerCluster), currentProfile)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(len(currentProfile.Status.AccessProviders)).To(Equal(0))
@@ -463,17 +464,18 @@ var _ = Describe("ClusterProfileReconciler Test", func() {
 
 		It("Should NOT reconcile ClusterProfile with wrong cluster manager label", func() {
 			// Create ClusterProfile with wrong cluster manager
-			wrongManagerCluster := &cpv1alpha1.ClusterProfile{
+			wrongManagerCluster := &cpv1alpha2.ClusterProfile{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "cluster-wrong-manager",
 					Namespace: "default",
 					Labels: map[string]string{
-						cpv1alpha1.LabelClusterManagerKey: "other-cluster-manager",
+						cpv1alpha2.LabelClusterManagerKey: "other-cluster-manager",
 						clusterv1.ClusterNameLabelKey:     "cluster-wrong-manager",
 					},
 				},
-				Spec: cpv1alpha1.ClusterProfileSpec{
-					DisplayName: "Cluster With Wrong Manager",
+				Spec: cpv1alpha2.ClusterProfileSpec{
+					DisplayName:    "Cluster With Wrong Manager",
+					ClusterManager: cpv1alpha2.ClusterManager{Name: controllers.ClusterProfileManagerName},
 				},
 			}
 			err := ctrlClient.Create(ctx, wrongManagerCluster)
@@ -483,7 +485,7 @@ var _ = Describe("ClusterProfileReconciler Test", func() {
 			time.Sleep(3 * time.Second)
 
 			// Verify no AccessProvider is added
-			currentProfile := &cpv1alpha1.ClusterProfile{}
+			currentProfile := &cpv1alpha2.ClusterProfile{}
 			err = ctrlClient.Get(ctx, client.ObjectKeyFromObject(wrongManagerCluster), currentProfile)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(len(currentProfile.Status.AccessProviders)).To(Equal(0))
@@ -495,16 +497,17 @@ var _ = Describe("ClusterProfileReconciler Test", func() {
 
 		It("Should NOT reconcile ClusterProfile without cluster name label", func() {
 			// Create ClusterProfile without cluster name label
-			noNameCluster := &cpv1alpha1.ClusterProfile{
+			noNameCluster := &cpv1alpha2.ClusterProfile{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "cluster-no-name-label",
 					Namespace: "default",
 					Labels: map[string]string{
-						cpv1alpha1.LabelClusterManagerKey: controllers.ClusterProfileManagerName,
+						cpv1alpha2.LabelClusterManagerKey: controllers.ClusterProfileManagerName,
 					},
 				},
-				Spec: cpv1alpha1.ClusterProfileSpec{
-					DisplayName: "Cluster Without Name Label",
+				Spec: cpv1alpha2.ClusterProfileSpec{
+					DisplayName:    "Cluster Without Name Label",
+					ClusterManager: cpv1alpha2.ClusterManager{Name: controllers.ClusterProfileManagerName},
 				},
 			}
 			err := ctrlClient.Create(ctx, noNameCluster)
@@ -514,7 +517,7 @@ var _ = Describe("ClusterProfileReconciler Test", func() {
 			time.Sleep(3 * time.Second)
 
 			// Verify no AccessProvider is added
-			currentProfile := &cpv1alpha1.ClusterProfile{}
+			currentProfile := &cpv1alpha2.ClusterProfile{}
 			err = ctrlClient.Get(ctx, client.ObjectKeyFromObject(noNameCluster), currentProfile)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(len(currentProfile.Status.AccessProviders)).To(Equal(0))
@@ -526,17 +529,18 @@ var _ = Describe("ClusterProfileReconciler Test", func() {
 
 		It("Should reconcile ClusterProfile with both required labels", func() {
 			// Create ClusterProfile with both required labels
-			validCluster := &cpv1alpha1.ClusterProfile{
+			validCluster := &cpv1alpha2.ClusterProfile{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "cluster-valid-labels",
 					Namespace: "default",
 					Labels: map[string]string{
-						cpv1alpha1.LabelClusterManagerKey: controllers.ClusterProfileManagerName,
+						cpv1alpha2.LabelClusterManagerKey: controllers.ClusterProfileManagerName,
 						clusterv1.ClusterNameLabelKey:     "cluster-valid-labels",
 					},
 				},
-				Spec: cpv1alpha1.ClusterProfileSpec{
-					DisplayName: "Cluster With Valid Labels",
+				Spec: cpv1alpha2.ClusterProfileSpec{
+					DisplayName:    "Cluster With Valid Labels",
+					ClusterManager: cpv1alpha2.ClusterManager{Name: controllers.ClusterProfileManagerName},
 				},
 			}
 			err := ctrlClient.Create(ctx, validCluster)
@@ -544,7 +548,7 @@ var _ = Describe("ClusterProfileReconciler Test", func() {
 
 			// Wait for AccessProvider to be added
 			Eventually(func() int {
-				currentProfile := &cpv1alpha1.ClusterProfile{}
+				currentProfile := &cpv1alpha2.ClusterProfile{}
 				err := ctrlClient.Get(ctx, client.ObjectKeyFromObject(validCluster), currentProfile)
 				if err != nil {
 					return -1
@@ -553,12 +557,12 @@ var _ = Describe("ClusterProfileReconciler Test", func() {
 			}, timeout, interval).Should(BeNumerically(">", 0))
 
 			// Verify the AccessProvider was added
-			currentProfile := &cpv1alpha1.ClusterProfile{}
+			currentProfile := &cpv1alpha2.ClusterProfile{}
 			err = ctrlClient.Get(ctx, client.ObjectKeyFromObject(validCluster), currentProfile)
 			Expect(err).ToNot(HaveOccurred())
 
 			// Find OCM provider
-			var ocmProvider *cpv1alpha1.AccessProvider
+			var ocmProvider *cpv1alpha2.AccessProvider
 			for i := range currentProfile.Status.AccessProviders {
 				if currentProfile.Status.AccessProviders[i].Name == controllers.OCMAccessProviderName {
 					ocmProvider = &currentProfile.Status.AccessProviders[i]

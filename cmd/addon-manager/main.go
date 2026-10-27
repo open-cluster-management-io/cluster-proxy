@@ -38,7 +38,7 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/klog/v2/textlogger"
 
-	cpv1alpha1 "sigs.k8s.io/cluster-inventory-api/apis/v1alpha1"
+	cpv1alpha2 "sigs.k8s.io/cluster-inventory-api/apis/v1alpha2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
@@ -69,7 +69,7 @@ func init() {
 	utilruntime.Must(addonv1beta1.Install(scheme))
 	utilruntime.Must(proxyv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(clusterv1beta2.Install(scheme))
-	utilruntime.Must(cpv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(cpv1alpha2.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 }
 

@@ -11,8 +11,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	clientcmdapiv1 "k8s.io/client-go/tools/clientcmd/api/v1"
-	cpv1alpha1 "sigs.k8s.io/cluster-inventory-api/apis/v1alpha1"
+	cpv1alpha2 "sigs.k8s.io/cluster-inventory-api/apis/v1alpha2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -53,8 +52,8 @@ func SetupClusterProfileReconciler(mgr manager.Manager) error {
 func (r *clusterProfileReconciler) SetupWithManager(mgr manager.Manager) error {
 	// Predicate to filter only ClusterProfiles managed by open-cluster-management
 	cpFilter := func(obj client.Object) bool {
-		if cp, ok := obj.(*cpv1alpha1.ClusterProfile); ok {
-			if cp.Labels[cpv1alpha1.LabelClusterManagerKey] != ClusterProfileManagerName {
+		if cp, ok := obj.(*cpv1alpha2.ClusterProfile); ok {
+			if cp.Labels[cpv1alpha2.LabelClusterManagerKey] != ClusterProfileManagerName {
 				return false
 			}
 			_, ok := cp.Labels[clusterv1.ClusterNameLabelKey]
@@ -64,13 +63,13 @@ func (r *clusterProfileReconciler) SetupWithManager(mgr manager.Manager) error {
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&cpv1alpha1.ClusterProfile{}, builder.WithPredicates(predicate.NewPredicateFuncs(cpFilter))).
+		For(&cpv1alpha2.ClusterProfile{}, builder.WithPredicates(predicate.NewPredicateFuncs(cpFilter))).
 		Complete(r)
 }
 
 func (r *clusterProfileReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger.Info("Start reconcile", "namespace", req.Namespace, "name", req.Name)
-	cp := &cpv1alpha1.ClusterProfile{}
+	cp := &cpv1alpha2.ClusterProfile{}
 	err := r.Get(ctx, req.NamespacedName, cp)
 	if err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
@@ -113,14 +112,14 @@ func (r *clusterProfileReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	// prepare the access provider to access spoke via user-server.
-	ocmAccessProvider := cpv1alpha1.AccessProvider{
+	ocmAccessProvider := cpv1alpha2.AccessProvider{
 		Name: OCMAccessProviderName,
-		Cluster: clientcmdapiv1.Cluster{
+		Cluster: cpv1alpha2.Cluster{
 			Server: fmt.Sprintf("https://%s.%s:9092/%s",
 				constant.UserServerServiceName,
 				config.Spec.ProxyServer.Namespace, cp.Name),
 			CertificateAuthorityData: caData,
-			Extensions: []clientcmdapiv1.NamedExtension{
+			Extensions: []cpv1alpha2.NamedExtension{
 				{
 					Name: "client.authentication.k8s.io/exec",
 					Extension: runtime.RawExtension{
@@ -145,9 +144,9 @@ func (r *clusterProfileReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	return ctrl.Result{}, nil
 }
 
-func (r *clusterProfileReconciler) setAccessProvider(cp *cpv1alpha1.ClusterProfile, accessProvider cpv1alpha1.AccessProvider) {
+func (r *clusterProfileReconciler) setAccessProvider(cp *cpv1alpha2.ClusterProfile, accessProvider cpv1alpha2.AccessProvider) {
 	if cp.Status.AccessProviders == nil {
-		cp.Status.AccessProviders = []cpv1alpha1.AccessProvider{}
+		cp.Status.AccessProviders = []cpv1alpha2.AccessProvider{}
 	}
 
 	for i := range cp.Status.AccessProviders {
