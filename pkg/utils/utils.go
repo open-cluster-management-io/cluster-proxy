@@ -40,8 +40,17 @@ type TargetServiceConfig struct {
 }
 
 func UpdateRequest(t TargetServiceConfig, req *http.Request) *http.Request {
-	// update request URL path
-	req.URL.Path = t.Path
+	// update request URL path. t.Path is cut from the raw request URI, so it is
+	// still percent-encoded. Keep that encoding in RawPath and store the decoded
+	// form in Path; assigning the encoded string to Path alone would make the
+	// reverse proxy escape it a second time (e.g. "%2F" -> "%252F").
+	if path, err := url.PathUnescape(t.Path); err == nil {
+		req.URL.Path = path
+		req.URL.RawPath = t.Path
+	} else {
+		req.URL.Path = t.Path
+		req.URL.RawPath = ""
+	}
 
 	// populate proto, namespace, service, and port to request headers
 	req.Header.Set(HeaderClusterProxyProto, t.Proto)

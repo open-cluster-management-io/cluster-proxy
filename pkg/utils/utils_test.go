@@ -217,6 +217,53 @@ func TestUpdateRequest(t *testing.T) {
 	}
 }
 
+func TestUpdateRequestKeepsPathEncoding(t *testing.T) {
+	testcases := []struct {
+		name        string
+		path        string
+		wantPath    string
+		wantEscaped string
+	}{
+		{
+			name:        "plain path",
+			path:        "api/v1/pods",
+			wantPath:    "api/v1/pods",
+			wantEscaped: "api/v1/pods",
+		},
+		{
+			name:        "escaped space and colon",
+			path:        "api/v1/namespaces/default/configmaps/a%3Ab%20c",
+			wantPath:    "api/v1/namespaces/default/configmaps/a:b c",
+			wantEscaped: "api/v1/namespaces/default/configmaps/a%3Ab%20c",
+		},
+		{
+			name:        "escaped slash",
+			path:        "files/a%2Fb",
+			wantPath:    "files/a/b",
+			wantEscaped: "files/a%2Fb",
+		},
+		{
+			name:        "invalid escape",
+			path:        "files/100%",
+			wantPath:    "files/100%",
+			wantEscaped: "files/100%25",
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := &http.Request{Header: make(http.Header), URL: &url.URL{}}
+			actual := UpdateRequest(TargetServiceConfig{Path: tc.path}, req)
+			if actual.URL.Path != tc.wantPath {
+				t.Errorf("expected path: %q, got: %q", tc.wantPath, actual.URL.Path)
+			}
+			if escaped := actual.URL.EscapedPath(); escaped != tc.wantEscaped {
+				t.Errorf("expected escaped path: %q, got: %q", tc.wantEscaped, escaped)
+			}
+		})
+	}
+}
+
 func TestGetTargetServiceURLFromRequest(t *testing.T) {
 	testcases := []struct {
 		name   string
