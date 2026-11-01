@@ -13,7 +13,6 @@ import (
 
 	"github.com/pkg/errors"
 	csrv1 "k8s.io/api/certificates/v1"
-	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -208,11 +207,11 @@ func GetClusterProxyValueFunc(
 		// this is how we set the right ingress endpoint for proxy servers to
 		// receive handshakes from proxy agents:
 		// 1. upon "Hostname" type, use the prescribed hostname directly
-		// 2. upon "LoadBalancerService" type, use the first entry in the ip lists
+		// 2. upon "LoadBalancerService" type, use the first ingress IP or hostname
 		// 3. otherwise defaulted to the in-cluster service endpoint
 		serviceEntryPoint := proxyConfig.Spec.ProxyServer.InClusterServiceName + "." + proxyConfig.Spec.ProxyServer.Namespace
 		// find the referenced proxy load-balancer prescribed in the proxy config if there's any
-		var proxyServerLoadBalancer *corev1.Service
+		var proxyServerLoadBalancerAddress string
 		if proxyConfig.Spec.ProxyServer.Entrypoint.Type == proxyv1alpha1.EntryPointTypeLoadBalancerService {
 			entrySvc, err := nativeClient.CoreV1().
 				Services(proxyConfig.Spec.ProxyServer.Namespace).
@@ -222,10 +221,10 @@ func GetClusterProxyValueFunc(
 			if err != nil {
 				return nil, errors.Wrapf(err, "failed getting proxy loadbalancer")
 			}
-			if len(entrySvc.Status.LoadBalancer.Ingress) == 0 {
+			proxyServerLoadBalancerAddress = util.LoadBalancerIngressAddress(entrySvc)
+			if len(proxyServerLoadBalancerAddress) == 0 {
 				return nil, fmt.Errorf("the load-balancer service for proxy-server ingress is not yet provisioned")
 			}
-			proxyServerLoadBalancer = entrySvc
 		}
 		addonAgentArgs := []string{
 			"--hub-kubeconfig=/etc/kubeconfig/kubeconfig",
@@ -237,7 +236,7 @@ func GetClusterProxyValueFunc(
 		case proxyv1alpha1.EntryPointTypeHostname:
 			serviceEntryPoint = proxyConfig.Spec.ProxyServer.Entrypoint.Hostname.Value
 		case proxyv1alpha1.EntryPointTypeLoadBalancerService:
-			serviceEntryPoint = proxyServerLoadBalancer.Status.LoadBalancer.Ingress[0].IP
+			serviceEntryPoint = proxyServerLoadBalancerAddress
 		case proxyv1alpha1.EntryPointTypePortForward:
 			serviceEntryPoint = "127.0.0.1"
 			addonAgentArgs = append(addonAgentArgs,

@@ -425,6 +425,30 @@ func TestNewAgentAddon(t *testing.T) {
 			},
 		},
 		{
+			name:    "balancer service with hostname proxy server",
+			cluster: newCluster(clusterName, true),
+			addon: func() *addonv1beta1.ManagedClusterAddOn {
+				addOn := newAddOn(addOnName, clusterName)
+				addOn.Status.ConfigReferences = []addonv1beta1.ConfigReference{newManagedProxyConfigReference(managedProxyConfigName)}
+				return addOn
+			}(),
+			managedProxyConfig:      newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypeLoadBalancerService),
+			addOndDeploymentConfigs: []runtime.Object{},
+			kubeObjs: []runtime.Object{func() *corev1.Service {
+				svc := newLoadBalancerService("")
+				svc.Status.LoadBalancer.Ingress = []corev1.LoadBalancerIngress{{Hostname: "lb.example.com"}}
+				return svc
+			}()},
+			enableKubeApiProxy: true,
+			verifyManifests: func(t *testing.T, manifests []runtime.Object) {
+				assert.Len(t, manifests, len(expectedManifestNames))
+				assert.ElementsMatch(t, expectedManifestNames, manifestNames(manifests))
+				agentDeploy := getAgentDeployment(manifests)
+				assert.NotNil(t, agentDeploy)
+				assert.Equal(t, getProxyServerHost(agentDeploy), "lb.example.com")
+			},
+		},
+		{
 			name:    "hostname proxy server ",
 			cluster: newCluster(clusterName, true),
 			addon: func() *addonv1beta1.ManagedClusterAddOn {

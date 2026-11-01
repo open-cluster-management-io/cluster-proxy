@@ -255,7 +255,7 @@ type EntryPointType string
 
 var (
 	// LoadBalancerService prescribes the proxy agents to establish tunnels via the
-	// expose IP from the load-balancer service.
+	// exposed IP or hostname from the load-balancer service.
 	EntryPointTypeLoadBalancerService EntryPointType = "LoadBalancerService"
 	// Hostname prescribes the proxy agents to connect a fixed hostname.
 	EntryPointTypeHostname EntryPointType = "Hostname"
