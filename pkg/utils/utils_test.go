@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 	"testing"
 )
 
@@ -213,6 +214,74 @@ func TestUpdateRequest(t *testing.T) {
 		}
 		if actual.URL.Path != tc.expect.URL.Path {
 			t.Errorf("expected path: %v, got: %v", tc.expect.URL.Path, actual.URL.Path)
+		}
+	}
+}
+
+func TestUpdateRequestKeepsPathEncoding(t *testing.T) {
+	testcases := []struct {
+		name        string
+		path        string
+		wantPath    string
+		wantEscaped string
+	}{
+		{
+			name:        "plain path",
+			path:        "api/v1/pods",
+			wantPath:    "api/v1/pods",
+			wantEscaped: "api/v1/pods",
+		},
+		{
+			name:        "escaped space and colon",
+			path:        "api/v1/namespaces/default/configmaps/a%3Ab%20c",
+			wantPath:    "api/v1/namespaces/default/configmaps/a:b c",
+			wantEscaped: "api/v1/namespaces/default/configmaps/a%3Ab%20c",
+		},
+		{
+			name:        "escaped slash",
+			path:        "files/a%2Fb",
+			wantPath:    "files/a/b",
+			wantEscaped: "files/a%2Fb",
+		},
+		{
+			name:        "escaped slash next to bytes that need escaping",
+			path:        "files/a%2Fb{c}/あ",
+			wantPath:    "files/a/b{c}/あ",
+			wantEscaped: "files/a%2Fb%7Bc%7D/%E3%81%82",
+		},
+		{
+			name:        "invalid escape",
+			path:        "files/100%",
+			wantPath:    "files/100%",
+			wantEscaped: "files/100%25",
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := &http.Request{Header: make(http.Header), URL: &url.URL{}}
+			actual := UpdateRequest(TargetServiceConfig{Path: tc.path}, req)
+			if actual.URL.Path != tc.wantPath {
+				t.Errorf("expected path: %q, got: %q", tc.wantPath, actual.URL.Path)
+			}
+			if escaped := actual.URL.EscapedPath(); escaped != tc.wantEscaped {
+				t.Errorf("expected escaped path: %q, got: %q", tc.wantEscaped, escaped)
+			}
+		})
+	}
+}
+
+// isRawPathByte must not allow a byte that url.URL rejects in RawPath.
+func TestUpdateRequestKeepsEscapedSlashNextToAnyByte(t *testing.T) {
+	for c := range 256 {
+		suffix := string([]byte{byte(c)})
+		req := &http.Request{Header: make(http.Header), URL: &url.URL{}}
+		actual := UpdateRequest(TargetServiceConfig{Path: "a%2Fb" + suffix}, req)
+		if want := "a/b" + suffix; actual.URL.Path != want {
+			t.Errorf("byte %#x: path = %q, want %q", c, actual.URL.Path, want)
+		}
+		if escaped := actual.URL.EscapedPath(); !strings.HasPrefix(escaped, "a%2Fb") {
+			t.Errorf("byte %#x: escaped path = %q, want it to start with %q", c, escaped, "a%2Fb")
 		}
 	}
 }

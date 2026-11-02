@@ -256,6 +256,49 @@ func TestServeHTTPReusesHTTP1TunnelWhenHTTP2Disabled(t *testing.T) {
 	}
 }
 
+func TestServeHTTPPreservesPercentEncodedPath(t *testing.T) {
+	tests := map[string]struct {
+		path    string
+		wantURI string
+	}{
+		"Kubernetes API": {
+			path:    kubeAPIPath(testClusterName) + "/a%3Ab%2Fc%20d?watch=true",
+			wantURI: "/api/v1/namespaces/default/configmaps/a%3Ab%2Fc%20d?watch=true",
+		},
+		"service": {
+			path:    serviceProxyPath(testClusterName) + "files/a%2Fb%20c?x=1",
+			wantURI: "/files/a%2Fb%20c?x=1",
+		},
+		"service without escapes": {
+			path:    serviceProxyPath(testClusterName) + "ping?x=1",
+			wantURI: "/ping?x=1",
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			requestURIs := make(chan string, 1)
+			backend, roots := newTLSBackend(t, testClusterName, true, http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+				requestURIs <- request.RequestURI
+				_, _ = io.WriteString(w, "ok")
+			}))
+			server, _ := newProxyToBackend(t, roots, backend.Listener.Addr().String(), true)
+			server.serviceAllowlist.update([]ExposedService{{
+				Namespace: "default",
+				Service:   "example",
+			}})
+			proxy := httptest.NewServer(server)
+			t.Cleanup(proxy.Close)
+
+			getResponse(t, proxy.Client(), proxy.URL+test.path)
+
+			if got := <-requestURIs; got != test.wantURI {
+				t.Fatalf("backend request URI = %q, want %q", got, test.wantURI)
+			}
+		})
+	}
+}
+
 func TestServeHTTPStreamsWithoutGlobalFlushInterval(t *testing.T) {
 	backendFlushed := make(chan struct{})
 	releaseBackend := make(chan struct{})

@@ -36,12 +36,13 @@ type TargetServiceConfig struct {
 	Service   string
 	Namespace string
 	Port      string
-	Path      string
+	// Path is still percent-encoded, e.g. "files/a%2Fb".
+	Path string
 }
 
 func UpdateRequest(t TargetServiceConfig, req *http.Request) *http.Request {
 	// update request URL path
-	req.URL.Path = t.Path
+	setEscapedPath(req.URL, t.Path)
 
 	// populate proto, namespace, service, and port to request headers
 	req.Header.Set(HeaderClusterProxyProto, t.Proto)
@@ -52,9 +53,45 @@ func UpdateRequest(t TargetServiceConfig, req *http.Request) *http.Request {
 	return req
 }
 
+// setEscapedPath sets the path of u while keeping the encoding of escapedPath,
+// so that the proxy does not escape it again (e.g. "%2F" -> "%252F").
+func setEscapedPath(u *url.URL, escapedPath string) {
+	const upperHex = "0123456789ABCDEF"
+	var b strings.Builder
+	b.Grow(len(escapedPath))
+	for i := 0; i < len(escapedPath); i++ {
+		c := escapedPath[i]
+		if isRawPathByte(c) || (c == '%' && isEscape(escapedPath[i:])) {
+			b.WriteByte(c)
+			continue
+		}
+		// bytes such as '{' must be escaped, otherwise url.URL ignores RawPath
+		b.WriteByte('%')
+		b.WriteByte(upperHex[c>>4])
+		b.WriteByte(upperHex[c&0xF])
+	}
+	u.RawPath = b.String()
+	u.Path, _ = url.PathUnescape(u.RawPath)
+}
+
+// isEscape reports whether s starts with an escape such as "%2F".
+func isEscape(s string) bool {
+	return len(s) >= 3 && isHex(s[1]) && isHex(s[2])
+}
+
+func isHex(c byte) bool {
+	return '0' <= c && c <= '9' || 'a' <= c && c <= 'f' || 'A' <= c && c <= 'F'
+}
+
+// isRawPathByte reports whether c can be left unescaped in url.URL.RawPath.
+func isRawPathByte(c byte) bool {
+	return 'a' <= c && c <= 'z' || 'A' <= c && c <= 'Z' || '0' <= c && c <= '9' ||
+		strings.IndexByte("-._~!$&'()*+,;=:@/[]", c) >= 0
+}
+
 // GetTargetServiceConfig extrict the target service config from requestURL
 // input: https://<route location cluster-proxy>/cluster1/api/v1/namespaces/default/services/<https:helloworld:8080>/proxy-service/ping?time-out=32s
-// output: TargetServiceConfig{Cluster: cluster1, Proto: https, Service: helloworld, Namespace: default, Port: 8080, Path: /ping}
+// output: TargetServiceConfig{Cluster: cluster1, Proto: https, Service: helloworld, Namespace: default, Port: 8080, Path: ping}
 func GetTargetServiceConfig(requestURL string) (ts TargetServiceConfig, err error) {
 	urlparams := strings.Split(requestURL, "/")
 	if len(urlparams) < 9 {
