@@ -14,6 +14,7 @@ import (
 	"open-cluster-management.io/cluster-proxy/pkg/common"
 	"open-cluster-management.io/cluster-proxy/pkg/constant"
 	"open-cluster-management.io/cluster-proxy/pkg/proxyserver/operator/authentication/selfsigned"
+	"open-cluster-management.io/cluster-proxy/pkg/util"
 	"open-cluster-management.io/sdk-go/pkg/certrotation"
 	sdktls "open-cluster-management.io/sdk-go/pkg/tls"
 
@@ -450,10 +451,11 @@ func (c *ManagedProxyConfigurationReconciler) ensureEntrypoint(config *proxyv1al
 		if err != nil {
 			return "", errors.Wrapf(err, "failed to get service %q/%q", namespace, name)
 		}
-		if len(lbSvc.Status.LoadBalancer.Ingress) == 0 {
-			return "", errors.New("external ip not yet provisioned")
+		address := util.LoadBalancerIngressAddress(lbSvc)
+		if len(address) == 0 {
+			return "", errors.New("external address not yet provisioned")
 		}
-		return lbSvc.Status.LoadBalancer.Ingress[0].IP, nil
+		return address, nil
 	}
 	return "", nil
 }

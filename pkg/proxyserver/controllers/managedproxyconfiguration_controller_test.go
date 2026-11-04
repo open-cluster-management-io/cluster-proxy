@@ -7,10 +7,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	kubefake "k8s.io/client-go/kubernetes/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
+	proxyv1alpha1 "open-cluster-management.io/cluster-proxy/pkg/apis/proxy/v1alpha1"
 	"open-cluster-management.io/cluster-proxy/pkg/common"
 )
 
@@ -179,4 +182,66 @@ func TestEnsureUpdatesRenderedServiceWithoutGenerationChange(t *testing.T) {
 	assert.Empty(t, desired.Spec.ClusterIPs)
 	assert.Empty(t, desired.Spec.IPFamilies)
 	assert.Nil(t, desired.Spec.IPFamilyPolicy)
+}
+
+func TestEnsureEntrypointLoadBalancerAddress(t *testing.T) {
+	testcases := []struct {
+		name        string
+		ingress     []corev1.LoadBalancerIngress
+		expected    string
+		expectedErr string
+	}{
+		{
+			name:        "not yet provisioned",
+			expectedErr: "external address not yet provisioned",
+		},
+		{
+			name:     "ip",
+			ingress:  []corev1.LoadBalancerIngress{{IP: "1.2.3.4"}},
+			expected: "1.2.3.4",
+		},
+		{
+			name:     "hostname",
+			ingress:  []corev1.LoadBalancerIngress{{Hostname: "lb.example.com"}},
+			expected: "lb.example.com",
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			config := newTestConfig(3)
+			config.Spec.ProxyServer.Namespace = "proxy-system"
+			config.Spec.ProxyServer.Entrypoint = &proxyv1alpha1.ManagedProxyConfigurationProxyServerEntrypoint{
+				Type: proxyv1alpha1.EntryPointTypeLoadBalancerService,
+				LoadBalancerService: &proxyv1alpha1.EntryPointLoadBalancerService{
+					Name: "proxy-agent-entrypoint",
+				},
+			}
+
+			lbSvc := &corev1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "proxy-system",
+					Name:      "proxy-agent-entrypoint",
+				},
+			}
+			lbSvc.Status.LoadBalancer.Ingress = tc.ingress
+
+			scheme := runtime.NewScheme()
+			if err := corev1.AddToScheme(scheme); err != nil {
+				t.Fatal(err)
+			}
+			reconciler := &ManagedProxyConfigurationReconciler{
+				Client:        fake.NewClientBuilder().WithScheme(scheme).WithObjects(lbSvc.DeepCopy()).Build(),
+				ServiceGetter: kubefake.NewClientset(lbSvc).CoreV1(),
+			}
+
+			entrypoint, err := reconciler.ensureEntrypoint(config)
+			if len(tc.expectedErr) > 0 {
+				assert.EqualError(t, err, tc.expectedErr)
+				return
+			}
+			assert.NoError(t, err)
+			assert.Equal(t, tc.expected, entrypoint)
+		})
+	}
 }
