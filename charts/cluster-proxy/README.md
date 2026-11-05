@@ -33,6 +33,7 @@ helm install cluster-proxy ./charts/cluster-proxy \
 | `proxyServer.entrypointAddress`         | External proxy entrypoint hostname                                | `""`                                            |
 | `proxyServer.port`                      | Proxy entrypoint port                                             | `8091`                                          |
 | `proxyServer.imagePullPolicy`           | Proxy server and agent image pull policy                          | `IfNotPresent`                                  |
+| `proxyAgent.additionalArgs`             | Extra command-line arguments for proxy-agent                      | `[]`                                            |
 | `installByPlacement.placementName`      | Placement used to select managed clusters                         | `cluster-proxy-placement` when empty             |
 | `installByPlacement.placementNamespace` | Namespace containing the Placement                               | Release namespace when empty                    |
 | `enableKubeApiProxy`                    | Enable Kubernetes API proxy support                               | `true`                                          |
@@ -45,6 +46,22 @@ helm install cluster-proxy ./charts/cluster-proxy \
 | `exposedServicesConfigMapName`          | ConfigMap containing the service allowlist                        | `cluster-proxy-exposed-services`                 |
 | `exposedServices`                       | Services exposed through the service proxy path                   | `[]`                                            |
 | `networkPolicies.enabled`               | Create opt-in NetworkPolicies for hub and managed workloads       | `false`                                         |
+
+### Proxy Agent Arguments
+
+Use `proxyAgent.additionalArgs` to pass flags to proxy-agent on managed clusters.
+The chart sets `--keepalive-time=30s` and, when `replicas > 1`, `--sync-forever` by
+default. Specifying either flag in `additionalArgs` replaces its default:
+
+```yaml
+proxyAgent:
+  additionalArgs:
+    - --keepalive-time=2m
+    - --sync-forever=false
+    - --sync-interval=5s
+```
+
+Additional arguments follow the generated connection and certificate arguments.
 
 ### Service Proxy and User Server Configuration
 

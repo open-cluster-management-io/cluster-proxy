@@ -21,6 +21,10 @@ proxyServer:
   port: 8091
   imagePullPolicy: IfNotPresent
 
+proxyAgent:
+  # Additional command-line arguments passed to proxy-agent on managed clusters.
+  additionalArgs: []
+
 installByPlacement:
   placementName: ""
   placementNamespace: ""
