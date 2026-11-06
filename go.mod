@@ -24,7 +24,7 @@ require (
 require (
 	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/spf13/cobra v1.10.2
-	github.com/spf13/pflag v1.0.10
+	github.com/spf13/pflag v1.1.0
 	k8s.io/apiserver v0.37.2
 	k8s.io/component-base v0.37.2
 	k8s.io/streaming v0.37.2
