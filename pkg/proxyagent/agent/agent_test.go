@@ -929,6 +929,127 @@ func TestNewAgentAddon(t *testing.T) {
 			expectedErrorMsg:   "oidcRequiredClaimsJSON values must be strings",
 		},
 		{
+			name:               "with addon deployment config tuning kube api client",
+			cluster:            newCluster(clusterName, true),
+			addon:              newAddonWithDeploymentConfig(),
+			managedProxyConfig: newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypePortForward),
+			addOndDeploymentConfigs: []runtime.Object{newAddOnDeploymentConfigWithVariables(addOndDeployConfigName, clusterName,
+				addonv1beta1.CustomizedVariable{Name: "serviceProxyKubeAPIQPS", Value: "100"},
+				addonv1beta1.CustomizedVariable{Name: "serviceProxyKubeAPIBurst", Value: "200"},
+				addonv1beta1.CustomizedVariable{Name: "serviceProxyTokenReviewCacheTTL", Value: "30s"},
+			)},
+			enableKubeApiProxy: true,
+			enableServiceProxy: true,
+			verifyManifests: func(t *testing.T, manifests []runtime.Object) {
+				agentDeploy := getAgentDeployment(manifests)
+				assert.NotNil(t, agentDeploy)
+				serviceProxy := getDeploymentContainer(agentDeploy, "service-proxy")
+				if assert.NotNil(t, serviceProxy) {
+					assert.Subset(t, serviceProxy.Args, []string{
+						"--kube-api-qps=100",
+						"--kube-api-burst=200",
+						"--token-review-cache-ttl=30s",
+					})
+				}
+			},
+		},
+		{
+			// 0 is meaningful: it disables the TokenReview cache entirely, so it
+			// must still render rather than fall back to the binary default
+			name:               "token review cache can be disabled explicitly",
+			cluster:            newCluster(clusterName, true),
+			addon:              newAddonWithDeploymentConfig(),
+			managedProxyConfig: newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypePortForward),
+			addOndDeploymentConfigs: []runtime.Object{newAddOnDeploymentConfigWithVariables(addOndDeployConfigName, clusterName,
+				addonv1beta1.CustomizedVariable{Name: "serviceProxyTokenReviewCacheTTL", Value: "0"},
+			)},
+			enableKubeApiProxy: true,
+			enableServiceProxy: true,
+			verifyManifests: func(t *testing.T, manifests []runtime.Object) {
+				agentDeploy := getAgentDeployment(manifests)
+				assert.NotNil(t, agentDeploy)
+				serviceProxy := getDeploymentContainer(agentDeploy, "service-proxy")
+				if assert.NotNil(t, serviceProxy) {
+					assert.Contains(t, serviceProxy.Args, "--token-review-cache-ttl=0")
+				}
+			},
+		},
+		{
+			name:               "rejects malformed token review cache ttl",
+			cluster:            newCluster(clusterName, true),
+			addon:              newAddonWithDeploymentConfig(),
+			managedProxyConfig: newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypePortForward),
+			addOndDeploymentConfigs: []runtime.Object{newAddOnDeploymentConfigWithVariables(addOndDeployConfigName, clusterName,
+				addonv1beta1.CustomizedVariable{Name: "serviceProxyTokenReviewCacheTTL", Value: "30 seconds"},
+			)},
+			enableKubeApiProxy: true,
+			enableServiceProxy: true,
+			expectedErrorMsg:   "serviceProxyTokenReviewCacheTTL",
+		},
+		{
+			// unset leaves the flags off entirely so the service-proxy binary
+			// defaults (50 / 100) stay authoritative
+			name:                    "without kube api client tuning omits the flags",
+			cluster:                 newCluster(clusterName, true),
+			addon:                   newAddonWithDeploymentConfig(),
+			managedProxyConfig:      newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypePortForward),
+			addOndDeploymentConfigs: []runtime.Object{newAddOnDeploymentConfigWithVariables(addOndDeployConfigName, clusterName)},
+			enableKubeApiProxy:      true,
+			enableServiceProxy:      true,
+			verifyManifests: func(t *testing.T, manifests []runtime.Object) {
+				agentDeploy := getAgentDeployment(manifests)
+				assert.NotNil(t, agentDeploy)
+				serviceProxy := getDeploymentContainer(agentDeploy, "service-proxy")
+				if assert.NotNil(t, serviceProxy) {
+					for _, arg := range serviceProxy.Args {
+						assert.NotContains(t, arg, "--kube-api-qps")
+						assert.NotContains(t, arg, "--kube-api-burst")
+						assert.NotContains(t, arg, "--token-review-cache-ttl")
+					}
+				}
+			},
+		},
+		{
+			name:               "rejects non-numeric kube api qps",
+			cluster:            newCluster(clusterName, true),
+			addon:              newAddonWithDeploymentConfig(),
+			managedProxyConfig: newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypePortForward),
+			addOndDeploymentConfigs: []runtime.Object{newAddOnDeploymentConfigWithVariables(addOndDeployConfigName, clusterName,
+				addonv1beta1.CustomizedVariable{Name: "serviceProxyKubeAPIQPS", Value: "fast"},
+			)},
+			enableKubeApiProxy: true,
+			enableServiceProxy: true,
+			expectedErrorMsg:   "serviceProxyKubeAPIQPS",
+		},
+		{
+			name:    "per-spoke kube api tuning wins over hub-wide additional args",
+			cluster: newCluster(clusterName, true),
+			addon:   newAddonWithDeploymentConfig(),
+			managedProxyConfig: func() *proxyv1alpha1.ManagedProxyConfiguration {
+				config := newManagedProxyConfig(managedProxyConfigName, proxyv1alpha1.EntryPointTypePortForward)
+				config.Spec.ProxyAgent.AdditionalServiceProxyArgs = []string{"--kube-api-qps=10"}
+				return config
+			}(),
+			addOndDeploymentConfigs: []runtime.Object{newAddOnDeploymentConfigWithVariables(addOndDeployConfigName, clusterName,
+				addonv1beta1.CustomizedVariable{Name: "serviceProxyKubeAPIQPS", Value: "100"},
+			)},
+			enableKubeApiProxy: true,
+			enableServiceProxy: true,
+			verifyManifests: func(t *testing.T, manifests []runtime.Object) {
+				agentDeploy := getAgentDeployment(manifests)
+				assert.NotNil(t, agentDeploy)
+				serviceProxy := getDeploymentContainer(agentDeploy, "service-proxy")
+				if assert.NotNil(t, serviceProxy) {
+					hub := slices.Index(serviceProxy.Args, "--kube-api-qps=10")
+					spoke := slices.Index(serviceProxy.Args, "--kube-api-qps=100")
+					assert.NotEqual(t, -1, hub, "hub-wide arg should still be rendered")
+					assert.NotEqual(t, -1, spoke, "per-spoke arg should be rendered")
+					// pflag takes the last occurrence, so the spoke value must come after
+					assert.Greater(t, spoke, hub, "per-spoke value must be the last occurrence")
+				}
+			},
+		},
+		{
 			name:               "with addon deployment config using resources requirement",
 			cluster:            newCluster(clusterName, true),
 			addon:              newAddonWithDeploymentConfig(),

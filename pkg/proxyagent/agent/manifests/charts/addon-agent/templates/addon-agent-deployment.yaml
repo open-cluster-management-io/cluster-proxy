@@ -211,6 +211,17 @@ spec:
             {{- range .Values.additionalServiceProxyArgs }}
             - {{ . }}
             {{- end }}
+            {{- /* rendered last so a per-spoke AddOnDeploymentConfig value wins over
+                   the same flag set hub-wide via additionalServiceProxyArgs */}}
+            {{- if not (empty (toString .Values.serviceProxyKubeAPIQPS)) }}
+            - {{ printf "--kube-api-qps=%v" .Values.serviceProxyKubeAPIQPS | quote }}
+            {{- end }}
+            {{- if not (empty (toString .Values.serviceProxyKubeAPIBurst)) }}
+            - {{ printf "--kube-api-burst=%v" .Values.serviceProxyKubeAPIBurst | quote }}
+            {{- end }}
+            {{- if .Values.serviceProxyTokenReviewCacheTTL }}
+            - {{ printf "--token-review-cache-ttl=%s" .Values.serviceProxyTokenReviewCacheTTL | quote }}
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /healthz
