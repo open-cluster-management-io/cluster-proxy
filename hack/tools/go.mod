@@ -142,8 +142,8 @@ require (
 	open-cluster-management.io/ocm v1.4.0 // indirect
 	open-cluster-management.io/sdk-go v1.4.0 // indirect
 	oras.land/oras-go/v2 v2.6.1 // indirect
-	sigs.k8s.io/apiserver-network-proxy v0.37.0 // indirect
-	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.37.0 // indirect
+	sigs.k8s.io/apiserver-network-proxy v0.37.1 // indirect
+	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.37.1 // indirect
 	sigs.k8s.io/json v0.0.0-20260909141634-11ed52e25bc5 // indirect
 	sigs.k8s.io/kube-storage-version-migrator v0.0.6-0.20230721195810-5c8923c5ff96 // indirect
 	sigs.k8s.io/kustomize/api v0.21.1 // indirect

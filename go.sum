@@ -322,10 +322,10 @@ open-cluster-management.io/api v1.4.0 h1:pHcuT0dljNVWqiMmwo7OjJ+CW8lZODBzAFJ5u4c
 open-cluster-management.io/api v1.4.0/go.mod h1:/qLKuMbMS1+MpirTjaw4BoS3INKG8jV3s5J7iju48tg=
 open-cluster-management.io/sdk-go v1.4.0 h1:zqqKVF63qIgvZ1eNVbSS+SW3Zw/+bf0dTOFK9pSkWXE=
 open-cluster-management.io/sdk-go v1.4.0/go.mod h1:QmXMsVKuv1SabVoZenQrA3iubXKRJGiqLltewyc+CW4=
-sigs.k8s.io/apiserver-network-proxy v0.37.0 h1:5Q3Ow369Yu2efRTw/fcqvyxV7HlgNUVGPYXtACjfs9I=
-sigs.k8s.io/apiserver-network-proxy v0.37.0/go.mod h1:D/iYuoXraPzETqpSjPaydws5MrdquB40cyWQeOb01WQ=
-sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.37.0 h1:NWrO5vJ1Dw7gy2JS/iY98JEEvtmQ3lXqNwwCzzOC1gk=
-sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.37.0/go.mod h1:x/fWe7nc0XDKUqK5XZ5nqmWKdQxvouWB7OmEAsxltiI=
+sigs.k8s.io/apiserver-network-proxy v0.37.1 h1:GLnlYpVtcWivRNFV8oCPK0He2kr6KREckEe3zxwLA/4=
+sigs.k8s.io/apiserver-network-proxy v0.37.1/go.mod h1:JacHBNRFhYY4v2oxt4CbCCA9ZOCiX+tLJVdoswhbE0g=
+sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.37.1 h1:Z8IysACZCkfmQSEvnjS02RL289YhiikfVhvZHeQOCTA=
+sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.37.1/go.mod h1:qiDd08RUV/IZ/Wv0rQzrI0glxB/OcEgzEpdKMwmeng0=
 sigs.k8s.io/cluster-inventory-api v0.2.0 h1:gGbfhTLP+RWo2wZSNJNItrhsUrgVhxRlZCDizir/kF4=
 sigs.k8s.io/cluster-inventory-api v0.2.0/go.mod h1:7J3M6srZ1I4snZR+p5zxgEBdXnia3tlHo5ODMHJpEUk=
 sigs.k8s.io/controller-runtime v0.25.2 h1:bEkK3PVOIVK9X8QWLGVhJgmFc++47vfT6wakSzAOLsQ=
