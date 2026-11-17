@@ -469,6 +469,47 @@ Important security behavior:
 - Configure `oidcGroupsPrefix` when external group names could collide with
   existing managed cluster RBAC subjects.
 
+### Throughput settings
+
+The addon-agent chart exposes the service-proxy throughput flags as customized
+variables. These are per managed cluster: set them on an `AddOnDeploymentConfig`
+referenced by that cluster's `ManagedClusterAddOn`.
+
+| AddOnDeploymentConfig variable | Service-proxy flag | Effective default | Description |
+| --- | --- | --- | --- |
+| `kubeAPIQPS` | `--kube-api-qps` | `50` | QPS for Kubernetes API clients. Raise it when client-side throttling appears under high concurrency. |
+| `kubeAPIBurst` | `--kube-api-burst` | `100` | Burst for Kubernetes API clients. |
+| `tokenReviewCacheTTL` | `--token-review-cache-ttl` | `10s` | Go duration a TokenReview result stays cached. `0` disables caching. |
+
+Leaving a variable unset omits the flag, so the service-proxy binary default
+applies. All three accept the string form that customized variables always use,
+and a malformed value is rejected when the chart renders rather than at
+container start. `tokenReviewCacheTTL: "0"` is meaningful and still renders, so
+caching can be turned off explicitly.
+
+A hub administrator can set a fleet-wide baseline by adding the same flags to
+`proxyAgent.additionalServiceProxyArgs` on the `ManagedProxyConfiguration`.
+These variables are rendered after that list, so a per-cluster value always
+wins over the fleet-wide one.
+
+```bash
+kubectl --context "$HUB_CONTEXT" apply -f - <<EOF
+apiVersion: addon.open-cluster-management.io/v1beta1
+kind: AddOnDeploymentConfig
+metadata:
+  name: cluster-proxy-tuning
+  namespace: $MANAGED_CLUSTER
+spec:
+  customizedVariables:
+  - name: kubeAPIQPS
+    value: "100"
+  - name: kubeAPIBurst
+    value: "200"
+  - name: tokenReviewCacheTTL
+    value: "30s"
+EOF
+```
+
 ### Configure OIDC for one managed cluster
 
 The following hub-side resources configure OIDC only for the selected managed

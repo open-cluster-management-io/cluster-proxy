@@ -173,6 +173,41 @@
         "string"
       ]
     },
+    "serviceProxyKubeAPIBurst": {
+      "description": "Burst for the service-proxy Kubernetes API clients. Empty keeps the service-proxy default of 100.",
+      "oneOf": [
+        {
+          "type": "integer",
+          "minimum": 0
+        },
+        {
+          "type": "string",
+          "pattern": "^[0-9]*$"
+        }
+      ]
+    },
+    "serviceProxyKubeAPIQPS": {
+      "description": "QPS for the service-proxy Kubernetes API clients. Empty keeps the service-proxy default of 50.",
+      "oneOf": [
+        {
+          "type": "number",
+          "minimum": 0
+        },
+        {
+          "type": "string",
+          "pattern": "^([0-9]+(\\.[0-9]+)?)?$"
+        }
+      ]
+    },
+    "serviceProxyTokenReviewCacheTTL": {
+      "description": "TTL for cached TokenReview results as a Go duration. Empty keeps the service-proxy default of 10s; 0 disables caching.",
+      "oneOf": [
+        {
+          "type": "string",
+          "pattern": "^(|0|([0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h))+)$"
+        }
+      ]
+    },
     "spokeAddonNamespace": {
       "type": "string"
     },
