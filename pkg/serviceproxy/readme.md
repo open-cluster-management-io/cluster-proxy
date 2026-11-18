@@ -477,14 +477,14 @@ referenced by that cluster's `ManagedClusterAddOn`.
 
 | AddOnDeploymentConfig variable | Service-proxy flag | Effective default | Description |
 | --- | --- | --- | --- |
-| `kubeAPIQPS` | `--kube-api-qps` | `50` | QPS for Kubernetes API clients. Raise it when client-side throttling appears under high concurrency. |
-| `kubeAPIBurst` | `--kube-api-burst` | `100` | Burst for Kubernetes API clients. |
-| `tokenReviewCacheTTL` | `--token-review-cache-ttl` | `10s` | Go duration a TokenReview result stays cached. `0` disables caching. |
+| `serviceProxyKubeAPIQPS` | `--kube-api-qps` | `50` | QPS for Kubernetes API clients. Raise it when client-side throttling appears under high concurrency. |
+| `serviceProxyKubeAPIBurst` | `--kube-api-burst` | `100` | Burst for Kubernetes API clients. |
+| `serviceProxyTokenReviewCacheTTL` | `--token-review-cache-ttl` | `10s` | Go duration a TokenReview result stays cached. `0` disables caching. |
 
 Leaving a variable unset omits the flag, so the service-proxy binary default
 applies. All three accept the string form that customized variables always use,
 and a malformed value is rejected when the chart renders rather than at
-container start. `tokenReviewCacheTTL: "0"` is meaningful and still renders, so
+container start. `serviceProxyTokenReviewCacheTTL: "0"` is meaningful and still renders, so
 caching can be turned off explicitly.
 
 A hub administrator can set a fleet-wide baseline by adding the same flags to
@@ -501,11 +501,11 @@ metadata:
   namespace: $MANAGED_CLUSTER
 spec:
   customizedVariables:
-  - name: kubeAPIQPS
+  - name: serviceProxyKubeAPIQPS
     value: "100"
-  - name: kubeAPIBurst
+  - name: serviceProxyKubeAPIBurst
     value: "200"
-  - name: tokenReviewCacheTTL
+  - name: serviceProxyTokenReviewCacheTTL
     value: "30s"
 EOF
 ```
