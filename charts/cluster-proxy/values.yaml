@@ -23,6 +23,9 @@ proxyServer:
 
 proxyAgent:
   # Additional command-line arguments passed to proxy-agent on managed clusters.
+  # With an empty list, the chart adds --keepalive-time=30s and also adds
+  # --sync-forever when replicas is greater than 1. Set either flag here to
+  # override its default (for example, --sync-forever=false).
   additionalArgs: []
 
 installByPlacement:
