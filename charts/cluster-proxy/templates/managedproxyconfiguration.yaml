@@ -30,10 +30,7 @@ spec:
     image: {{ $proxyAgentImage }}
     replicas: {{ .Values.replicas }}
     additionalArgs:
-      {{ if gt (int .Values.replicas) 1 }}
-      - --sync-forever
-      {{ end }}
-      - --keepalive-time=30s
+      {{- include "cluster-proxy.proxyAgentArgs" . | nindent 6 }}
   {{- if .Values.userServer.enabled }}
   userServer:
   {{- if .Values.userServer.additionalSANs }}
