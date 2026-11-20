@@ -84,9 +84,15 @@ jobs:
       - name: unit
         run: make test
       - name: report coverage
+        # Prevent missing Codecov credentials from turning passing unit tests into a failed CI job.
+        if: >-
+          env.CODECOV_TOKEN != '' ||
+          (github.event.pull_request.head.repo.full_name &&
+          github.event.pull_request.head.repo.full_name != github.repository)
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_UPLOAD_TOKEN }}
         with:
-          token: ${{ secrets.CODECOV_UPLOAD_TOKEN }}
           files: ./cover.out
           flags: unit
           name: unit
